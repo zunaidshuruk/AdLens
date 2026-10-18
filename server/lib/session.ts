@@ -12,7 +12,7 @@ export interface GoogleSessionData {
   refreshToken: string;
   accessToken: string;
   accessTokenExpiry: number; // epoch ms
-  email: string;
+  email: string | null;
   ga4Property?: {
     id: string;
     name: string;

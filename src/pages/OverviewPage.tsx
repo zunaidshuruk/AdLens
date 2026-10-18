@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { KpiCard } from '../components/KpiCard';
@@ -17,10 +18,11 @@ import {
 } from '../utils/formatters';
 
 export const OverviewPage: React.FC = () => {
+  const navigate = useNavigate();
   const { currency } = useAppContext();
   const { dateRange, compareEnabled } = useDateRange();
 
-  const { data, loading, error, refetch } = useReport(async (registry, range) => {
+  const { data, loading, error, errorCode, refetch } = useReport(async (registry, range) => {
     const [
       ga4Overview,
       gscOverview,
@@ -187,7 +189,26 @@ export const OverviewPage: React.FC = () => {
         </div>
       </div>
 
-      {error && <ErrorState message={error} onRetry={refetch} />}
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={refetch}
+          actionLabel={
+            errorCode === 'GA4_PERMISSION_DENIED' ||
+            errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
+            errorCode === 'GA4_NOT_SELECTED'
+              ? 'Go to Connections'
+              : undefined
+          }
+          onAction={
+            errorCode === 'GA4_PERMISSION_DENIED' ||
+            errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
+            errorCode === 'GA4_NOT_SELECTED'
+              ? () => navigate('/connections')
+              : undefined
+          }
+        />
+      )}
 
       {/* Cross-Channel KPI Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

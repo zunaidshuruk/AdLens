@@ -240,10 +240,12 @@ export const ConnectionsPage: React.FC = () => {
                 </p>
               </div>
 
-              {googleConnected && connections?.google.email ? (
+              {googleConnected ? (
                 <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400 shrink-0">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span data-testid="connected-google-email">{connections.google.email}</span>
+                  <span data-testid="connected-google-email">
+                    {connections?.google.email || 'Google account'}
+                  </span>
                 </div>
               ) : (
                 <span className="text-xs font-medium text-amber-700 dark:text-amber-400 shrink-0">
@@ -263,12 +265,16 @@ export const ConnectionsPage: React.FC = () => {
                 <div
                   data-testid="ga4-connection-status"
                   className={`text-xs font-medium ${
-                    googleConnected
+                    googleConnected && connections?.google.ga4Property
                       ? 'text-emerald-700 dark:text-emerald-400'
                       : 'text-amber-700 dark:text-amber-400'
                   }`}
                 >
-                  {googleConnected ? 'Connected — live data in Sprint 3' : 'Mock data'}
+                  {googleConnected
+                    ? connections?.google.ga4Property
+                      ? 'Connected — Live data active'
+                      : 'Connected — select a GA4 property below'
+                    : 'Mock data'}
                 </div>
                 {googleConnected && connections?.google.ga4Property && (
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">

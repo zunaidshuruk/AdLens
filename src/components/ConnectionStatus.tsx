@@ -61,7 +61,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ compact = fa
             <span className="text-xs text-slate-600 dark:text-slate-400">
               Google OAuth:{' '}
               {googleConnected
-                ? `Connected (${connections?.google.email})`
+                ? `Connected (${connections?.google.email || 'Google account'})`
                 : googleConfigured
                   ? 'Configured (Not connected)'
                   : 'Unconfigured'}

@@ -86,7 +86,7 @@ export interface GA4PageRow {
 }
 
 export interface GA4ConversionEventRow {
-  eventName: 'demo_request' | 'signup' | 'contact_form';
+  eventName: string;
   label: string;
   count: number;
   previousCount: number;
@@ -97,10 +97,17 @@ export interface GA4ConversionEventRow {
 
 export interface GA4CountryRow {
   country: string;
-  code: string;
+  code: string | null;
   sessions: number;
   users: number;
   sharePercent: number;
+}
+
+export interface GA4PropertyInfo {
+  propertyId: string;
+  displayName: string;
+  timeZone: string | null;
+  currencyCode: string | null;
 }
 
 export interface GA4AcquisitionReport {

@@ -1,16 +1,20 @@
 import React from 'react';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowRight, RotateCcw } from 'lucide-react';
 
 interface ErrorStateProps {
   title?: string;
   message: string;
   onRetry?: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
   title = 'Unable to load analytics data',
   message,
   onRetry,
+  actionLabel,
+  onAction,
 }) => {
   return (
     <div
@@ -26,16 +30,28 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           <p className="mt-0.5 text-xs text-red-700 dark:text-red-300">{message}</p>
         </div>
       </div>
-      {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shrink-0 self-start sm:self-center cursor-pointer"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Retry</span>
-        </button>
-      )}
+      <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/60 hover:bg-red-200 dark:hover:bg-red-900 rounded-lg transition-colors cursor-pointer"
+          >
+            <span>{actionLabel}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Retry</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 };

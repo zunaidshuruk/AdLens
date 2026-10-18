@@ -54,13 +54,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
               </span>
             )}
 
-            {googleConnected && connections?.google.email && (
+            {googleConnected && (
               <span
                 data-testid="header-google-connected"
                 className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"
               >
                 <span>·</span>
-                <span>Google: {connections.google.email}</span>
+                <span>Google: {connections?.google.email || 'Google account'}</span>
               </span>
             )}
           </div>

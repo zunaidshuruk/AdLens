@@ -16,8 +16,17 @@ import {
   formatNumber,
   formatPercent,
 } from './formatters.ts';
-import { adapters } from '../adapters/index.ts';
+import { adapters, setGA4LiveMode } from '../adapters/index.ts';
 import { decryptPayload, encryptPayload } from '../../server/lib/crypto.ts';
+import {
+  formatGA4Date,
+  mapGA4AcquisitionResponse,
+  mapGA4CampaignsResponse,
+  mapGA4ConversionsResponse,
+  mapGA4OverviewResponse,
+  mapGA4TopPagesResponse,
+  mapGA4TrafficOverTimeResponse,
+} from '../../server/lib/ga4Mapper.ts';
 
 test('config constants are defined cleanly', () => {
   assert.ok(APP_NAME.length > 0);
@@ -68,6 +77,7 @@ test('formatters format numbers, currency, percentages, and inverted cost sentim
 });
 
 test('adapters return deterministic data and GA4 UTM campaigns match Meta campaign names', async () => {
+  setGA4LiveMode(false);
   const fixedNow = new Date('2026-10-18T02:00:00Z');
   const range7d = computeDateRange('Last 7 days', 'Asia/Dhaka', undefined, fixedNow, true);
   const range28d = computeDateRange('Last 28 days', 'Asia/Dhaka', undefined, fixedNow, true);
@@ -153,3 +163,393 @@ test('AES-256-GCM decrypt rejects tampered ciphertext, tampered auth tag, and wr
     decryptPayload('abc', secret);
   });
 });
+
+test('GA4 mapper accurately maps overview, zero-fills missing traffic days, filters campaigns, and filters conversions', () => {
+  assert.equal(formatGA4Date('20261015'), '2026-10-15');
+
+  const overview = mapGA4OverviewResponse({
+    dimensionHeaders: [{ name: 'dateRange' }],
+    rows: [
+      {
+        dimensionValues: [{ value: 'current' }],
+        metricValues: [
+          { value: '1200' }, // sessions
+          { value: '900' }, // totalUsers
+          { value: '810' }, // engagedSessions
+          { value: '0.675' }, // engagementRate
+          { value: '108000' }, // userEngagementDuration -> 108000 / 900 = 120s
+          { value: '45' }, // keyEvents
+        ],
+      },
+      {
+        dimensionValues: [{ value: 'previous' }],
+        metricValues: [
+          { value: '1000' },
+          { value: '800' },
+          { value: '600' },
+          { value: '0.60' },
+          { value: '80000' }, // 100s
+          { value: '30' },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(overview.sessions.value, 1200);
+  assert.equal(overview.sessions.previousValue, 1000);
+  assert.equal(overview.sessions.changePercent, 20);
+  assert.equal(overview.engagementRate.value, 67.5);
+  assert.equal(overview.avgEngagementTimeSec.value, 120);
+  assert.equal(overview.conversions.value, 45);
+  assert.equal(overview.conversions.changePercent, 50);
+
+  // Traffic over time with missing middle day (2026-10-11 missing)
+  const traffic = mapGA4TrafficOverTimeResponse(
+    {
+      dimensionHeaders: [{ name: 'date' }, { name: 'dateRange' }],
+      rows: [
+        {
+          dimensionValues: [{ value: '20261010' }, { value: 'current' }],
+          metricValues: [{ value: '100' }, { value: '80' }, { value: '65' }, { value: '5' }],
+        },
+        {
+          dimensionValues: [{ value: '20261012' }, { value: 'current' }],
+          metricValues: [{ value: '140' }, { value: '110' }, { value: '95' }, { value: '7' }],
+        },
+        {
+          dimensionValues: [{ value: '20261007' }, { value: 'previous' }],
+          metricValues: [{ value: '90' }, { value: '70' }, { value: '50' }, { value: '3' }],
+        },
+      ],
+    },
+    '2026-10-10',
+    '2026-10-12',
+    '2026-10-07',
+    '2026-10-09'
+  );
+
+  assert.equal(traffic.length, 3);
+  assert.equal(traffic[0].date, '2026-10-10');
+  assert.equal(traffic[0].sessions, 100);
+  assert.equal(traffic[0].previousSessions, 90);
+  // Missing day filled with zeros:
+  assert.equal(traffic[1].date, '2026-10-11');
+  assert.equal(traffic[1].sessions, 0);
+  assert.equal(traffic[1].previousSessions, 0);
+  assert.equal(traffic[2].date, '2026-10-12');
+  assert.equal(traffic[2].sessions, 140);
+
+  // Campaigns exclude (not set) and (direct) when real campaigns exist
+  const campaigns = mapGA4CampaignsResponse({
+    rows: [
+      {
+        dimensionValues: [{ value: '(direct)' }, { value: '(direct)' }, { value: '(none)' }],
+        metricValues: [{ value: '500' }, { value: '400' }, { value: '0.5' }, { value: '10' }],
+      },
+      {
+        dimensionValues: [{ value: '(not set)' }, { value: 'google' }, { value: 'organic' }],
+        metricValues: [{ value: '300' }, { value: '250' }, { value: '0.6' }, { value: '8' }],
+      },
+      {
+        dimensionValues: [
+          { value: 'convay_enterprise_demo_q4' },
+          { value: 'facebook' },
+          { value: 'paid_social' },
+        ],
+        metricValues: [{ value: '200' }, { value: '180' }, { value: '0.72' }, { value: '12' }],
+      },
+    ],
+  });
+  assert.equal(campaigns.length, 1);
+  assert.equal(campaigns[0].campaign, 'convay_enterprise_demo_q4');
+  assert.equal(campaigns[0].sourceMedium, 'facebook / paid_social');
+
+  // Campaigns keep (direct) / (not set) if they are the ONLY rows
+  const fallbackCampaigns = mapGA4CampaignsResponse({
+    rows: [
+      {
+        dimensionValues: [{ value: '(direct)' }, { value: '(direct)' }, { value: '(none)' }],
+        metricValues: [{ value: '500' }, { value: '400' }, { value: '0.5' }, { value: '10' }],
+      },
+    ],
+  });
+  assert.equal(fallbackCampaigns.length, 1);
+  assert.equal(fallbackCampaigns[0].campaign, '(direct)');
+
+  // Conversions keep only keyEvents > 0
+  const conversions = mapGA4ConversionsResponse({
+    dimensionHeaders: [{ name: 'eventName' }, { name: 'dateRange' }],
+    rows: [
+      {
+        dimensionValues: [{ value: 'page_view' }, { value: 'current' }],
+        metricValues: [{ value: '0' }, { value: '500' }, { value: '600' }],
+      },
+      {
+        dimensionValues: [{ value: 'demo_request' }, { value: 'current' }],
+        metricValues: [{ value: '15' }, { value: '14' }, { value: '300' }],
+      },
+      {
+        dimensionValues: [{ value: 'demo_request' }, { value: 'previous' }],
+        metricValues: [{ value: '10' }, { value: '9' }, { value: '250' }],
+      },
+    ],
+  });
+  assert.equal(conversions.length, 1);
+  assert.equal(conversions[0].eventName, 'demo_request');
+  assert.equal(conversions[0].count, 15);
+  assert.equal(conversions[0].previousCount, 10);
+  assert.equal(conversions[0].changePercent, 50);
+
+  // Acquisition channels & countries sharePercent
+  const acq = mapGA4AcquisitionResponse(
+    {
+      rows: [
+        {
+          dimensionValues: [{ value: 'Organic Search' }],
+          metricValues: [{ value: '600' }, { value: '500' }, { value: '420' }, { value: '0.7' }, { value: '20' }],
+        },
+        {
+          dimensionValues: [{ value: 'Paid Social' }],
+          metricValues: [{ value: '400' }, { value: '350' }, { value: '260' }, { value: '0.65' }, { value: '10' }],
+        },
+      ],
+    },
+    {
+      rows: [
+        {
+          dimensionValues: [{ value: 'Bangladesh' }, { value: 'BD' }],
+          metricValues: [{ value: '800' }, { value: '650' }],
+        },
+        {
+          dimensionValues: [{ value: 'United States' }, { value: 'US' }],
+          metricValues: [{ value: '200' }, { value: '180' }],
+        },
+      ],
+    }
+  );
+  assert.equal(acq.channels[0].sharePercent, 60);
+  assert.equal(acq.channels[1].sharePercent, 40);
+  assert.equal(acq.countries[0].sharePercent, 80);
+  assert.equal(acq.countries[0].code, 'BD');
+
+  const topPages = mapGA4TopPagesResponse({
+    rows: [
+      {
+        dimensionValues: [{ value: '/pricing' }, { value: 'Convay Pricing' }],
+        metricValues: [{ value: '300' }, { value: '200' }, { value: '18000' }, { value: '0.25' }, { value: '9' }],
+      },
+    ],
+  });
+  assert.equal(topPages.length, 1);
+  assert.equal(topPages[0].avgEngagementTimeSec, 90);
+  assert.equal(topPages[0].bounceRate, 25);
+
+  // Adapter registry switches ga4 between mock and live while keeping isAnyMocked true (since GSC & Meta are mock)
+  setGA4LiveMode(true);
+  assert.equal(adapters.ga4.isMock, false);
+  assert.equal(adapters.isAnyMocked(), true);
+  setGA4LiveMode(false);
+  assert.equal(adapters.ga4.isMock, true);
+});
+
+test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLens-Cache header, and map Google errors cleanly', async () => {
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-3';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+
+  const { app } = await import('../../server/index.ts');
+  const { clearGA4Cache } = await import('../../server/routes/ga4.ts');
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.ts');
+
+  clearGA4Cache();
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 1. Session without ga4Property -> 409 GA4_NOT_SELECTED
+    const noPropCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        google: {
+          refreshToken: 'ref-1',
+          accessToken: 'acc-1',
+          accessTokenExpiry: Date.now() + 3600_000,
+          email: 'analyst@convay.com',
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY
+    )}`;
+
+    const res409 = await originalFetch(
+      `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
+      { headers: { Cookie: noPropCookie } }
+    );
+    assert.equal(res409.status, 409);
+    const body409 = (await res409.json()) as { error: { code: string } };
+    assert.equal(body409.error.code, 'GA4_NOT_SELECTED');
+
+    // 2. Session WITH selected ga4Property
+    const validCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        google: {
+          refreshToken: 'ref-1',
+          accessToken: 'acc-1',
+          accessTokenExpiry: Date.now() + 3600_000,
+          email: 'analyst@convay.com',
+          ga4Property: { id: '44981234', name: 'Convay Production' },
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY
+    )}`;
+
+    // Invalid date range (startDate > endDate) -> 400 INVALID_DATE_RANGE
+    const res400 = await originalFetch(
+      `${baseUrl}/api/ga4/overview?startDate=2026-10-10&endDate=2026-10-05`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(res400.status, 400);
+    const body400 = (await res400.json()) as { error: { code: string } };
+    assert.equal(body400.error.code, 'INVALID_DATE_RANGE');
+
+    // 3. Mock upstream Google Analytics Data API & Admin API calls
+    let upstreamCallCount = 0;
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) {
+        return originalFetch(input, init);
+      }
+
+      upstreamCallCount += 1;
+
+      if (urlStr.includes('analyticsadmin.googleapis.com/v1beta/properties/44981234')) {
+        return new Response(
+          JSON.stringify({
+            name: 'properties/44981234',
+            displayName: 'Convay Production',
+            timeZone: 'Asia/Dhaka',
+            currencyCode: 'BDT',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (urlStr.includes('analyticsdata.googleapis.com/v1beta/properties/44981234:runReport')) {
+        return new Response(
+          JSON.stringify({
+            dimensionHeaders: [{ name: 'dateRange' }],
+            rows: [
+              {
+                dimensionValues: [{ value: 'current' }],
+                metricValues: [
+                  { value: '1500' },
+                  { value: '1100' },
+                  { value: '990' },
+                  { value: '0.66' },
+                  { value: '132000' },
+                  { value: '55' },
+                ],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response('Not Found', { status: 404 });
+    };
+
+    // First call to /api/ga4/overview -> X-AdLens-Cache: false
+    const resOverview1 = await originalFetch(
+      `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(resOverview1.status, 200);
+    assert.equal(resOverview1.headers.get('x-adlens-cache'), 'false');
+    const overviewData = (await resOverview1.json()) as { sessions: { value: number } };
+    assert.equal(overviewData.sessions.value, 1500);
+    assert.equal(upstreamCallCount, 1);
+
+    // Second call with identical params -> X-AdLens-Cache: true (served from 10-min cache)
+    const resOverview2 = await originalFetch(
+      `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(resOverview2.status, 200);
+    assert.equal(resOverview2.headers.get('x-adlens-cache'), 'true');
+    assert.equal(upstreamCallCount, 1);
+
+    // Property info endpoint
+    const resPropInfo = await originalFetch(`${baseUrl}/api/ga4/property-info`, {
+      headers: { Cookie: validCookie },
+    });
+    assert.equal(resPropInfo.status, 200);
+    const propInfo = (await resPropInfo.json()) as {
+      propertyId: string;
+      displayName: string;
+      timeZone: string;
+      currencyCode: string;
+    };
+    assert.equal(propInfo.propertyId, '44981234');
+    assert.equal(propInfo.displayName, 'Convay Production');
+    assert.equal(propInfo.timeZone, 'Asia/Dhaka');
+    assert.equal(propInfo.currencyCode, 'BDT');
+
+    // 4. Test 403 PERMISSION_DENIED mapping
+    clearGA4Cache();
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) {
+        return originalFetch(input, init);
+      }
+      return new Response(
+        JSON.stringify({ error: { status: 'PERMISSION_DENIED', message: 'Raw internal Google message' } }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const res403 = await originalFetch(
+      `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(res403.status, 403);
+    const body403 = (await res403.json()) as { error: { code: string; message: string } };
+    assert.equal(body403.error.code, 'GA4_PERMISSION_DENIED');
+    assert.equal(
+      body403.error.message,
+      'This Google account no longer has access to the selected property'
+    );
+
+    // 5. Test 429 RESOURCE_EXHAUSTED mapping
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) {
+        return originalFetch(input, init);
+      }
+      return new Response(
+        JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED' } }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const res429 = await originalFetch(
+      `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(res429.status, 429);
+    const body429 = (await res429.json()) as { error: { code: string } };
+    assert.equal(body429.error.code, 'GA4_QUOTA_EXCEEDED');
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    server.close();
+  }
+});
+
+

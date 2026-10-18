@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { adapters, type AdapterRegistry } from '../adapters';
-import type { ComputedDateRange } from '../types';
+import {
+  adapters,
+  type AdapterRegistry,
+  ensureAdapterRegistryInitialized,
+  subscribeAdapterRegistry,
+} from '../adapters';
+import { ApiClientError, apiClient } from '../api/client';
+import type { ComputedDateRange, DataSourceId, GA4PropertyInfo } from '../types';
 import { useDateRange } from './useDateRange';
 
 export interface UseReportResult<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  errorCode: string | null;
   refetch: () => void;
   simulateError: () => void;
 }
 
 /**
  * Generic report hook that talks exclusively to the adapter registry and re-runs
- * whenever the selected date range (or extra dependency keys) change.
+ * whenever the selected date range, adapter live/mock state, or extra dependency keys change.
  */
 export function useReport<T>(
   fetcher: (registry: AdapterRegistry, range: ComputedDateRange) => Promise<T>,
@@ -23,14 +30,23 @@ export function useReport<T>(
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [reloadTrigger, setReloadTrigger] = useState<number>(0);
+
+  useEffect(() => {
+    return subscribeAdapterRegistry(() => {
+      setReloadTrigger((n) => n + 1);
+    });
+  }, []);
 
   const execute = useCallback(async () => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setErrorCode(null);
 
     try {
+      await ensureAdapterRegistryInitialized();
       const result = await fetcher(adapters, dateRange);
       if (!cancelled) {
         setData(result);
@@ -38,6 +54,7 @@ export function useReport<T>(
     } catch (err) {
       if (!cancelled) {
         setError(err instanceof Error ? err.message : 'Failed to load report data');
+        setErrorCode(err instanceof ApiClientError ? err.code : 'REPORT_ERROR');
       }
     } finally {
       if (!cancelled) {
@@ -68,22 +85,84 @@ export function useReport<T>(
 
   const simulateError = useCallback(() => {
     setError('Simulated adapter connection timeout. Click Retry to reload.');
+    setErrorCode('SIMULATED_ERROR');
   }, []);
 
   return {
     data,
     loading,
     error,
+    errorCode,
     refetch,
     simulateError,
   };
 }
 
 export function useAdapterStatus() {
-  const isMocked = adapters.isAnyMocked();
+  const [, setVersion] = useState(0);
+
+  useEffect(() => {
+    void ensureAdapterRegistryInitialized().then(() => {
+      setVersion((v) => v + 1);
+    });
+    return subscribeAdapterRegistry(() => {
+      setVersion((v) => v + 1);
+    });
+  }, []);
+
   const sources = adapters.getAll();
+  const isMocked = adapters.isAnyMocked();
+  const isSourceLive = (id: DataSourceId): boolean => {
+    const found = sources.find((s) => s.id === id);
+    return Boolean(found && !found.isMock);
+  };
+
   return {
     isMocked,
     sources,
+    isGA4Live: !adapters.ga4.isMock,
+    isSourceLive,
+  };
+}
+
+export function useGA4PropertyInfo() {
+  const { isGA4Live } = useAdapterStatus();
+  const [info, setInfo] = useState<GA4PropertyInfo | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isGA4Live) {
+      setInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    apiClient
+      .getGA4PropertyInfo()
+      .then((res) => {
+        if (!cancelled) {
+          setInfo(res);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInfo(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isGA4Live]);
+
+  return {
+    propertyInfo: info,
+    loading,
   };
 }

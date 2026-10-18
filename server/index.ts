@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authRouter } from './routes/auth.ts';
 import { connectionsRouter, googleApiRouter } from './routes/connections.ts';
+import { ga4Router } from './routes/ga4.ts';
 import { healthRouter } from './routes/health.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +24,27 @@ app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
+app.use('/api/ga4', ga4Router);
+
+let activeServer: http.Server | null = null;
+
+// Register /api/_dev_reload ONLY when NODE_ENV !== 'production'
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/_dev_reload', (req, res) => {
+    if (process.env.NODE_ENV === 'production') {
+      res.status(404).end();
+      return;
+    }
+    const ip = req.ip || req.socket.remoteAddress || '';
+    if (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('localhost')) {
+      res.json({ ok: true });
+      activeServer?.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 100);
+      return;
+    }
+    res.status(403).end();
+  });
+}
 
 // Serve static frontend build in production (or when running npm start)
 const isProduction = process.env.NODE_ENV === 'production' || !process.env.API_PORT;
@@ -43,18 +65,6 @@ const isTestEnv = Boolean(process.env.NODE_TEST_CONTEXT);
 
 if (!isTestEnv) {
   const port = Number(process.env.API_PORT || process.env.PORT || 3000);
-  let activeServer: http.Server | null = null;
-
-  app.post('/api/_dev_reload', (req, res) => {
-    const ip = req.ip || req.socket.remoteAddress || '';
-    if (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('localhost')) {
-      res.json({ ok: true });
-      activeServer?.close(() => process.exit(0));
-      setTimeout(() => process.exit(0), 100);
-      return;
-    }
-    res.status(403).end();
-  });
 
   const startListening = () => {
     activeServer = app.listen(port, '0.0.0.0', () => {

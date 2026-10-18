@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { setGA4LiveMode } from '../adapters';
 import { ApiClientError, apiClient } from '../api/client';
 import type {
   ConnectionsResponse,
@@ -58,6 +59,8 @@ export function useConnections(): UseConnectionsResult {
       ]);
 
       setConnections(connRes);
+      setGA4LiveMode(Boolean(connRes.google.connected && connRes.google.ga4Property?.id));
+
       const missing = connRes.google.missing ?? healthRes?.missing ?? [];
       setMissingSecrets(missing);
 
@@ -73,9 +76,9 @@ export function useConnections(): UseConnectionsResult {
           setSearchConsoleSites(sites);
         } catch (optErr) {
           if (optErr instanceof ApiClientError && optErr.code === 'GOOGLE_REAUTH_REQUIRED') {
-            // Session was cleared by server due to expired/revoked refresh token
             const refreshed = await apiClient.getConnections();
             setConnections(refreshed);
+            setGA4LiveMode(Boolean(refreshed.google.connected && refreshed.google.ga4Property?.id));
           }
           setOptionsError(
             optErr instanceof Error ? optErr.message : 'Unable to fetch Google properties or sites.'
@@ -115,6 +118,7 @@ export function useConnections(): UseConnectionsResult {
     setError(null);
     try {
       await apiClient.disconnectGoogle();
+      setGA4LiveMode(false);
       await loadData();
       notifyConnectionsChanged();
       return true;
@@ -135,8 +139,8 @@ export function useConnections(): UseConnectionsResult {
       setError(null);
       try {
         const res = await apiClient.saveGoogleSelection(selection);
-        setConnections((prev) =>
-          prev
+        setConnections((prev) => {
+          const next = prev
             ? {
                 ...prev,
                 google: {
@@ -145,8 +149,10 @@ export function useConnections(): UseConnectionsResult {
                   searchConsoleSite: res.searchConsoleSite,
                 },
               }
-            : prev
-        );
+            : prev;
+          setGA4LiveMode(Boolean(next?.google.connected && res.ga4Property?.id));
+          return next;
+        });
         notifyConnectionsChanged();
         return true;
       } catch (err) {

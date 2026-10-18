@@ -1,7 +1,15 @@
 import type {
+  ComputedDateRange,
   ConnectionsResponse,
+  GA4AcquisitionReport,
+  GA4CampaignRow,
+  GA4ConversionEventRow,
+  GA4Overview,
+  GA4PageRow,
+  GA4PropertyInfo,
   GA4PropertyOption,
   GA4SelectedProperty,
+  GA4TrafficPoint,
   HealthStatusResponse,
   SearchConsoleSelectedSite,
   SearchConsoleSiteOption,
@@ -53,6 +61,18 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   return (await response.json()) as T;
 }
 
+function buildGA4RangeParams(range: ComputedDateRange): string {
+  const params = new URLSearchParams({
+    startDate: range.startDate,
+    endDate: range.endDate,
+  });
+  if (range.compareStartDate && range.compareEndDate) {
+    params.set('compareStartDate', range.compareStartDate);
+    params.set('compareEndDate', range.compareEndDate);
+  }
+  return params.toString();
+}
+
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
     return apiRequest<HealthStatusResponse>('/api/health');
@@ -88,5 +108,34 @@ export const apiClient = {
     return apiRequest<{ ok: boolean }>('/api/auth/google/disconnect', {
       method: 'POST',
     });
+  },
+
+  // Live GA4 Data API routes (/api/ga4/*)
+  getGA4Overview(range: ComputedDateRange): Promise<GA4Overview> {
+    return apiRequest<GA4Overview>(`/api/ga4/overview?${buildGA4RangeParams(range)}`);
+  },
+
+  getGA4TrafficOverTime(range: ComputedDateRange): Promise<GA4TrafficPoint[]> {
+    return apiRequest<GA4TrafficPoint[]>(`/api/ga4/traffic-over-time?${buildGA4RangeParams(range)}`);
+  },
+
+  getGA4Acquisition(range: ComputedDateRange): Promise<GA4AcquisitionReport> {
+    return apiRequest<GA4AcquisitionReport>(`/api/ga4/acquisition?${buildGA4RangeParams(range)}`);
+  },
+
+  getGA4Campaigns(range: ComputedDateRange): Promise<GA4CampaignRow[]> {
+    return apiRequest<GA4CampaignRow[]>(`/api/ga4/campaigns?${buildGA4RangeParams(range)}`);
+  },
+
+  getGA4TopPages(range: ComputedDateRange): Promise<GA4PageRow[]> {
+    return apiRequest<GA4PageRow[]>(`/api/ga4/top-pages?${buildGA4RangeParams(range)}`);
+  },
+
+  getGA4Conversions(range: ComputedDateRange): Promise<GA4ConversionEventRow[]> {
+    return apiRequest<GA4ConversionEventRow[]>(`/api/ga4/conversions?${buildGA4RangeParams(range)}`);
+  },
+
+  getGA4PropertyInfo(): Promise<GA4PropertyInfo> {
+    return apiRequest<GA4PropertyInfo>('/api/ga4/property-info');
   },
 };
