@@ -1,0 +1,6 @@
+{
+  "name": "Marketing Intelligence Console",
+  "description": "Unified marketing analytics console for Google Analytics 4, Google Search Console, and Meta Ads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
