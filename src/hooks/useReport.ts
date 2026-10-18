@@ -10,6 +10,7 @@ import type {
   ComputedDateRange,
   DataSourceId,
   GA4PropertyInfo,
+  MetaAccountInfo,
   SearchConsoleSiteInfo,
 } from '../types';
 import { useDateRange } from './useDateRange';
@@ -127,6 +128,7 @@ export function useAdapterStatus() {
     sources,
     isGA4Live: !adapters.ga4.isMock,
     isSearchConsoleLive: !adapters.searchConsole.isMock,
+    isMetaAdsLive: !adapters.metaAds.isMock,
     isSourceLive,
   };
 }
@@ -211,6 +213,48 @@ export function useSearchConsoleSiteInfo() {
 
   return {
     siteInfo: info,
+    loading,
+  };
+}
+
+export function useMetaAccountInfo() {
+  const { isMetaAdsLive } = useAdapterStatus();
+  const [info, setInfo] = useState<MetaAccountInfo | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isMetaAdsLive) {
+      setInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    apiClient
+      .getMetaAccount()
+      .then((res) => {
+        if (!cancelled) {
+          setInfo(res);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInfo(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMetaAdsLive]);
+
+  return {
+    accountInfo: info,
     loading,
   };
 }

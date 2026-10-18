@@ -46,14 +46,14 @@ test('extractLeads: falls back to leadgen_grouped, and handles empty input', () 
 test('deriveMetrics: uses link clicks and recomputes ratios; divide-by-zero gives 0', () => {
   const m = deriveMetrics({ spend: 100, impressions: 20000, reach: 8000, linkClicks: 250, leads: 10 });
   assert.equal(m.ctr, 1.25);
-  assert.equal(m.cpcUsd, 0.4);
-  assert.equal(m.cpmUsd, 5);
-  assert.equal(m.cplUsd, 10);
+  assert.equal(m.cpc, 0.4);
+  assert.equal(m.cpm, 5);
+  assert.equal(m.cpl, 10);
   assert.equal(m.frequency, 2.5);
 
   const zero = deriveMetrics({ spend: 0, impressions: 0, reach: 0, linkClicks: 0, leads: 0 });
   assert.deepEqual(
-    [zero.ctr, zero.cpcUsd, zero.cpmUsd, zero.cplUsd, zero.frequency],
+    [zero.ctr, zero.cpc, zero.cpm, zero.cpl, zero.frequency],
     [0, 0, 0, 0, 0]
   );
 });
@@ -70,13 +70,13 @@ test('mapMetaOverview: parses string values and computes % change (all clicks ig
     },
     { spend: '100', impressions: '20000', reach: '10000', inline_link_clicks: '200', actions: [] }
   );
-  assert.equal(o.spendUsd.value, 150.5);
-  assert.equal(o.spendUsd.changePercent, 50.5);
+  assert.equal(o.spend.value, 150.5);
+  assert.equal(o.spend.changePercent, 50.5);
   assert.equal(o.clicks.value, 300);
   assert.equal(o.leads.value, 15);
   assert.equal(o.leads.previousValue, 0);
   assert.equal(o.frequency.value, 2.5);
-  assert.equal(o.cplUsd.value, 10.03);
+  assert.equal(o.cpl.value, 10.03);
 });
 
 test('mapMetaSpendOverTime: zero-fills missing days and aligns previous period by position', () => {
@@ -93,7 +93,7 @@ test('mapMetaSpendOverTime: zero-fills missing days and aligns previous period b
   );
   assert.equal(series.length, 3);
   assert.deepEqual(
-    series.map((p) => [p.date, p.spendUsd, p.compareDate, p.previousSpendUsd]),
+    series.map((p) => [p.date, p.spend, p.compareDate, p.previousSpend]),
     [
       ['2026-10-01', 10, '2026-09-28', 0],
       ['2026-10-02', 0, '2026-09-29', 7],
@@ -148,7 +148,7 @@ test('mapMetaCampaigns: joins objects + insights, hides idle archived, keeps del
     ]
   );
   assert.deepEqual(
-    rows.map((r) => [r.id, r.name, r.objective, r.status, r.spendUsd]),
+    rows.map((r) => [r.id, r.name, r.objective, r.status, r.spend]),
     [
       ['c9', 'Removed Campaign', 'Other', 'Deleted', 80],
       ['c1', 'Lead Gen BD', 'Lead Generation', 'Active', 50],
@@ -185,7 +185,7 @@ test('mapMetaAdSets and mapMetaAds filter by parent and fill names', () => {
   assert.equal(ads.length, 1);
   assert.equal(ads[0].format, 'Video');
   assert.equal(ads[0].adSetName, 'Dhaka 25-44');
-  assert.equal(ads[0].cpcUsd, 0.5);
+  assert.equal(ads[0].cpc, 0.5);
 });
 
 test('mapMetaErrorCode maps Graph API errors to AdLens codes', () => {

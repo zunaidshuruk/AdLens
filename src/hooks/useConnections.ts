@@ -4,6 +4,8 @@ import { ApiClientError, apiClient } from '../api/client';
 import type {
   ConnectionsResponse,
   GA4PropertyOption,
+  HealthStatusResponse,
+  MetaAccountInfo,
   SearchConsoleSiteOption,
 } from '../types';
 
@@ -15,11 +17,18 @@ function notifyConnectionsChanged() {
   }
 }
 
-function applyConnectionLiveModes(conn: ConnectionsResponse | null) {
+function applyConnectionLiveModes(
+  conn: ConnectionsResponse | null,
+  health?: HealthStatusResponse | null
+) {
   setSourceLiveMode('ga4', Boolean(conn?.google.connected && conn?.google.ga4Property?.id));
   setSourceLiveMode(
     'search_console',
     Boolean(conn?.google.connected && conn?.google.searchConsoleSite?.url)
+  );
+  setSourceLiveMode(
+    'meta_ads',
+    Boolean(health?.metaConfigured ?? conn?.meta.configured ?? conn?.meta.connected)
   );
 }
 
@@ -28,6 +37,10 @@ export interface UseConnectionsResult {
   missingSecrets: string[];
   googleConfigured: boolean;
   googleConnected: boolean;
+  metaConfigured: boolean;
+  metaMissingSecrets: string[];
+  metaAccountInfo: MetaAccountInfo | null;
+  metaAccountError: string | null;
   ga4Properties: GA4PropertyOption[];
   searchConsoleSites: SearchConsoleSiteOption[];
   loading: boolean;
@@ -48,6 +61,10 @@ export interface UseConnectionsResult {
 export function useConnections(): UseConnectionsResult {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [missingSecrets, setMissingSecrets] = useState<string[]>([]);
+  const [metaConfigured, setMetaConfigured] = useState<boolean>(false);
+  const [metaMissingSecrets, setMetaMissingSecrets] = useState<string[]>([]);
+  const [metaAccountInfo, setMetaAccountInfo] = useState<MetaAccountInfo | null>(null);
+  const [metaAccountError, setMetaAccountError] = useState<string | null>(null);
   const [ga4Properties, setGa4Properties] = useState<GA4PropertyOption[]>([]);
   const [searchConsoleSites, setSearchConsoleSites] = useState<SearchConsoleSiteOption[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -67,10 +84,39 @@ export function useConnections(): UseConnectionsResult {
       ]);
 
       setConnections(connRes);
-      applyConnectionLiveModes(connRes);
+      applyConnectionLiveModes(connRes, healthRes);
 
       const missing = connRes.google.missing ?? healthRes?.missing ?? [];
       setMissingSecrets(missing);
+
+      const isMetaCfg = Boolean(
+        healthRes?.metaConfigured ?? connRes.meta.configured ?? connRes.meta.connected
+      );
+      const mMissing =
+        healthRes?.metaMissing ??
+        connRes.meta.missing ??
+        (isMetaCfg ? [] : ['META_ACCESS_TOKEN', 'META_APP_SECRET', 'META_AD_ACCOUNT_ID']);
+
+      setMetaConfigured(isMetaCfg);
+      setMetaMissingSecrets(mMissing);
+
+      if (isMetaCfg) {
+        setMetaAccountError(null);
+        apiClient
+          .getMetaAccount()
+          .then((acct) => {
+            setMetaAccountInfo(acct);
+          })
+          .catch((err) => {
+            setMetaAccountInfo(null);
+            setMetaAccountError(
+              err instanceof Error ? err.message : 'Unable to fetch Meta ad account details.'
+            );
+          });
+      } else {
+        setMetaAccountInfo(null);
+        setMetaAccountError(null);
+      }
 
       if (connRes.google.configured && connRes.google.connected) {
         setLoadingOptions(true);
@@ -86,7 +132,7 @@ export function useConnections(): UseConnectionsResult {
           if (optErr instanceof ApiClientError && optErr.code === 'GOOGLE_REAUTH_REQUIRED') {
             const refreshed = await apiClient.getConnections();
             setConnections(refreshed);
-            applyConnectionLiveModes(refreshed);
+            applyConnectionLiveModes(refreshed, healthRes);
           }
           setOptionsError(
             optErr instanceof Error ? optErr.message : 'Unable to fetch Google properties or sites.'
@@ -126,7 +172,8 @@ export function useConnections(): UseConnectionsResult {
     setError(null);
     try {
       await apiClient.disconnectGoogle();
-      applyConnectionLiveModes(null);
+      setSourceLiveMode('ga4', false);
+      setSourceLiveMode('search_console', false);
       await loadData();
       notifyConnectionsChanged();
       return true;
@@ -158,7 +205,11 @@ export function useConnections(): UseConnectionsResult {
                 },
               }
             : prev;
-          applyConnectionLiveModes(next);
+          setSourceLiveMode('ga4', Boolean(next?.google.connected && next?.google.ga4Property?.id));
+          setSourceLiveMode(
+            'search_console',
+            Boolean(next?.google.connected && next?.google.searchConsoleSite?.url)
+          );
           return next;
         });
         notifyConnectionsChanged();
@@ -178,6 +229,10 @@ export function useConnections(): UseConnectionsResult {
     missingSecrets,
     googleConfigured: connections?.google.configured ?? false,
     googleConnected: connections?.google.connected ?? false,
+    metaConfigured,
+    metaMissingSecrets,
+    metaAccountInfo,
+    metaAccountError,
     ga4Properties,
     searchConsoleSites,
     loading,
@@ -192,3 +247,4 @@ export function useConnections(): UseConnectionsResult {
     refresh: loadData,
   };
 }
+

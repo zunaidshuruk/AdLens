@@ -6,8 +6,22 @@ export function convertCurrencyFromUsd(amountUsd: number, currency: CurrencyCode
   return currency === 'BDT' ? amountUsd * USD_TO_BDT_RATE : amountUsd;
 }
 
-export function getCurrencySymbol(currency: CurrencyCode): string {
-  return currency === 'BDT' ? '৳' : '$';
+export function getCurrencySymbol(currency: string): string {
+  const upper = (currency || 'USD').toUpperCase();
+  if (upper === 'BDT') return '৳';
+  if (upper === 'USD') return '$';
+  if (upper === 'EUR') return '€';
+  if (upper === 'GBP') return '£';
+  try {
+    const parts = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: upper,
+      currencyDisplay: 'narrowSymbol',
+    }).formatToParts(0);
+    return parts.find((p) => p.type === 'currency')?.value ?? `${upper} `;
+  } catch {
+    return `${upper} `;
+  }
 }
 
 export function formatNumber(value: number, decimals: number = 0): string {
@@ -18,25 +32,38 @@ export function formatNumber(value: number, decimals: number = 0): string {
   }).format(value);
 }
 
+/**
+ * Formats an amount that is already in the target currency (no conversion).
+ * Used for live Meta Ads data, where values are in the ad account's currency.
+ */
+export function formatAccountCurrency(
+  amount: number,
+  currency: string = 'USD',
+  decimals?: number
+): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  const upper = (currency || 'USD').toUpperCase();
+  const symbol = getCurrencySymbol(upper);
+  const resolvedDecimals =
+    decimals !== undefined
+      ? decimals
+      : upper === 'BDT'
+        ? Math.abs(safeAmount) < 100 && safeAmount !== 0
+          ? 1
+          : 0
+        : Math.abs(safeAmount) < 100 && safeAmount !== 0
+          ? 2
+          : 0;
+  return `${symbol}${formatNumber(safeAmount, resolvedDecimals)}`;
+}
+
 export function formatCurrency(
   amountUsd: number,
   currency: CurrencyCode = 'BDT',
   decimals?: number
 ): string {
   const converted = convertCurrencyFromUsd(amountUsd, currency);
-  const symbol = getCurrencySymbol(currency);
-  // For BDT, whole numbers for large figures (>= 100), 2 decimals for small unit costs like CPC
-  const resolvedDecimals =
-    decimals !== undefined
-      ? decimals
-      : currency === 'BDT'
-        ? Math.abs(converted) < 100 && converted !== 0
-          ? 1
-          : 0
-        : Math.abs(converted) < 100 && converted !== 0
-          ? 2
-          : 0;
-  return `${symbol}${formatNumber(converted, resolvedDecimals)}`;
+  return formatAccountCurrency(converted, currency, decimals);
 }
 
 export function formatPercent(value: number, decimals: number = 1): string {

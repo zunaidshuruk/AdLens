@@ -12,6 +12,8 @@ healthRouter.get('/', (_req: Request, res: Response) => {
     version: APP_VERSION,
     googleConfigured: cfg.googleConfigured,
     missing: cfg.missing,
+    metaConfigured: cfg.metaConfigured,
+    metaMissing: cfg.metaMissing,
     timestamp: new Date().toISOString(),
   });
 });

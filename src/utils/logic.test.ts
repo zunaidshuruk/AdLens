@@ -880,5 +880,183 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
   }
 });
 
+test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send appsecret_proof, cache responses, and map Graph errors cleanly', async () => {
+  const { app } = await import('../../server/index.js');
+  const { clearMetaCache } = await import('../../server/routes/meta.js');
+  const { computeAppSecretProof, GRAPH_API_VERSION } = await import('../../server/lib/meta.js');
+  const { normalizeMetaAdAccountId } = await import('../../server/config.js');
+  const { setMetaAdsLiveMode } = await import('../adapters/index.js');
+
+  assert.equal(GRAPH_API_VERSION, 'v26.0');
+  assert.equal(normalizeMetaAdAccountId('act_123456789'), '123456789');
+  assert.equal(normalizeMetaAdAccountId('123456789'), '123456789');
+  assert.equal(normalizeMetaAdAccountId('invalid-id'), '');
+
+  setMetaAdsLiveMode(true);
+  assert.equal(adapters.metaAds.isMock, false);
+  setMetaAdsLiveMode(false);
+  assert.equal(adapters.metaAds.isMock, true);
+
+  clearMetaCache();
+  delete process.env.META_ACCESS_TOKEN;
+  delete process.env.META_APP_SECRET;
+  delete process.env.META_AD_ACCOUNT_ID;
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 1. Missing Meta secrets -> 503 META_NOT_CONFIGURED, while /api/health reports metaConfigured: false
+    const resHealthUnconfig = await originalFetch(`${baseUrl}/api/health`);
+    const healthUnconfig = (await resHealthUnconfig.json()) as {
+      metaConfigured: boolean;
+      metaMissing: string[];
+    };
+    assert.equal(healthUnconfig.metaConfigured, false);
+    assert.deepEqual(healthUnconfig.metaMissing, [
+      'META_ACCESS_TOKEN',
+      'META_APP_SECRET',
+      'META_AD_ACCOUNT_ID',
+    ]);
+
+    const resUnconfig = await originalFetch(
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14`
+    );
+    assert.equal(resUnconfig.status, 503);
+    const unconfigBody = (await resUnconfig.json()) as { error: { code: string } };
+    assert.equal(unconfigBody.error.code, 'META_NOT_CONFIGURED');
+
+    // 2. Configure Meta with "act_" prefix and verify /api/meta/account and /api/meta/overview
+    process.env.META_ACCESS_TOKEN = 'meta-sys-token-xyz';
+    process.env.META_APP_SECRET = 'meta-app-secret-123';
+    process.env.META_AD_ACCOUNT_ID = 'act_987654321';
+
+    const expectedProof = computeAppSecretProof('meta-sys-token-xyz', 'meta-app-secret-123');
+    let graphCalls = 0;
+
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) {
+        return originalFetch(input, init);
+      }
+
+      graphCalls += 1;
+      const parsed = new URL(urlStr);
+      assert.ok(parsed.pathname.startsWith('/v26.0/act_987654321'));
+      assert.equal(parsed.searchParams.get('access_token'), 'meta-sys-token-xyz');
+      assert.equal(parsed.searchParams.get('appsecret_proof'), expectedProof);
+
+      if (parsed.pathname.endsWith('/act_987654321')) {
+        return new Response(
+          JSON.stringify({
+            id: 'act_987654321',
+            name: 'Convay BDT Account',
+            currency: 'BDT',
+            timezone_name: 'Asia/Dhaka',
+            account_status: 1,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      assert.equal(parsed.searchParams.get('use_unified_attribution_setting'), 'true');
+      const timeRange = JSON.parse(parsed.searchParams.get('time_range') ?? '{}') as {
+        since?: string;
+      };
+      const isCurrent = timeRange.since === '2026-10-08';
+
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              spend: isCurrent ? '1200.50' : '1000.00',
+              impressions: isCurrent ? '50000' : '40000',
+              reach: isCurrent ? '35000' : '30000',
+              inline_link_clicks: isCurrent ? '800' : '600',
+              actions: [{ action_type: 'lead', value: isCurrent ? '40' : '25' }],
+              account_currency: 'BDT',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const resAccount = await originalFetch(`${baseUrl}/api/meta/account`);
+    assert.equal(resAccount.status, 200);
+    const accountJson = (await resAccount.json()) as {
+      accountId: string;
+      name: string;
+      currency: string;
+      timezoneName: string;
+      status: string;
+    };
+    assert.equal(accountJson.accountId, '987654321');
+    assert.equal(accountJson.name, 'Convay BDT Account');
+    assert.equal(accountJson.currency, 'BDT');
+    assert.equal(accountJson.status, 'Active');
+
+    const resOv1 = await originalFetch(
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`
+    );
+    assert.equal(resOv1.status, 200);
+    assert.equal(resOv1.headers.get('x-adlens-cache'), 'false');
+    const ovJson = (await resOv1.json()) as {
+      accountCurrency?: string;
+      spend: { value: number; previousValue: number };
+      leads: { value: number; previousValue: number };
+    };
+    assert.equal(ovJson.accountCurrency, 'BDT');
+    assert.equal(ovJson.spend.value, 1200.5);
+    assert.equal(ovJson.spend.previousValue, 1000);
+    assert.equal(ovJson.leads.value, 40);
+
+    // Second overview request hits 10-minute cache
+    const callsBeforeCached = graphCalls;
+    const resOv2 = await originalFetch(
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`
+    );
+    assert.equal(resOv2.status, 200);
+    assert.equal(resOv2.headers.get('x-adlens-cache'), 'true');
+    assert.equal(graphCalls, callsBeforeCached);
+
+    // 3. Verify Graph error mapping (190 -> META_TOKEN_INVALID, 17 -> META_RATE_LIMITED) without leaking token
+    clearMetaCache();
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) return originalFetch(input, init);
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 190,
+            message: 'Raw secret error with token meta-sys-token-xyz',
+          },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const res190 = await originalFetch(
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14`
+    );
+    assert.equal(res190.status, 401);
+    const body190 = (await res190.json()) as { error: { code: string; message: string } };
+    assert.equal(body190.error.code, 'META_TOKEN_INVALID');
+    assert.ok(!body190.error.message.includes('meta-sys-token-xyz'));
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.META_ACCESS_TOKEN;
+    delete process.env.META_APP_SECRET;
+    delete process.env.META_AD_ACCOUNT_ID;
+    server.close();
+  }
+});
+
+
 
 

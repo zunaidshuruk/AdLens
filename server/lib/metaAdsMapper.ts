@@ -21,11 +21,16 @@ import type {
   MetaAdsOverview,
   MetaCampaignRow,
   MetaEntityMetrics,
+  MetaFormatLabel,
+  MetaObjectiveLabel,
   MetaSpendPoint,
+  MetaStatusLabel,
   MetricWithComparison,
 } from '../../src/types/index.js';
 import { enumerateDates } from '../../src/utils/dateUtils.js';
 import { calculatePercentChange } from '../../src/utils/formatters.js';
+
+export type { MetaFormatLabel, MetaObjectiveLabel, MetaStatusLabel };
 
 // ---------------------------------------------------------------------------
 // Raw Graph API shapes (only the fields AdLens requests)
@@ -104,30 +109,8 @@ export interface MetaAdObject {
 }
 
 // ---------------------------------------------------------------------------
-// Label types (Sprint 5 widens the unions in src/types/index.ts to these)
+// Label types (defined in src/types/index.ts and re-exported above)
 // ---------------------------------------------------------------------------
-
-export type MetaObjectiveLabel =
-  | 'Lead Generation'
-  | 'Brand Awareness'
-  | 'Traffic'
-  | 'Engagement'
-  | 'Sales'
-  | 'App Promotion'
-  | 'Video Views'
-  | 'Messages'
-  | 'Other';
-
-export type MetaStatusLabel =
-  | 'Active'
-  | 'Paused'
-  | 'In Review'
-  | 'Rejected'
-  | 'With Issues'
-  | 'Archived'
-  | 'Deleted';
-
-export type MetaFormatLabel = 'Single Image' | 'Video' | 'Carousel' | 'Dynamic' | 'Other';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -209,16 +192,16 @@ function sumRows(rows: MetaInsightsRow[]): RawTotals {
 
 export function deriveMetrics(t: RawTotals): MetaEntityMetrics {
   return {
-    spendUsd: round(t.spend, 2),
+    spend: round(t.spend, 2),
     impressions: Math.round(t.impressions),
     reach: Math.round(t.reach),
     frequency: round(safeDiv(t.impressions, t.reach), 2),
     clicks: Math.round(t.linkClicks),
     ctr: round(safeDiv(t.linkClicks, t.impressions) * 100, 2),
-    cpcUsd: round(safeDiv(t.spend, t.linkClicks), 2),
-    cpmUsd: round(safeDiv(t.spend, t.impressions) * 1000, 2),
+    cpc: round(safeDiv(t.spend, t.linkClicks), 2),
+    cpm: round(safeDiv(t.spend, t.impressions) * 1000, 2),
     leads: Math.round(t.leads),
-    cplUsd: round(safeDiv(t.spend, t.leads), 2),
+    cpl: round(safeDiv(t.spend, t.leads), 2),
   };
 }
 
@@ -346,16 +329,16 @@ export function mapMetaOverview(
   const c = deriveMetrics(rawTotals(current));
   const p = deriveMetrics(rawTotals(previous));
   return {
-    spendUsd: withComparison(c.spendUsd, p.spendUsd),
+    spend: withComparison(c.spend, p.spend),
     impressions: withComparison(c.impressions, p.impressions),
     reach: withComparison(c.reach, p.reach),
     frequency: withComparison(c.frequency, p.frequency),
     clicks: withComparison(c.clicks, p.clicks),
     ctr: withComparison(c.ctr, p.ctr),
-    cpcUsd: withComparison(c.cpcUsd, p.cpcUsd),
-    cpmUsd: withComparison(c.cpmUsd, p.cpmUsd),
+    cpc: withComparison(c.cpc, p.cpc),
+    cpm: withComparison(c.cpm, p.cpm),
     leads: withComparison(c.leads, p.leads),
-    cplUsd: withComparison(c.cplUsd, p.cplUsd),
+    cpl: withComparison(c.cpl, p.cpl),
   };
 }
 
@@ -390,8 +373,8 @@ export function mapMetaSpendOverTime(
     return {
       date,
       ...(compareDate ? { compareDate } : {}),
-      spendUsd: round(t.spend, 2),
-      previousSpendUsd: round(pt.spend, 2),
+      spend: round(t.spend, 2),
+      previousSpend: round(pt.spend, 2),
       clicks: Math.round(t.linkClicks),
       leads: Math.round(t.leads),
       impressions: Math.round(t.impressions),
@@ -404,7 +387,7 @@ export function mapMetaSpendOverTime(
  * still live/pending; hide archived/deleted/paused entities with zero delivery.
  */
 function shouldInclude(status: MetaStatusLabel, metrics: MetaEntityMetrics): boolean {
-  if (metrics.impressions > 0 || metrics.spendUsd > 0) return true;
+  if (metrics.impressions > 0 || metrics.spend > 0) return true;
   return status === 'Active' || status === 'In Review' || status === 'With Issues';
 }
 
@@ -440,8 +423,8 @@ export function mapMetaCampaigns(
     rows.push({
       id: c.id,
       name: c.name ?? `Campaign ${c.id}`,
-      objective: mapObjective(c.objective) as MetaCampaignRow['objective'],
-      status: status as MetaCampaignRow['status'],
+      objective: mapObjective(c.objective),
+      status,
       ...metrics,
     });
   }
@@ -449,17 +432,17 @@ export function mapMetaCampaigns(
   for (const [id, list] of byId) {
     if (seen.has(id)) continue;
     const metrics = deriveMetrics(sumRows(list));
-    if (metrics.impressions === 0 && metrics.spendUsd === 0) continue;
+    if (metrics.impressions === 0 && metrics.spend === 0) continue;
     rows.push({
       id,
       name: list[0]?.campaign_name ?? `Campaign ${id}`,
-      objective: 'Other' as MetaCampaignRow['objective'],
-      status: 'Deleted' as MetaCampaignRow['status'],
+      objective: 'Other',
+      status: 'Deleted',
       ...metrics,
     });
   }
 
-  return rows.sort((a, b) => b.spendUsd - a.spendUsd);
+  return rows.sort((a, b) => b.spend - a.spend);
 }
 
 /** Ad set table (optionally for one campaign): ad set objects joined with level=adset insights. */
@@ -485,12 +468,12 @@ export function mapMetaAdSets(
       campaignName: campaignNames.get(cId) ?? list[0]?.campaign_name ?? '',
       name: s.name ?? `Ad set ${s.id}`,
       audience: summarizeTargeting(s.targeting),
-      status: status as MetaAdSetRow['status'],
+      status,
       ...metrics,
     });
   }
 
-  return rows.sort((a, b) => b.spendUsd - a.spendUsd);
+  return rows.sort((a, b) => b.spend - a.spend);
 }
 
 /** Ad table (optionally for one ad set): ad objects joined with level=ad insights. */
@@ -519,13 +502,13 @@ export function mapMetaAds(
       campaignId: cId,
       campaignName: campaignNames.get(cId) ?? list[0]?.campaign_name ?? '',
       name: ad.name ?? `Ad ${ad.id}`,
-      format: mapAdFormat(ad.creative) as MetaAdRow['format'],
-      status: status as MetaAdRow['status'],
+      format: mapAdFormat(ad.creative),
+      status,
       ...metrics,
     });
   }
 
-  return rows.sort((a, b) => b.spendUsd - a.spendUsd);
+  return rows.sort((a, b) => b.spend - a.spend);
 }
 
 /** Maps Graph API error payloads to AdLens error codes (never forward raw messages). */

@@ -1,4 +1,5 @@
 import { TRACKED_SITE } from '../../config/app.ts';
+import type { MetaObjectiveLabel, MetaStatusLabel } from '../../types/index.js';
 
 /**
  * Deterministic 32-bit hash from a string seed (FNV-1a inspired)
@@ -62,8 +63,8 @@ export interface SharedCampaignBlueprint {
   id: string;
   name: string;
   utmCampaign: string;
-  objective: 'Lead Generation' | 'Brand Awareness' | 'Retargeting';
-  status: 'Active' | 'Paused';
+  objective: MetaObjectiveLabel;
+  status: MetaStatusLabel;
   dailyBaseSpendUsd: number;
   ctrBase: number;
   conversionRateBase: number;
@@ -94,7 +95,7 @@ export const SHARED_CAMPAIGNS: SharedCampaignBlueprint[] = [
     id: 'camp_retarget_demo_visitors',
     name: 'Retargeting - Pricing & Demo Visitors',
     utmCampaign: 'Retargeting - Pricing & Demo Visitors',
-    objective: 'Retargeting',
+    objective: 'Traffic',
     status: 'Active',
     dailyBaseSpendUsd: 24,
     ctrBase: 3.35,

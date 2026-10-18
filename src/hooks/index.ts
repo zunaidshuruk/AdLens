@@ -4,6 +4,7 @@ export { useHealth } from './useHealth';
 export {
   useAdapterStatus,
   useGA4PropertyInfo,
+  useMetaAccountInfo,
   useReport,
   useSearchConsoleSiteInfo,
 } from './useReport';

@@ -11,6 +11,12 @@ import type {
   GA4SelectedProperty,
   GA4TrafficPoint,
   HealthStatusResponse,
+  MetaAccountInfo,
+  MetaAdRow,
+  MetaAdSetRow,
+  MetaAdsOverview,
+  MetaCampaignRow,
+  MetaSpendPoint,
   SearchConsoleCountryRow,
   SearchConsoleDeviceRow,
   SearchConsoleOverview,
@@ -187,5 +193,36 @@ export const apiClient = {
 
   getSearchConsoleSiteInfo(): Promise<SearchConsoleSiteInfo> {
     return apiRequest<SearchConsoleSiteInfo>('/api/search-console/site-info');
+  },
+
+  // Live Meta Ads API routes (/api/meta/*)
+  getMetaAccount(): Promise<MetaAccountInfo> {
+    return apiRequest<MetaAccountInfo>('/api/meta/account');
+  },
+
+  getMetaOverview(range: ComputedDateRange): Promise<MetaAdsOverview> {
+    return apiRequest<MetaAdsOverview>(`/api/meta/overview?${buildDateRangeParams(range)}`);
+  },
+
+  getMetaSpendOverTime(range: ComputedDateRange): Promise<MetaSpendPoint[]> {
+    return apiRequest<MetaSpendPoint[]>(
+      `/api/meta/spend-over-time?${buildDateRangeParams(range)}`
+    );
+  },
+
+  getMetaCampaigns(range: ComputedDateRange): Promise<MetaCampaignRow[]> {
+    return apiRequest<MetaCampaignRow[]>(`/api/meta/campaigns?${buildDateRangeParams(range)}`);
+  },
+
+  getMetaAdSets(range: ComputedDateRange, campaignId?: string): Promise<MetaAdSetRow[]> {
+    const query = buildDateRangeParams(range);
+    const extra = campaignId ? `&campaignId=${encodeURIComponent(campaignId)}` : '';
+    return apiRequest<MetaAdSetRow[]>(`/api/meta/adsets?${query}${extra}`);
+  },
+
+  getMetaAds(range: ComputedDateRange, adSetId?: string): Promise<MetaAdRow[]> {
+    const query = buildDateRangeParams(range);
+    const extra = adSetId ? `&adSetId=${encodeURIComponent(adSetId)}` : '';
+    return apiRequest<MetaAdRow[]>(`/api/meta/ads?${query}${extra}`);
   },
 };

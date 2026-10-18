@@ -77,8 +77,10 @@ connectionsRouter.get('/', (req: Request, res: Response) => {
       searchConsoleSite: isConnected ? googleSession?.searchConsoleSite ?? null : null,
     },
     meta: {
-      connected: false,
-      availableIn: 'Sprint 5',
+      configured: cfg.metaConfigured,
+      missing: cfg.metaMissing,
+      connected: cfg.metaConfigured,
+      adAccountId: cfg.metaConfigured ? cfg.metaAdAccountId : null,
     },
   });
 });

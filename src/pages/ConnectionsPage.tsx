@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ExternalLink,
   KeyRound,
-  Lock,
   LogOut,
   Megaphone,
   Save,
@@ -36,6 +35,10 @@ export const ConnectionsPage: React.FC = () => {
     missingSecrets,
     googleConfigured,
     googleConnected,
+    metaConfigured,
+    metaMissingSecrets,
+    metaAccountInfo,
+    metaAccountError,
     ga4Properties,
     searchConsoleSites,
     loading,
@@ -452,41 +455,105 @@ export const ConnectionsPage: React.FC = () => {
           )}
         </div>
 
-        {/* Meta Ads Card (stays disabled "Available in Sprint 5") */}
+        {/* Meta Ads Card (System User configuration or missing secrets notice; no connect button) */}
         <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between gap-5">
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                <Megaphone className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Meta Ads
-                </h2>
-                <div className="text-xs text-amber-700 dark:text-amber-400 font-medium mt-0.5">
-                  Mock data
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    Meta Ads
+                  </h2>
+                  <div
+                    data-testid="meta-connection-status"
+                    className={`text-xs font-medium mt-0.5 ${
+                      metaConfigured
+                        ? 'text-emerald-700 dark:text-emerald-400'
+                        : 'text-amber-700 dark:text-amber-400'
+                    }`}
+                  >
+                    {metaConfigured ? 'Connected via system user' : 'Mock data'}
+                  </div>
                 </div>
               </div>
+              {metaConfigured && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-1" />
+              )}
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               Campaign, Ad Set, and Ad delivery metrics including spend, reach, frequency, clicks, CPC, CPM, and lead generation for {TRACKED_SITE.name}.
             </p>
-          </div>
 
-          <div className="mt-auto pt-4 border-t border-slate-200/70 dark:border-slate-800/70 space-y-2">
-            <button
-              type="button"
-              disabled
-              aria-label="Connect Meta Ads (Available in Sprint 5)"
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Available in Sprint 5</span>
-            </button>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
-              Meta Marketing API integration scheduled for Sprint 5
-            </p>
+            {metaConfigured ? (
+              <div
+                data-testid="meta-account-details"
+                className="p-3.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2 text-xs"
+              >
+                {metaAccountError ? (
+                  <div className="text-red-700 dark:text-red-300 font-medium">
+                    {metaAccountError}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 dark:text-slate-400">Account Name</span>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100 text-right">
+                        {metaAccountInfo?.name ?? 'Loading...'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 dark:text-slate-400">Account ID</span>
+                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                        {metaAccountInfo?.accountId ?? connections?.meta.adAccountId ?? '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 dark:text-slate-400">Currency</span>
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                        {metaAccountInfo?.currency ?? '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 dark:text-slate-400">Time Zone</span>
+                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                        {metaAccountInfo?.timezoneName ?? '—'}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div
+                role="region"
+                aria-label="Meta Marketing API Setup Notice"
+                data-testid="meta-unconfigured-notice"
+                className="p-3.5 rounded-lg border border-amber-200 dark:border-amber-800/70 bg-amber-50/60 dark:bg-amber-950/30 space-y-2"
+              >
+                <div className="text-xs font-semibold text-amber-950 dark:text-amber-100">
+                  System User Setup Required
+                </div>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                  Configure the following environment variables with a read-only Meta System User token (<code className="font-mono">ads_read</code>):
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {(metaMissingSecrets.length > 0
+                    ? metaMissingSecrets
+                    : ['META_ACCESS_TOKEN', 'META_APP_SECRET', 'META_AD_ACCOUNT_ID']
+                  ).map((secretName) => (
+                    <code
+                      key={secretName}
+                      className="px-2 py-0.5 text-[11px] font-mono font-semibold rounded bg-amber-100/90 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300/70 dark:border-amber-700/70"
+                    >
+                      {secretName}
+                    </code>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

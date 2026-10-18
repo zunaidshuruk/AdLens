@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
@@ -6,21 +6,25 @@ import { KpiCard } from '../components/KpiCard';
 import { TrendChart } from '../components/TrendChart';
 import { TRACKED_SITE } from '../config/app';
 import { useAppContext } from '../context/AppContext';
-import { useDateRange, useReport } from '../hooks';
+import { useAdapterStatus, useDateRange, useMetaAccountInfo, useReport } from '../hooks';
 import type { MetaCampaignRow, SearchConsoleQueryRow } from '../types';
 import { formatFullDateRange } from '../utils/dateUtils';
 import {
   convertCurrencyFromUsd,
+  formatAccountCurrency,
   formatCurrency,
   formatNumber,
   formatPercent,
   formatSignedPercent,
+  getCurrencySymbol,
 } from '../utils/formatters';
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { currency } = useAppContext();
   const { dateRange, compareEnabled } = useDateRange();
+  const { isMetaAdsLive } = useAdapterStatus();
+  const { accountInfo } = useMetaAccountInfo();
 
   const { data, loading, error, errorCode, refetch } = useReport(async (registry, range) => {
     const [
@@ -52,19 +56,35 @@ export const OverviewPage: React.FC = () => {
     };
   });
 
+  const metaCurrencyCode = isMetaAdsLive
+    ? accountInfo?.currency || data?.metaOverview.accountCurrency || 'USD'
+    : currency;
+  const metaCurrencySymbol = getCurrencySymbol(metaCurrencyCode);
+
+  const formatMetaMoney = useCallback(
+    (amount: number): string => {
+      if (isMetaAdsLive) {
+        return formatAccountCurrency(amount, metaCurrencyCode);
+      }
+      return formatCurrency(amount, currency);
+    },
+    [isMetaAdsLive, metaCurrencyCode, currency]
+  );
+
   const combinedTrend = useMemo(() => {
     if (!data) return [];
     const spendByDate = new Map(data.metaSpend.map((s) => [s.date, s]));
     return data.ga4Traffic.map((point) => {
       const meta = spendByDate.get(point.date);
+      const rawSpend = meta?.spend ?? 0;
       return {
         date: point.date,
         sessions: point.sessions,
         previousSessions: point.previousSessions,
-        spendDisplay: convertCurrencyFromUsd(meta?.spendUsd ?? 0, currency),
+        spendDisplay: isMetaAdsLive ? rawSpend : convertCurrencyFromUsd(rawSpend, currency),
       };
     });
-  }, [data, currency]);
+  }, [data, isMetaAdsLive, currency]);
 
   const campaignColumns = useMemo<DataTableColumn<MetaCampaignRow & Record<string, unknown>>[]>(
     () => [
@@ -81,11 +101,11 @@ export const OverviewPage: React.FC = () => {
         ),
       },
       {
-        key: 'spendUsd',
+        key: 'spend',
         header: 'Spend',
         align: 'right',
-        render: (row) => formatCurrency(row.spendUsd, currency),
-        csvFormat: (val) => formatCurrency(Number(val), currency),
+        render: (row) => formatMetaMoney(row.spend),
+        csvFormat: (val) => formatMetaMoney(Number(val)),
       },
       {
         key: 'clicks',
@@ -107,14 +127,14 @@ export const OverviewPage: React.FC = () => {
         render: (row) => formatNumber(row.leads),
       },
       {
-        key: 'cplUsd',
+        key: 'cpl',
         header: 'Cost / Lead',
         align: 'right',
-        render: (row) => formatCurrency(row.cplUsd, currency),
-        csvFormat: (val) => formatCurrency(Number(val), currency),
+        render: (row) => formatMetaMoney(row.cpl),
+        csvFormat: (val) => formatMetaMoney(Number(val)),
       },
     ],
-    [currency]
+    [formatMetaMoney]
   );
 
   const queryColumns = useMemo<DataTableColumn<SearchConsoleQueryRow & Record<string, unknown>>[]>(
@@ -198,7 +218,9 @@ export const OverviewPage: React.FC = () => {
             errorCode === 'SC_PERMISSION_DENIED' ||
             errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
             errorCode === 'GA4_NOT_SELECTED' ||
-            errorCode === 'SC_NOT_SELECTED'
+            errorCode === 'SC_NOT_SELECTED' ||
+            errorCode === 'META_TOKEN_INVALID' ||
+            errorCode === 'META_PERMISSION_DENIED'
               ? 'Go to Connections'
               : undefined
           }
@@ -207,7 +229,9 @@ export const OverviewPage: React.FC = () => {
             errorCode === 'SC_PERMISSION_DENIED' ||
             errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
             errorCode === 'GA4_NOT_SELECTED' ||
-            errorCode === 'SC_NOT_SELECTED'
+            errorCode === 'SC_NOT_SELECTED' ||
+            errorCode === 'META_TOKEN_INVALID' ||
+            errorCode === 'META_PERMISSION_DENIED'
               ? () => navigate('/connections')
               : undefined
           }
@@ -256,12 +280,9 @@ export const OverviewPage: React.FC = () => {
           label="Meta Ad Spend"
           source="meta_ads"
           loading={loading}
-          formattedValue={formatCurrency(data?.metaOverview.spendUsd.value ?? 0, currency)}
-          previousFormattedValue={formatCurrency(
-            data?.metaOverview.spendUsd.previousValue ?? 0,
-            currency
-          )}
-          changePercent={data?.metaOverview.spendUsd.changePercent}
+          formattedValue={formatMetaMoney(data?.metaOverview.spend.value ?? 0)}
+          previousFormattedValue={formatMetaMoney(data?.metaOverview.spend.previousValue ?? 0)}
+          changePercent={data?.metaOverview.spend.changePercent}
           compareEnabled={compareEnabled}
           invertPolarity
         />
@@ -278,12 +299,9 @@ export const OverviewPage: React.FC = () => {
           label="Cost per Lead (CPL)"
           source="meta_ads"
           loading={loading}
-          formattedValue={formatCurrency(data?.metaOverview.cplUsd.value ?? 0, currency)}
-          previousFormattedValue={formatCurrency(
-            data?.metaOverview.cplUsd.previousValue ?? 0,
-            currency
-          )}
-          changePercent={data?.metaOverview.cplUsd.changePercent}
+          formattedValue={formatMetaMoney(data?.metaOverview.cpl.value ?? 0)}
+          previousFormattedValue={formatMetaMoney(data?.metaOverview.cpl.previousValue ?? 0)}
+          changePercent={data?.metaOverview.cpl.changePercent}
           compareEnabled={compareEnabled}
           invertPolarity
         />
@@ -302,13 +320,13 @@ export const OverviewPage: React.FC = () => {
       {/* Sessions vs Spend Dual-Axis Trend Chart */}
       <TrendChart
         title="Sessions vs. Paid Social Spend"
-        subtitle={`Daily GA4 sessions paired with Meta Ads spend (${currency}) across ${dateRange.dayCount} days`}
+        subtitle={`Daily GA4 sessions paired with Meta Ads spend (${metaCurrencyCode}) across ${dateRange.dayCount} days`}
         data={combinedTrend}
         xKey="date"
         loading={loading}
         dualAxis
         leftAxisFormatter={(v) => formatNumber(v)}
-        rightAxisFormatter={(v) => `${currency === 'BDT' ? '৳' : '$'}${formatNumber(v)}`}
+        rightAxisFormatter={(v) => `${metaCurrencySymbol}${formatNumber(v)}`}
         series={[
           {
             key: 'sessions',
@@ -333,11 +351,11 @@ export const OverviewPage: React.FC = () => {
             : []),
           {
             key: 'spendDisplay',
-            label: `Meta Spend (${currency})`,
+            label: `Meta Spend (${metaCurrencyCode})`,
             color: '#0d9488',
             yAxisId: 'right',
             type: 'line',
-            formatter: (v) => `${currency === 'BDT' ? '৳' : '$'}${formatNumber(v)}`,
+            formatter: (v) => `${metaCurrencySymbol}${formatNumber(v)}`,
           },
         ]}
       />
@@ -353,7 +371,7 @@ export const OverviewPage: React.FC = () => {
           rowKey={(r) => r.id}
           loading={loading}
           pageSize={5}
-          defaultSortKey="spendUsd"
+          defaultSortKey="spend"
           searchPlaceholder="Filter campaigns..."
         />
 
@@ -373,3 +391,4 @@ export const OverviewPage: React.FC = () => {
     </div>
   );
 };
+

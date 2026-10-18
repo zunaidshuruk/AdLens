@@ -2,6 +2,7 @@ import { apiClient } from '../api/client';
 import type { DataSourceId } from '../types';
 import type { DataSourceAdapter, GA4Adapter } from './ga4';
 import { liveGA4Adapter } from './live/ga4Live';
+import { liveMetaAdsAdapter } from './live/metaAdsLive';
 import { liveSearchConsoleAdapter } from './live/searchConsoleLive';
 import type { MetaAdsAdapter } from './metaAds';
 import { mockGA4Adapter } from './mock/ga4Mock';
@@ -48,6 +49,10 @@ export function setSearchConsoleLiveMode(isLive: boolean): void {
   setSourceLiveMode('search_console', isLive);
 }
 
+export function setMetaAdsLiveMode(isLive: boolean): void {
+  setSourceLiveMode('meta_ads', isLive);
+}
+
 export function subscribeAdapterRegistry(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -60,15 +65,21 @@ export async function syncAdapterRegistryWithConnections(): Promise<Record<DataS
     return { ...liveModeBySource };
   }
   try {
-    const conn = await apiClient.getConnections();
+    const [conn, health] = await Promise.all([
+      apiClient.getConnections(),
+      apiClient.getHealth().catch(() => null),
+    ]);
     const ga4Live = Boolean(conn.google.connected && conn.google.ga4Property?.id);
     const scLive = Boolean(conn.google.connected && conn.google.searchConsoleSite?.url);
+    const metaLive = Boolean(health?.metaConfigured ?? conn.meta.configured ?? conn.meta.connected);
     setSourceLiveMode('ga4', ga4Live);
     setSourceLiveMode('search_console', scLive);
+    setSourceLiveMode('meta_ads', metaLive);
     return { ...liveModeBySource };
   } catch {
     setSourceLiveMode('ga4', false);
     setSourceLiveMode('search_console', false);
+    setSourceLiveMode('meta_ads', false);
     return { ...liveModeBySource };
   }
 }
@@ -100,7 +111,9 @@ export const adapters: AdapterRegistry = {
   get searchConsole(): SearchConsoleAdapter {
     return liveModeBySource.search_console ? liveSearchConsoleAdapter : mockSearchConsoleAdapter;
   },
-  metaAds: mockMetaAdsAdapter,
+  get metaAds(): MetaAdsAdapter {
+    return liveModeBySource.meta_ads ? liveMetaAdsAdapter : mockMetaAdsAdapter;
+  },
 
   getAll(): DataSourceAdapter[] {
     return [this.ga4, this.searchConsole, this.metaAds];
@@ -112,3 +125,4 @@ export const adapters: AdapterRegistry = {
 };
 
 export type { DataSourceAdapter, GA4Adapter, MetaAdsAdapter, SearchConsoleAdapter };
+

@@ -175,47 +175,78 @@ export interface SearchConsoleSiteInfo {
 }
 
 // ---------------- Meta Ads Types ----------------
+export type MetaObjectiveLabel =
+  | 'Lead Generation'
+  | 'Brand Awareness'
+  | 'Traffic'
+  | 'Engagement'
+  | 'Sales'
+  | 'App Promotion'
+  | 'Video Views'
+  | 'Messages'
+  | 'Other';
+
+export type MetaStatusLabel =
+  | 'Active'
+  | 'Paused'
+  | 'In Review'
+  | 'Rejected'
+  | 'With Issues'
+  | 'Archived'
+  | 'Deleted';
+
+export type MetaFormatLabel = 'Single Image' | 'Video' | 'Carousel' | 'Dynamic' | 'Other';
+
+export interface MetaAccountInfo {
+  accountId: string;
+  name: string;
+  currency: string;
+  timezoneName: string;
+  status: string;
+}
+
 export interface MetaAdsOverview {
-  spendUsd: MetricWithComparison;
+  accountCurrency?: string;
+  spend: MetricWithComparison;
   impressions: MetricWithComparison;
   reach: MetricWithComparison;
   frequency: MetricWithComparison;
   clicks: MetricWithComparison;
   ctr: MetricWithComparison;
-  cpcUsd: MetricWithComparison;
-  cpmUsd: MetricWithComparison;
+  cpc: MetricWithComparison;
+  cpm: MetricWithComparison;
   leads: MetricWithComparison;
-  cplUsd: MetricWithComparison;
+  cpl: MetricWithComparison;
 }
 
 export interface MetaSpendPoint {
   date: string;
   compareDate?: string;
-  spendUsd: number;
-  previousSpendUsd: number;
+  spend: number;
+  previousSpend: number;
   clicks: number;
   leads: number;
   impressions: number;
 }
 
 export interface MetaEntityMetrics {
-  spendUsd: number;
+  spend: number;
   impressions: number;
   reach: number;
   frequency: number;
   clicks: number;
   ctr: number;
-  cpcUsd: number;
-  cpmUsd: number;
+  cpc: number;
+  cpm: number;
   leads: number;
-  cplUsd: number;
+  cpl: number;
 }
 
 export interface MetaCampaignRow extends MetaEntityMetrics {
   id: string;
   name: string;
-  objective: 'Lead Generation' | 'Brand Awareness' | 'Retargeting';
-  status: 'Active' | 'Paused';
+  objective: MetaObjectiveLabel;
+  status: MetaStatusLabel;
 }
 
 export interface MetaAdSetRow extends MetaEntityMetrics {
@@ -224,7 +255,7 @@ export interface MetaAdSetRow extends MetaEntityMetrics {
   campaignName: string;
   name: string;
   audience: string;
-  status: 'Active' | 'Paused';
+  status: MetaStatusLabel;
 }
 
 export interface MetaAdRow extends MetaEntityMetrics {
@@ -234,8 +265,8 @@ export interface MetaAdRow extends MetaEntityMetrics {
   campaignId: string;
   campaignName: string;
   name: string;
-  format: 'Single Image' | 'Video' | 'Carousel';
-  status: 'Active' | 'Paused';
+  format: MetaFormatLabel;
+  status: MetaStatusLabel;
 }
 
 export interface HealthStatusResponse {
@@ -244,6 +275,8 @@ export interface HealthStatusResponse {
   version: string;
   googleConfigured?: boolean;
   missing?: string[];
+  metaConfigured?: boolean;
+  metaMissing?: string[];
   timestamp?: string;
 }
 
@@ -266,8 +299,11 @@ export interface ConnectionsResponse {
     searchConsoleSite: SearchConsoleSelectedSite | null;
   };
   meta: {
+    configured?: boolean;
+    missing?: string[];
     connected: boolean;
-    availableIn: string;
+    adAccountId?: string | null;
+    availableIn?: string;
   };
 }
 
@@ -281,4 +317,5 @@ export interface SearchConsoleSiteOption {
   siteUrl: string;
   permissionLevel: string;
 }
+
 

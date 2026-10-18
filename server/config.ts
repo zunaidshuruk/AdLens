@@ -10,7 +10,14 @@ export const REQUIRED_GOOGLE_ENV_VARS = [
   'APP_BASE_URL',
 ] as const;
 
+export const REQUIRED_META_ENV_VARS = [
+  'META_ACCESS_TOKEN',
+  'META_APP_SECRET',
+  'META_AD_ACCOUNT_ID',
+] as const;
+
 export type RequiredGoogleEnvVar = (typeof REQUIRED_GOOGLE_ENV_VARS)[number];
+export type RequiredMetaEnvVar = (typeof REQUIRED_META_ENV_VARS)[number];
 
 export interface ServerConfig {
   googleClientId: string;
@@ -19,7 +26,18 @@ export interface ServerConfig {
   appBaseUrl: string;
   googleConfigured: boolean;
   missing: RequiredGoogleEnvVar[];
+  metaAccessToken: string;
+  metaAppSecret: string;
+  metaAdAccountId: string;
+  metaConfigured: boolean;
+  metaMissing: RequiredMetaEnvVar[];
   isProduction: boolean;
+}
+
+export function normalizeMetaAdAccountId(raw: string | undefined): string {
+  if (!raw) return '';
+  const stripped = raw.trim().replace(/^act_/i, '').trim();
+  return /^\d+$/.test(stripped) ? stripped : '';
 }
 
 export function getServerConfig(): ServerConfig {
@@ -32,6 +50,15 @@ export function getServerConfig(): ServerConfig {
     }
   }
 
+  const metaAccessToken = (process.env.META_ACCESS_TOKEN || '').trim();
+  const metaAppSecret = (process.env.META_APP_SECRET || '').trim();
+  const metaAdAccountId = normalizeMetaAdAccountId(process.env.META_AD_ACCOUNT_ID);
+
+  const metaMissing: RequiredMetaEnvVar[] = [];
+  if (!metaAccessToken) metaMissing.push('META_ACCESS_TOKEN');
+  if (!metaAppSecret) metaMissing.push('META_APP_SECRET');
+  if (!metaAdAccountId) metaMissing.push('META_AD_ACCOUNT_ID');
+
   const rawBaseUrl = (process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
 
   return {
@@ -41,11 +68,16 @@ export function getServerConfig(): ServerConfig {
     appBaseUrl: rawBaseUrl,
     googleConfigured: missing.length === 0,
     missing,
+    metaAccessToken,
+    metaAppSecret,
+    metaAdAccountId,
+    metaConfigured: metaMissing.length === 0,
+    metaMissing,
     isProduction: process.env.NODE_ENV === 'production',
   };
 }
 
-export function requireGoogleConfigured(req: Request, res: Response, next: NextFunction): void {
+export function requireGoogleConfigured(_req: Request, res: Response, next: NextFunction): void {
   const cfg = getServerConfig();
   if (!cfg.googleConfigured) {
     res.status(503).json({
@@ -58,3 +90,18 @@ export function requireGoogleConfigured(req: Request, res: Response, next: NextF
   }
   next();
 }
+
+export function requireMetaConfigured(_req: Request, res: Response, next: NextFunction): void {
+  const cfg = getServerConfig();
+  if (!cfg.metaConfigured) {
+    res.status(503).json({
+      error: {
+        code: 'META_NOT_CONFIGURED',
+        message: `Meta Ads integration is not configured. Missing environment variables: ${cfg.metaMissing.join(', ')}`,
+      },
+    });
+    return;
+  }
+  next();
+}
+

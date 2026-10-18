@@ -246,7 +246,7 @@ const AD_SET_BLUEPRINTS: AdSetBlueprint[] = [
 
 function computeDailyMeta(dateStr: string) {
   const dow = dayOfWeekFactor(dateStr);
-  let spendUsd = 0;
+  let spend = 0;
   let impressions = 0;
   let clicks = 0;
   let leads = 0;
@@ -263,14 +263,14 @@ function computeDailyMeta(dateStr: string) {
       Math.round((campClicks * camp.conversionRateBase * seededVariance(`meta_ld_${camp.id}_${dateStr}`, 0.2)) / 100)
     );
 
-    spendUsd += campSpend;
+    spend += campSpend;
     impressions += campImpressions;
     clicks += campClicks;
     leads += campLeads;
   }
 
   return {
-    spendUsd: Number(spendUsd.toFixed(2)),
+    spend: Number(spend.toFixed(2)),
     impressions,
     clicks,
     leads: Math.max(1, leads),
@@ -279,38 +279,38 @@ function computeDailyMeta(dateStr: string) {
 
 function aggregateMetaRange(startDate: string, endDate: string) {
   const dates = enumerateDates(startDate, endDate);
-  let spendUsd = 0;
+  let spend = 0;
   let impressions = 0;
   let clicks = 0;
   let leads = 0;
 
   for (const d of dates) {
     const day = computeDailyMeta(d);
-    spendUsd += day.spendUsd;
+    spend += day.spend;
     impressions += day.impressions;
     clicks += day.clicks;
     leads += day.leads;
   }
 
-  spendUsd = Number(spendUsd.toFixed(2));
+  spend = Number(spend.toFixed(2));
   const frequency = Number((1.42 + Math.min(0.85, dates.length * 0.012)).toFixed(2));
   const reach = Math.max(1, Math.round(impressions / frequency));
   const ctr = impressions > 0 ? Number(((clicks / impressions) * 100).toFixed(2)) : 0;
-  const cpcUsd = clicks > 0 ? Number((spendUsd / clicks).toFixed(2)) : 0;
-  const cpmUsd = impressions > 0 ? Number(((spendUsd / impressions) * 1000).toFixed(2)) : 0;
-  const cplUsd = leads > 0 ? Number((spendUsd / leads).toFixed(2)) : 0;
+  const cpc = clicks > 0 ? Number((spend / clicks).toFixed(2)) : 0;
+  const cpm = impressions > 0 ? Number(((spend / impressions) * 1000).toFixed(2)) : 0;
+  const cpl = leads > 0 ? Number((spend / leads).toFixed(2)) : 0;
 
   return {
-    spendUsd,
+    spend,
     impressions,
     reach,
     frequency,
     clicks,
     ctr,
-    cpcUsd,
-    cpmUsd,
+    cpc,
+    cpm,
     leads,
-    cplUsd,
+    cpl,
   };
 }
 
@@ -318,7 +318,7 @@ function computeCampaignMetricsForRange(range: ComputedDateRange): MetaCampaignR
   const dates = enumerateDates(range.startDate, range.endDate);
 
   return SHARED_CAMPAIGNS.map((camp) => {
-    let spendUsd = 0;
+    let spend = 0;
     let impressions = 0;
     let clicks = 0;
     let leads = 0;
@@ -336,13 +336,13 @@ function computeCampaignMetricsForRange(range: ComputedDateRange): MetaCampaignR
         Math.round((cClicks * camp.conversionRateBase * seededVariance(`meta_ld_${camp.id}_${d}`, 0.2)) / 100)
       );
 
-      spendUsd += cSpend;
+      spend += cSpend;
       impressions += cImp;
       clicks += cClicks;
       leads += cLeads;
     }
 
-    spendUsd = Number(spendUsd.toFixed(2));
+    spend = Number(spend.toFixed(2));
     leads = Math.max(1, leads);
     const frequency = Number(
       (1.35 * seededVariance(`meta_freq_${camp.id}_${range.endDate}`, 0.08) + Math.min(0.6, dates.length * 0.01)).toFixed(
@@ -351,25 +351,25 @@ function computeCampaignMetricsForRange(range: ComputedDateRange): MetaCampaignR
     );
     const reach = Math.max(1, Math.round(impressions / frequency));
     const ctr = impressions > 0 ? Number(((clicks / impressions) * 100).toFixed(2)) : 0;
-    const cpcUsd = clicks > 0 ? Number((spendUsd / clicks).toFixed(2)) : 0;
-    const cpmUsd = impressions > 0 ? Number(((spendUsd / impressions) * 1000).toFixed(2)) : 0;
-    const cplUsd = leads > 0 ? Number((spendUsd / leads).toFixed(2)) : 0;
+    const cpc = clicks > 0 ? Number((spend / clicks).toFixed(2)) : 0;
+    const cpm = impressions > 0 ? Number(((spend / impressions) * 1000).toFixed(2)) : 0;
+    const cpl = leads > 0 ? Number((spend / leads).toFixed(2)) : 0;
 
     return {
       id: camp.id,
       name: camp.name,
       objective: camp.objective,
       status: camp.status,
-      spendUsd,
+      spend,
       impressions,
       reach,
       frequency,
       clicks,
       ctr,
-      cpcUsd,
-      cpmUsd,
+      cpc,
+      cpm,
       leads,
-      cplUsd,
+      cpl,
     };
   });
 }
@@ -389,10 +389,10 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
     const prev = aggregateMetaRange(range.compareStartDate, range.compareEndDate);
 
     return {
-      spendUsd: {
-        value: curr.spendUsd,
-        previousValue: prev.spendUsd,
-        changePercent: calculatePercentChange(curr.spendUsd, prev.spendUsd),
+      spend: {
+        value: curr.spend,
+        previousValue: prev.spend,
+        changePercent: calculatePercentChange(curr.spend, prev.spend),
       },
       impressions: {
         value: curr.impressions,
@@ -419,25 +419,25 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
         previousValue: prev.ctr,
         changePercent: calculatePercentChange(curr.ctr, prev.ctr),
       },
-      cpcUsd: {
-        value: curr.cpcUsd,
-        previousValue: prev.cpcUsd,
-        changePercent: calculatePercentChange(curr.cpcUsd, prev.cpcUsd),
+      cpc: {
+        value: curr.cpc,
+        previousValue: prev.cpc,
+        changePercent: calculatePercentChange(curr.cpc, prev.cpc),
       },
-      cpmUsd: {
-        value: curr.cpmUsd,
-        previousValue: prev.cpmUsd,
-        changePercent: calculatePercentChange(curr.cpmUsd, prev.cpmUsd),
+      cpm: {
+        value: curr.cpm,
+        previousValue: prev.cpm,
+        changePercent: calculatePercentChange(curr.cpm, prev.cpm),
       },
       leads: {
         value: curr.leads,
         previousValue: prev.leads,
         changePercent: calculatePercentChange(curr.leads, prev.leads),
       },
-      cplUsd: {
-        value: curr.cplUsd,
-        previousValue: prev.cplUsd,
-        changePercent: calculatePercentChange(curr.cplUsd, prev.cplUsd),
+      cpl: {
+        value: curr.cpl,
+        previousValue: prev.cpl,
+        changePercent: calculatePercentChange(curr.cpl, prev.cpl),
       },
     };
   },
@@ -455,8 +455,8 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
       return {
         date,
         compareDate,
-        spendUsd: curr.spendUsd,
-        previousSpendUsd: prev.spendUsd,
+        spend: curr.spend,
+        previousSpend: prev.spend,
         clicks: curr.clicks,
         leads: curr.leads,
         impressions: curr.impressions,
@@ -466,7 +466,7 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
 
   async getCampaigns(range: ComputedDateRange): Promise<MetaCampaignRow[]> {
     await simulateLatency(`meta_campaigns_${range.startDate}_${range.endDate}`);
-    return computeCampaignMetricsForRange(range).sort((a, b) => b.spendUsd - a.spendUsd);
+    return computeCampaignMetricsForRange(range).sort((a, b) => b.spend - a.spend);
   },
 
   async getAdSets(range: ComputedDateRange, campaignId?: string): Promise<MetaAdSetRow[]> {
@@ -482,16 +482,16 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
       .map((bp) => {
         const parent = campaignMap.get(bp.campaignId) ?? campaigns[0];
         const v = seededVariance(`meta_as_${bp.id}_${range.startDate}`, 0.06);
-        const spendUsd = Number((parent.spendUsd * bp.spendWeight * v).toFixed(2));
+        const spend = Number((parent.spend * bp.spendWeight * v).toFixed(2));
         const impressions = Math.max(100, Math.round(parent.impressions * bp.spendWeight * v));
         const frequency = Number((parent.frequency * seededVariance(`meta_as_f_${bp.id}`, 0.04)).toFixed(2));
         const reach = Math.max(80, Math.round(impressions / frequency));
         const clicks = Math.max(5, Math.round(parent.clicks * bp.spendWeight * v));
         const ctr = Number(((clicks / impressions) * 100).toFixed(2));
-        const cpcUsd = Number((spendUsd / clicks).toFixed(2));
-        const cpmUsd = Number(((spendUsd / impressions) * 1000).toFixed(2));
+        const cpc = Number((spend / clicks).toFixed(2));
+        const cpm = Number(((spend / impressions) * 1000).toFixed(2));
         const leads = Math.max(1, Math.round(parent.leads * bp.spendWeight * v));
-        const cplUsd = Number((spendUsd / leads).toFixed(2));
+        const cpl = Number((spend / leads).toFixed(2));
 
         return {
           id: bp.id,
@@ -500,19 +500,19 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
           name: bp.name,
           audience: bp.audience,
           status: bp.status,
-          spendUsd,
+          spend,
           impressions,
           reach,
           frequency,
           clicks,
           ctr,
-          cpcUsd,
-          cpmUsd,
+          cpc,
+          cpm,
           leads,
-          cplUsd,
+          cpl,
         };
       })
-      .sort((a, b) => b.spendUsd - a.spendUsd);
+      .sort((a, b) => b.spend - a.spend);
   },
 
   async getAds(range: ComputedDateRange, adSetId?: string): Promise<MetaAdRow[]> {
@@ -532,16 +532,16 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
 
       for (const adBp of asBp.ads) {
         const v = seededVariance(`meta_ad_${adBp.id}_${range.startDate}`, 0.05);
-        const spendUsd = Number((parentAdSet.spendUsd * adBp.spendWeight * v).toFixed(2));
+        const spend = Number((parentAdSet.spend * adBp.spendWeight * v).toFixed(2));
         const impressions = Math.max(50, Math.round(parentAdSet.impressions * adBp.spendWeight * v));
         const frequency = Number((parentAdSet.frequency * seededVariance(`meta_ad_f_${adBp.id}`, 0.03)).toFixed(2));
         const reach = Math.max(40, Math.round(impressions / frequency));
         const clicks = Math.max(2, Math.round(parentAdSet.clicks * adBp.spendWeight * v));
         const ctr = Number(((clicks / impressions) * 100).toFixed(2));
-        const cpcUsd = Number((spendUsd / clicks).toFixed(2));
-        const cpmUsd = Number(((spendUsd / impressions) * 1000).toFixed(2));
+        const cpc = Number((spend / clicks).toFixed(2));
+        const cpm = Number(((spend / impressions) * 1000).toFixed(2));
         const leads = Math.max(1, Math.round(parentAdSet.leads * adBp.spendWeight * v));
-        const cplUsd = Number((spendUsd / leads).toFixed(2));
+        const cpl = Number((spend / leads).toFixed(2));
 
         ads.push({
           id: adBp.id,
@@ -552,20 +552,21 @@ export const mockMetaAdsAdapter: MetaAdsAdapter = {
           name: adBp.name,
           format: adBp.format,
           status: adBp.status,
-          spendUsd,
+          spend,
           impressions,
           reach,
           frequency,
           clicks,
           ctr,
-          cpcUsd,
-          cpmUsd,
+          cpc,
+          cpm,
           leads,
-          cplUsd,
+          cpl,
         });
       }
     }
 
-    return ads.sort((a, b) => b.spendUsd - a.spendUsd);
+    return ads.sort((a, b) => b.spend - a.spend);
   },
 };
+

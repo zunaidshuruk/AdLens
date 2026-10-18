@@ -13,6 +13,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ compact = fa
     connections,
     googleConfigured,
     googleConnected,
+    metaConfigured,
     loading: connLoading,
     refresh: refreshConnections,
   } = useConnections();
@@ -65,6 +66,10 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ compact = fa
                 : googleConfigured
                   ? 'Configured (Not connected)'
                   : 'Unconfigured'}
+            </span>
+            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
+            <span className="text-xs text-slate-600 dark:text-slate-400">
+              Meta Ads: {metaConfigured ? 'Connected via system user' : 'Unconfigured (Mock)'}
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
