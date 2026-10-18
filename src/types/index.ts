@@ -230,5 +230,43 @@ export interface HealthStatusResponse {
   ok: boolean;
   app: string;
   version: string;
+  googleConfigured?: boolean;
+  missing?: string[];
   timestamp?: string;
 }
+
+export interface GA4SelectedProperty {
+  id: string;
+  name: string;
+}
+
+export interface SearchConsoleSelectedSite {
+  url: string;
+}
+
+export interface ConnectionsResponse {
+  google: {
+    configured: boolean;
+    missing?: string[];
+    connected: boolean;
+    email: string | null;
+    ga4Property: GA4SelectedProperty | null;
+    searchConsoleSite: SearchConsoleSelectedSite | null;
+  };
+  meta: {
+    connected: boolean;
+    availableIn: string;
+  };
+}
+
+export interface GA4PropertyOption {
+  accountName: string;
+  propertyId: string;
+  propertyName: string;
+}
+
+export interface SearchConsoleSiteOption {
+  siteUrl: string;
+  permissionLevel: string;
+}
+

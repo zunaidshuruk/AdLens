@@ -2,6 +2,7 @@ import React from 'react';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { APP_NAME, TRACKED_SITE } from '../config/app';
 import { useAppContext } from '../context/AppContext';
+import { useConnections } from '../hooks/useConnections';
 import { useAdapterStatus } from '../hooks/useReport';
 import { DateRangePicker } from './DateRangePicker';
 
@@ -11,6 +12,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const { isMocked } = useAdapterStatus();
+  const { googleConnected, connections } = useConnections();
   const { theme, toggleTheme, currency, setCurrency } = useAppContext();
 
   return (
@@ -18,7 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         {/* Left Zone: Mobile menu button + Property identity + MOCK DATA indicator */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <button
               type="button"
               onClick={onOpenSidebar}
@@ -49,6 +51,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                 className="px-2 py-0.5 text-[11px] font-mono font-semibold tracking-wide bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-800 rounded-md whitespace-nowrap shrink-0"
               >
                 MOCK DATA
+              </span>
+            )}
+
+            {googleConnected && connections?.google.email && (
+              <span
+                data-testid="header-google-connected"
+                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"
+              >
+                <span>·</span>
+                <span>Google: {connections.google.email}</span>
               </span>
             )}
           </div>

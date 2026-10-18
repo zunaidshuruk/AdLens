@@ -17,6 +17,7 @@ import {
   formatPercent,
 } from './formatters.ts';
 import { adapters } from '../adapters/index.ts';
+import { decryptPayload, encryptPayload } from '../../server/lib/crypto.ts';
 
 test('config constants are defined cleanly', () => {
   assert.ok(APP_NAME.length > 0);
@@ -98,4 +99,57 @@ test('adapters return deterministic data and GA4 UTM campaigns match Meta campai
   const ads = await adapters.metaAds.getAds(range7d, firstAdSet.id);
   assert.ok(ads.length > 0, 'Ad Set has ads');
   assert.ok(ads.every((ad) => ad.adSetId === firstAdSet.id));
+});
+
+test('AES-256-GCM crypto encrypt/decrypt round-trip produces distinct IVs and recovers plaintext', () => {
+  const secret = 'test-encryption-secret-key-for-sprint-2';
+  const sessionPayload = JSON.stringify({
+    google: {
+      refreshToken: '1//0g_sample_refresh_token',
+      accessToken: 'ya29.sample_access_token',
+      accessTokenExpiry: 1792281600000,
+      email: 'analyst@convay.com',
+      ga4Property: { id: '44981234', name: 'Convay Web' },
+      searchConsoleSite: { url: 'sc-domain:convay.com' },
+    },
+  });
+
+  const encrypted1 = encryptPayload(sessionPayload, secret);
+  const encrypted2 = encryptPayload(sessionPayload, secret);
+
+  // Random IV per encryption means two encryptions of identical plaintext differ
+  assert.notEqual(encrypted1, encrypted2);
+
+  // Token must be base64url encoded and under 4 KB
+  assert.match(encrypted1, /^[A-Za-z0-9_-]+$/);
+  assert.ok(Buffer.byteLength(encrypted1, 'utf8') < 4000);
+
+  // Round-trip decryption recovers exact JSON
+  assert.equal(decryptPayload(encrypted1, secret), sessionPayload);
+  assert.equal(decryptPayload(encrypted2, secret), sessionPayload);
+});
+
+test('AES-256-GCM decrypt rejects tampered ciphertext, tampered auth tag, and wrong key', () => {
+  const secret = 'test-encryption-secret-key-for-sprint-2';
+  const plaintext = JSON.stringify({ google: { email: 'analyst@convay.com' } });
+  const token = encryptPayload(plaintext, secret);
+
+  // Wrong key must fail
+  assert.throws(() => {
+    decryptPayload(token, 'wrong-secret-key');
+  });
+
+  // Tamper with a byte in the middle (auth tag / ciphertext)
+  const raw = Buffer.from(token, 'base64url');
+  raw[20] ^= 0xff;
+  const tamperedToken = raw.toString('base64url');
+
+  assert.throws(() => {
+    decryptPayload(tamperedToken, secret);
+  });
+
+  // Truncated token must fail
+  assert.throws(() => {
+    decryptPayload('abc', secret);
+  });
 });
