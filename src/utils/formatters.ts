@@ -1,4 +1,4 @@
-import type { CurrencyCode } from '../types';
+import type { CurrencyCode } from '../types/index.js';
 
 export const USD_TO_BDT_RATE = 120;
 

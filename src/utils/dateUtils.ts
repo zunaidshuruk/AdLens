@@ -1,4 +1,4 @@
-import type { ComputedDateRange, CustomDateInput, DatePreset } from '../types';
+import type { ComputedDateRange, CustomDateInput, DatePreset } from '../types/index.js';
 
 export const DATE_PRESETS: DatePreset[] = [
   'Today',

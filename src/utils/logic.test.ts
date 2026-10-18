@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_NAME, TRACKED_SITE } from '../config/app.ts';
+import { APP_NAME, TRACKED_SITE } from '../config/app.js';
 import {
   addDays,
   computeDateRange,
   DATE_PRESETS,
   daysBetweenInclusive,
   getTodayInTimezone,
-} from './dateUtils.ts';
+} from './dateUtils.js';
 import {
   calculatePercentChange,
   evaluateChangeSentiment,
@@ -15,9 +15,9 @@ import {
   formatCurrency,
   formatNumber,
   formatPercent,
-} from './formatters.ts';
-import { adapters, setGA4LiveMode, setSourceLiveMode } from '../adapters';
-import { decryptPayload, encryptPayload } from '../../server/lib/crypto';
+} from './formatters.js';
+import { adapters, setGA4LiveMode, setSourceLiveMode } from '../adapters/index.js';
+import { decryptPayload, encryptPayload } from '../../server/lib/crypto.js';
 import {
   formatGA4Date,
   mapGA4AcquisitionResponse,
@@ -26,7 +26,7 @@ import {
   mapGA4OverviewResponse,
   mapGA4TopPagesResponse,
   mapGA4TrafficOverTimeResponse,
-} from '../../server/lib/ga4Mapper';
+} from '../../server/lib/ga4Mapper.js';
 import {
   alpha3ToCountryName,
   computeImpressionWeightedPosition,
@@ -36,7 +36,7 @@ import {
   mapSearchConsolePerformanceOverTimeResponse,
   mapSearchConsoleTopPagesResponse,
   mapSearchConsoleTopQueriesResponse,
-} from '../../server/lib/searchConsoleMapper';
+} from '../../server/lib/searchConsoleMapper.js';
 
 test('config constants are defined cleanly', () => {
   assert.ok(APP_NAME.length > 0);
@@ -368,9 +368,9 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
   process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-3';
   process.env.APP_BASE_URL = 'http://localhost:3000';
 
-  const { app } = await import('../../server/index.ts');
-  const { clearGA4Cache } = await import('../../server/routes/ga4.ts');
-  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.ts');
+  const { app } = await import('../../server/index.js');
+  const { clearGA4Cache } = await import('../../server/routes/ga4.js');
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
 
   clearGA4Cache();
   const server = app.listen(0);
@@ -687,12 +687,12 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
   process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-4';
   process.env.APP_BASE_URL = 'http://localhost:3000';
 
-  const vercelAppModule = await import('../../api/index');
-  const { app } = await import('../../server/app');
+  const vercelAppModule = await import('../../api/index.js');
+  const { app } = await import('../../server/app.js');
   assert.equal(vercelAppModule.default, app, 'api/index.ts exports the Express app as default');
 
-  const { clearSearchConsoleCache } = await import('../../server/routes/searchConsole');
-  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session');
+  const { clearSearchConsoleCache } = await import('../../server/routes/searchConsole.js');
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
 
   clearSearchConsoleCache();
   const server = app.listen(0);

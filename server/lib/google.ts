@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
-import { getServerConfig } from '../config';
-import { type SessionData, writeSession } from './session';
+import { getServerConfig } from '../config.js';
+import { type SessionData, writeSession } from './session.js';
 
 export class GoogleApiError extends Error {
   code: string;

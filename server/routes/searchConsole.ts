@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import type { SearchConsoleSiteInfo } from '../../src/types';
-import { requireGoogleConfigured } from '../config';
-import { getValidAccessToken, GoogleApiError } from '../lib/google';
+import type { SearchConsoleSiteInfo } from '../../src/types/index.js';
+import { requireGoogleConfigured } from '../config.js';
+import { getValidAccessToken, GoogleApiError } from '../lib/google.js';
 import {
   type SearchConsoleQueryResponse,
   mapSearchConsoleCountriesResponse,
@@ -10,9 +10,9 @@ import {
   mapSearchConsolePerformanceOverTimeResponse,
   mapSearchConsoleTopPagesResponse,
   mapSearchConsoleTopQueriesResponse,
-} from '../lib/searchConsoleMapper';
-import { readSession } from '../lib/session';
-import { googleRateLimitMiddleware } from './connections';
+} from '../lib/searchConsoleMapper.js';
+import { readSession } from '../lib/session.js';
+import { googleRateLimitMiddleware } from './connections.js';
 
 export const searchConsoleRouter = Router();
 

@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import type { GA4PropertyInfo } from '../../src/types';
-import { requireGoogleConfigured } from '../config';
+import type { GA4PropertyInfo } from '../../src/types/index.js';
+import { requireGoogleConfigured } from '../config.js';
 import {
   type GA4RunReportResponse,
   mapGA4AcquisitionResponse,
@@ -9,10 +9,10 @@ import {
   mapGA4OverviewResponse,
   mapGA4TopPagesResponse,
   mapGA4TrafficOverTimeResponse,
-} from '../lib/ga4Mapper';
-import { getValidAccessToken, GoogleApiError } from '../lib/google';
-import { readSession } from '../lib/session';
-import { googleRateLimitMiddleware } from './connections';
+} from '../lib/ga4Mapper.js';
+import { getValidAccessToken, GoogleApiError } from '../lib/google.js';
+import { readSession } from '../lib/session.js';
+import { googleRateLimitMiddleware } from './connections.js';
 
 export const ga4Router = Router();
 

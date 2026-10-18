@@ -6,7 +6,7 @@ import {
   matchAiAssistant,
   normalizeSource,
   summarizeAiReferrals,
-} from './sourceGroups.ts';
+} from './sourceGroups.js';
 
 test('normalizeSource strips protocol, www, mobile prefixes and paths', () => {
   assert.equal(normalizeSource('https://www.ChatGPT.com/c/abc'), 'chatgpt.com');

@@ -1,6 +1,6 @@
 import type { CookieOptions, Request, Response } from 'express';
-import { getServerConfig } from '../config';
-import { decryptPayload, encryptPayload } from './crypto';
+import { getServerConfig } from '../config.js';
+import { decryptPayload, encryptPayload } from './crypto.js';
 
 export const SESSION_COOKIE_NAME = 'adlens_session';
 export const OAUTH_STATE_COOKIE_NAME = 'adlens_oauth_state';

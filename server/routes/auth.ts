@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { getServerConfig, requireGoogleConfigured } from '../config';
-import { createOAuthClient, GOOGLE_OAUTH_SCOPES } from '../lib/google';
+import { getServerConfig, requireGoogleConfigured } from '../config.js';
+import { createOAuthClient, GOOGLE_OAUTH_SCOPES } from '../lib/google.js';
 import {
   clearSession,
   getSessionCookieOptions,
@@ -9,7 +9,7 @@ import {
   OAUTH_STATE_MAX_AGE_MS,
   readSession,
   writeSession,
-} from '../lib/session';
+} from '../lib/session.js';
 
 export const authRouter = Router();
 

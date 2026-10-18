@@ -5,9 +5,9 @@ import type {
   SearchConsolePageRow,
   SearchConsolePerformancePoint,
   SearchConsoleQueryRow,
-} from '../../src/types';
-import { enumerateDates } from '../../src/utils/dateUtils';
-import { calculatePercentChange } from '../../src/utils/formatters';
+} from '../../src/types/index.js';
+import { enumerateDates } from '../../src/utils/dateUtils.js';
+import { calculatePercentChange } from '../../src/utils/formatters.js';
 
 export interface SearchConsoleApiRow {
   keys?: string[];

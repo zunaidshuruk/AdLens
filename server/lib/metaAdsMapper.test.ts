@@ -13,7 +13,7 @@ import {
   mapObjective,
   mapStatus,
   summarizeTargeting,
-} from './metaAdsMapper.ts';
+} from './metaAdsMapper.js';
 
 test('extractLeads: "lead" total is never double-counted with its components', () => {
   assert.equal(

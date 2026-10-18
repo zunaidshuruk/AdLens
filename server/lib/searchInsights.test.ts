@@ -6,8 +6,8 @@ import {
   findOpportunities,
   groupQueriesIntoTopics,
   typicalCtr,
-} from './searchInsights.ts';
-import { buildHostBreakdown, normalizeHost } from './hostBreakdown.ts';
+} from './searchInsights.js';
+import { buildHostBreakdown, normalizeHost } from './hostBreakdown.js';
 
 test('typicalCtr interpolates between positions and clamps at the ends', () => {
   assert.equal(typicalCtr(1), 28);

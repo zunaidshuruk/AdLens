@@ -2,11 +2,11 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { authRouter } from './routes/auth';
-import { connectionsRouter, googleApiRouter } from './routes/connections';
-import { ga4Router } from './routes/ga4';
-import { healthRouter } from './routes/health';
-import { searchConsoleRouter } from './routes/searchConsole';
+import { authRouter } from './routes/auth.js';
+import { connectionsRouter, googleApiRouter } from './routes/connections.js';
+import { ga4Router } from './routes/ga4.js';
+import { healthRouter } from './routes/health.js';
+import { searchConsoleRouter } from './routes/searchConsole.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

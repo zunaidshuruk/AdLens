@@ -23,9 +23,9 @@ import type {
   MetaEntityMetrics,
   MetaSpendPoint,
   MetricWithComparison,
-} from '../../src/types/index.ts';
-import { enumerateDates } from '../../src/utils/dateUtils.ts';
-import { calculatePercentChange } from '../../src/utils/formatters.ts';
+} from '../../src/types/index.js';
+import { enumerateDates } from '../../src/utils/dateUtils.js';
+import { calculatePercentChange } from '../../src/utils/formatters.js';
 
 // ---------------------------------------------------------------------------
 // Raw Graph API shapes (only the fields AdLens requests)
