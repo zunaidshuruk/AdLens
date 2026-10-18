@@ -1,15 +1,30 @@
 import type {
   GA4AcquisitionReport,
+  GA4AiDatePoint,
+  GA4AiTrafficReport,
   GA4CampaignRow,
   GA4ChannelRow,
   GA4ConversionEventRow,
   GA4CountryRow,
   GA4Overview,
   GA4PageRow,
+  GA4SourceGroupRow,
+  GA4SourceGroupsReport,
+  GA4TrafficBreakdownDimension,
+  GA4TrafficBreakdownRow,
   GA4TrafficPoint,
 } from '../../src/types/index.js';
 import { enumerateDates } from '../../src/utils/dateUtils.js';
 import { calculatePercentChange } from '../../src/utils/formatters.js';
+import {
+  aggregateBySourceGroup,
+  AI_ASSISTANTS,
+  AI_DOMAIN_LIST_VERSION,
+  matchAiAssistant,
+  SOURCE_GROUP_RULES,
+  type SourceMetricsRow,
+  summarizeAiReferrals,
+} from './sourceGroups.js';
 
 export interface GA4RunReportResponse {
   dimensionHeaders?: { name?: string }[];
@@ -433,3 +448,392 @@ export function mapGA4ConversionsResponse(report: GA4RunReportResponse): GA4Conv
 
   return results.sort((a, b) => b.count - a.count);
 }
+
+export const AI_TRAFFIC_LIMITATION_NOTE =
+  'AI visits without a referrer or UTM tag are counted as Direct / unknown, so real AI traffic may be higher.';
+
+interface ParsedBreakdownMetrics {
+  sessions: number;
+  activeUsers: number;
+  newUsers: number;
+  engagedSessions: number;
+  engagementRate: number;
+  keyEvents: number;
+  avgEngagementTimeSec: number;
+}
+
+const ZERO_BREAKDOWN_METRICS: ParsedBreakdownMetrics = {
+  sessions: 0,
+  activeUsers: 0,
+  newUsers: 0,
+  engagedSessions: 0,
+  engagementRate: 0,
+  keyEvents: 0,
+  avgEngagementTimeSec: 0,
+};
+
+function parseBreakdownMetrics(
+  mets: { value?: string }[] | undefined
+): ParsedBreakdownMetrics {
+  const sessions = Math.round(toNum(mets?.[0]?.value));
+  const activeUsers = Math.round(toNum(mets?.[1]?.value));
+  const newUsers = Math.round(toNum(mets?.[2]?.value));
+  const engagedSessions = Math.round(toNum(mets?.[3]?.value));
+  const engagementRate = toPercentage(toNum(mets?.[4]?.value), 1);
+  const keyEvents = Math.round(toNum(mets?.[5]?.value));
+  const userEngagementDuration = toNum(mets?.[6]?.value);
+  const avgEngagementTimeSec =
+    activeUsers > 0 ? Math.round(userEngagementDuration / activeUsers) : 0;
+
+  return {
+    sessions,
+    activeUsers,
+    newUsers,
+    engagedSessions,
+    engagementRate,
+    keyEvents,
+    avgEngagementTimeSec,
+  };
+}
+
+function buildBreakdownRow(
+  dimensionValue: string,
+  curr: ParsedBreakdownMetrics,
+  prev: ParsedBreakdownMetrics,
+  totalSessions: number,
+  compareDate?: string
+): GA4TrafficBreakdownRow {
+  const sessionsChangePercent = calculatePercentChange(curr.sessions, prev.sessions);
+  return {
+    dimensionValue,
+    ...(compareDate ? { compareDate } : {}),
+    sessions: curr.sessions,
+    previousSessions: prev.sessions,
+    sessionsChangePercent,
+    activeUsers: curr.activeUsers,
+    previousActiveUsers: prev.activeUsers,
+    activeUsersChangePercent: calculatePercentChange(curr.activeUsers, prev.activeUsers),
+    newUsers: curr.newUsers,
+    previousNewUsers: prev.newUsers,
+    newUsersChangePercent: calculatePercentChange(curr.newUsers, prev.newUsers),
+    engagedSessions: curr.engagedSessions,
+    previousEngagedSessions: prev.engagedSessions,
+    engagedSessionsChangePercent: calculatePercentChange(
+      curr.engagedSessions,
+      prev.engagedSessions
+    ),
+    engagementRate: curr.engagementRate,
+    previousEngagementRate: prev.engagementRate,
+    engagementRateChangePercent: calculatePercentChange(curr.engagementRate, prev.engagementRate),
+    keyEvents: curr.keyEvents,
+    previousKeyEvents: prev.keyEvents,
+    keyEventsChangePercent: calculatePercentChange(curr.keyEvents, prev.keyEvents),
+    avgEngagementTimeSec: curr.avgEngagementTimeSec,
+    previousAvgEngagementTimeSec: prev.avgEngagementTimeSec,
+    avgEngagementTimeChangePercent: calculatePercentChange(
+      curr.avgEngagementTimeSec,
+      prev.avgEngagementTimeSec
+    ),
+    sharePercent:
+      totalSessions > 0 ? Number(((curr.sessions / totalSessions) * 100).toFixed(1)) : 0,
+    changePercent: sessionsChangePercent,
+  };
+}
+
+/**
+ * Maps GA4 runReport response for ga4.trafficBreakdown into GA4TrafficBreakdownRow[].
+ * Metrics order:
+ * 0: sessions, 1: activeUsers, 2: newUsers, 3: engagedSessions, 4: engagementRate, 5: keyEvents, 6: userEngagementDuration
+ */
+export function mapGA4TrafficBreakdownResponse(
+  report: GA4RunReportResponse,
+  dimension: GA4TrafficBreakdownDimension,
+  startDate: string,
+  endDate: string,
+  compareStartDate?: string,
+  compareEndDate?: string,
+  limit: number = 50
+): GA4TrafficBreakdownRow[] {
+  const dimHeaders = report.dimensionHeaders ?? [];
+  const dateRangeIdx = dimHeaders.findIndex((d) => d.name === 'dateRange');
+
+  const currentMap = new Map<string, ParsedBreakdownMetrics>();
+  const previousMap = new Map<string, ParsedBreakdownMetrics>();
+
+  for (const row of report.rows ?? []) {
+    const dims = row.dimensionValues ?? [];
+    const mets = row.metricValues ?? [];
+    const rangeTag = dateRangeIdx >= 0 ? dims[dateRangeIdx]?.value : 'current';
+
+    let dimValue = '';
+    if (dimension === 'sourceMedium') {
+      const source = dims[0]?.value || '(direct)';
+      const medium = dims[1]?.value || '(none)';
+      dimValue = `${source} / ${medium}`;
+    } else if (dimension === 'date') {
+      dimValue = formatGA4Date(dims[0]?.value ?? '');
+    } else {
+      dimValue = dims[0]?.value || '(not set)';
+    }
+
+    if (!dimValue) continue;
+    const parsed = parseBreakdownMetrics(mets);
+
+    if (isPreviousRangeTag(rangeTag)) {
+      previousMap.set(dimValue, parsed);
+    } else if (isCurrentRangeTag(rangeTag)) {
+      currentMap.set(dimValue, parsed);
+    }
+  }
+
+  if (dimension === 'date') {
+    const currentDates = enumerateDates(startDate, endDate);
+    const compareDates =
+      compareStartDate && compareEndDate ? enumerateDates(compareStartDate, compareEndDate) : [];
+    const totalCurrentSessions = currentDates.reduce(
+      (sum, d) => sum + (currentMap.get(d)?.sessions ?? 0),
+      0
+    );
+
+    return currentDates.map((date, idx) => {
+      const curr = currentMap.get(date) ?? ZERO_BREAKDOWN_METRICS;
+      const compareDate = compareDates[idx];
+      const prev =
+        (compareDate ? previousMap.get(compareDate) : previousMap.get(date)) ??
+        ZERO_BREAKDOWN_METRICS;
+      return buildBreakdownRow(date, curr, prev, totalCurrentSessions, compareDate);
+    });
+  }
+
+  const allKeys = new Set<string>([...currentMap.keys()]);
+  let totalCurrentSessions = 0;
+  for (const m of currentMap.values()) {
+    totalCurrentSessions += m.sessions;
+  }
+
+  const rows: GA4TrafficBreakdownRow[] = [];
+  for (const key of allKeys) {
+    const curr = currentMap.get(key) ?? ZERO_BREAKDOWN_METRICS;
+    const prev = previousMap.get(key) ?? ZERO_BREAKDOWN_METRICS;
+    rows.push(buildBreakdownRow(key, curr, prev, totalCurrentSessions));
+  }
+
+  return rows.sort((a, b) => b.sessions - a.sessions).slice(0, limit);
+}
+
+/**
+ * Maps GA4 runReport response for ga4.sourceGroups into GA4SourceGroupsReport.
+ * Dimensions: 0: sessionSource, 1: sessionMedium, 2: sessionDefaultChannelGroup, optional dateRange
+ * Metrics: 0: sessions, 1: engagedSessions, 2: keyEvents
+ */
+export function mapGA4SourceGroupsResponse(report: GA4RunReportResponse): GA4SourceGroupsReport {
+  const dimHeaders = report.dimensionHeaders ?? [];
+  const dateRangeIdx = dimHeaders.findIndex((d) => d.name === 'dateRange');
+
+  const currentRows: SourceMetricsRow[] = [];
+  const previousRows: SourceMetricsRow[] = [];
+
+  for (const row of report.rows ?? []) {
+    const dims = row.dimensionValues ?? [];
+    const mets = row.metricValues ?? [];
+    const rangeTag = dateRangeIdx >= 0 ? dims[dateRangeIdx]?.value : 'current';
+
+    const item: SourceMetricsRow = {
+      source: dims[0]?.value || '(direct)',
+      medium: dims[1]?.value || '(none)',
+      channelGroup: dims[2]?.value || '',
+      sessions: Math.round(toNum(mets[0]?.value)),
+      engagedSessions: Math.round(toNum(mets[1]?.value)),
+      keyEvents: Math.round(toNum(mets[2]?.value)),
+    };
+
+    if (isPreviousRangeTag(rangeTag)) {
+      previousRows.push(item);
+    } else if (isCurrentRangeTag(rangeTag)) {
+      currentRows.push(item);
+    }
+  }
+
+  const currGroups = aggregateBySourceGroup(currentRows);
+  const prevGroups = aggregateBySourceGroup(previousRows);
+  const prevByGroup = new Map(prevGroups.map((g) => [g.group, g]));
+
+  const totalSessions = currGroups.reduce((s, g) => s + g.sessions, 0);
+  const previousTotalSessions = prevGroups.reduce((s, g) => s + g.sessions, 0);
+
+  const groups: GA4SourceGroupRow[] = currGroups.map((g) => {
+    const prevSessions = prevByGroup.get(g.group)?.sessions ?? 0;
+    return {
+      ...g,
+      previousSessions: prevSessions,
+      changePercent: calculatePercentChange(g.sessions, prevSessions),
+    };
+  });
+
+  return {
+    totalSessions,
+    previousTotalSessions,
+    groups,
+    rules: [...SOURCE_GROUP_RULES],
+  };
+}
+
+/**
+ * Maps GA4 runReport responses for ga4.aiTraffic into GA4AiTrafficReport.
+ * Double-checks every row with matchAiAssistant() and zero-fills byDate across [startDate..endDate].
+ */
+export function mapGA4AiTrafficResponse(
+  pagesReport: GA4RunReportResponse,
+  dateReport: GA4RunReportResponse,
+  totalsReport: GA4RunReportResponse,
+  startDate: string,
+  endDate: string,
+  compareStartDate?: string,
+  compareEndDate?: string
+): GA4AiTrafficReport {
+  // 1. Unfiltered total sessions for current and previous periods
+  const totalDimHeaders = totalsReport.dimensionHeaders ?? [];
+  const totalRangeIdx = totalDimHeaders.findIndex((d) => d.name === 'dateRange');
+  let currentTotalSessions = 0;
+  let previousTotalSessions = 0;
+
+  for (const row of totalsReport.rows ?? []) {
+    const dims = row.dimensionValues ?? [];
+    const mets = row.metricValues ?? [];
+    const rangeTag = totalRangeIdx >= 0 ? dims[totalRangeIdx]?.value : 'current';
+    const sessions = Math.round(toNum(mets[0]?.value));
+    if (isPreviousRangeTag(rangeTag)) {
+      previousTotalSessions += sessions;
+    } else if (isCurrentRangeTag(rangeTag)) {
+      currentTotalSessions += sessions;
+    }
+  }
+
+  // 2. Query (a): sessionSource + landingPage with sessions, activeUsers, newUsers, engagedSessions, keyEvents
+  const pagesDimHeaders = pagesReport.dimensionHeaders ?? [];
+  const pagesRangeIdx = pagesDimHeaders.findIndex((d) => d.name === 'dateRange');
+  const currentPageRows: SourceMetricsRow[] = [];
+  const previousPageRows: SourceMetricsRow[] = [];
+
+  for (const row of pagesReport.rows ?? []) {
+    const dims = row.dimensionValues ?? [];
+    const mets = row.metricValues ?? [];
+    const source = dims[0]?.value || '';
+    // Double-check with matchAiAssistant after GA4's regex
+    if (!matchAiAssistant(source)) continue;
+
+    const landingPage = dims[1]?.value || '/';
+    const rangeTag = pagesRangeIdx >= 0 ? dims[pagesRangeIdx]?.value : 'current';
+
+    const item: SourceMetricsRow = {
+      source,
+      medium: 'referral',
+      landingPage,
+      sessions: Math.round(toNum(mets[0]?.value)),
+      activeUsers: Math.round(toNum(mets[1]?.value)),
+      newUsers: Math.round(toNum(mets[2]?.value)),
+      engagedSessions: Math.round(toNum(mets[3]?.value)),
+      keyEvents: Math.round(toNum(mets[4]?.value)),
+    };
+
+    if (isPreviousRangeTag(rangeTag)) {
+      previousPageRows.push(item);
+    } else if (isCurrentRangeTag(rangeTag)) {
+      currentPageRows.push(item);
+    }
+  }
+
+  const currSummary = summarizeAiReferrals(currentPageRows, currentTotalSessions);
+  const prevSummary = summarizeAiReferrals(previousPageRows, previousTotalSessions);
+
+  // 3. Query (b): sessionSource + date with sessions
+  const dateDimHeaders = dateReport.dimensionHeaders ?? [];
+  const dateRangeIdx = dateDimHeaders.findIndex((d) => d.name === 'dateRange');
+  const currentDateRows: SourceMetricsRow[] = [];
+  const previousDateRows: SourceMetricsRow[] = [];
+
+  for (const row of dateReport.rows ?? []) {
+    const dims = row.dimensionValues ?? [];
+    const mets = row.metricValues ?? [];
+    const source = dims[0]?.value || '';
+    if (!matchAiAssistant(source)) continue;
+
+    const isoDate = formatGA4Date(dims[1]?.value ?? '');
+    if (!isoDate) continue;
+
+    const rangeTag = dateRangeIdx >= 0 ? dims[dateRangeIdx]?.value : 'current';
+    const item: SourceMetricsRow = {
+      source,
+      medium: 'referral',
+      date: isoDate,
+      sessions: Math.round(toNum(mets[0]?.value)),
+      engagedSessions: 0,
+      keyEvents: 0,
+    };
+
+    if (isPreviousRangeTag(rangeTag)) {
+      previousDateRows.push(item);
+    } else if (isCurrentRangeTag(rangeTag)) {
+      currentDateRows.push(item);
+    }
+  }
+
+  const currDateSummary = summarizeAiReferrals(currentDateRows, currentTotalSessions);
+  const prevDateSummary = summarizeAiReferrals(previousDateRows, previousTotalSessions);
+  const currByDateMap = new Map(currDateSummary.byDate.map((d) => [d.date, d.sessions]));
+  const prevByDateMap = new Map(prevDateSummary.byDate.map((d) => [d.date, d.sessions]));
+
+  const currentDates = enumerateDates(startDate, endDate);
+  const compareDates =
+    compareStartDate && compareEndDate ? enumerateDates(compareStartDate, compareEndDate) : [];
+
+  const byDate: GA4AiDatePoint[] = currentDates.map((date, idx) => {
+    const compareDate = compareDates[idx];
+    return {
+      date,
+      ...(compareDate ? { compareDate } : {}),
+      sessions: currByDateMap.get(date) ?? 0,
+      previousSessions: compareDate ? prevByDateMap.get(compareDate) ?? 0 : 0,
+    };
+  });
+
+  const aiKeyEvents = currSummary.byAssistant.reduce((sum, a) => sum + a.keyEvents, 0);
+  const previousAiKeyEvents = prevSummary.byAssistant.reduce((sum, a) => sum + a.keyEvents, 0);
+  const aiKeyEventRate =
+    currSummary.aiSessions > 0 ? Math.round((aiKeyEvents / currSummary.aiSessions) * 1000) / 10 : 0;
+  const previousAiKeyEventRate =
+    prevSummary.aiSessions > 0
+      ? Math.round((previousAiKeyEvents / prevSummary.aiSessions) * 1000) / 10
+      : 0;
+
+  return {
+    listVersion: AI_DOMAIN_LIST_VERSION,
+    note: AI_TRAFFIC_LIMITATION_NOTE,
+    trackedAssistants: AI_ASSISTANTS.map((a) => ({
+      name: a.name,
+      domains: [...a.domains],
+      ...(a.aliases ? { aliases: [...a.aliases] } : {}),
+    })),
+    totalSessions: currSummary.totalSessions,
+    previousTotalSessions: prevSummary.totalSessions,
+    aiSessions: currSummary.aiSessions,
+    previousAiSessions: prevSummary.aiSessions,
+    aiSessionsChangePercent: calculatePercentChange(currSummary.aiSessions, prevSummary.aiSessions),
+    aiSharePercent: currSummary.aiSharePercent,
+    previousAiSharePercent: prevSummary.aiSharePercent,
+    aiShareChangePercent: calculatePercentChange(
+      currSummary.aiSharePercent,
+      prevSummary.aiSharePercent
+    ),
+    aiKeyEvents,
+    previousAiKeyEvents,
+    aiKeyEventsChangePercent: calculatePercentChange(aiKeyEvents, previousAiKeyEvents),
+    aiKeyEventRate,
+    previousAiKeyEventRate,
+    aiKeyEventRateChangePercent: calculatePercentChange(aiKeyEventRate, previousAiKeyEventRate),
+    byAssistant: currSummary.byAssistant,
+    byLandingPage: currSummary.byLandingPage,
+    byDate,
+  };
+}
+

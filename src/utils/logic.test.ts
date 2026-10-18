@@ -21,10 +21,13 @@ import { decryptPayload, encryptPayload } from '../../server/lib/crypto.js';
 import {
   formatGA4Date,
   mapGA4AcquisitionResponse,
+  mapGA4AiTrafficResponse,
   mapGA4CampaignsResponse,
   mapGA4ConversionsResponse,
   mapGA4OverviewResponse,
+  mapGA4SourceGroupsResponse,
   mapGA4TopPagesResponse,
+  mapGA4TrafficBreakdownResponse,
   mapGA4TrafficOverTimeResponse,
 } from '../../server/lib/ga4Mapper.js';
 import {
@@ -1056,6 +1059,389 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
     server.close();
   }
 });
+
+test('trafficBreakdown mapper computes comparison deltas, avg engagement time per active user, and zero-fills date dimension', () => {
+  // 1. Source/medium breakdown with comparison
+  const smReport = {
+    dimensionHeaders: [
+      { name: 'sessionSource' },
+      { name: 'sessionMedium' },
+      { name: 'dateRange' },
+    ],
+    rows: [
+      {
+        dimensionValues: [
+          { value: 'google' },
+          { value: 'organic' },
+          { value: 'current' },
+        ],
+        metricValues: [
+          { value: '300' }, // sessions
+          { value: '200' }, // activeUsers
+          { value: '150' }, // newUsers
+          { value: '210' }, // engagedSessions
+          { value: '0.70' }, // engagementRate
+          { value: '18' }, // keyEvents
+          { value: '36000' }, // userEngagementDuration -> 180s per activeUser
+        ],
+      },
+      {
+        dimensionValues: [
+          { value: 'google' },
+          { value: 'organic' },
+          { value: 'previous' },
+        ],
+        metricValues: [
+          { value: '200' },
+          { value: '160' },
+          { value: '120' },
+          { value: '130' },
+          { value: '0.65' },
+          { value: '12' },
+          { value: '24000' }, // 150s per activeUser
+        ],
+      },
+      {
+        dimensionValues: [
+          { value: 'chatgpt.com' },
+          { value: 'referral' },
+          { value: 'current' },
+        ],
+        metricValues: [
+          { value: '100' },
+          { value: '80' },
+          { value: '60' },
+          { value: '75' },
+          { value: '0.75' },
+          { value: '8' },
+          { value: '16000' }, // 200s
+        ],
+      },
+    ],
+  };
+
+  const smRows = mapGA4TrafficBreakdownResponse(
+    smReport,
+    'sourceMedium',
+    '2026-10-08',
+    '2026-10-10',
+    '2026-10-05',
+    '2026-10-07'
+  );
+  assert.equal(smRows.length, 2);
+  assert.equal(smRows[0].dimensionValue, 'google / organic');
+  assert.equal(smRows[0].sessions, 300);
+  assert.equal(smRows[0].previousSessions, 200);
+  assert.equal(smRows[0].sessionsChangePercent, 50);
+  assert.equal(smRows[0].avgEngagementTimeSec, 180);
+  assert.equal(smRows[0].previousAvgEngagementTimeSec, 150);
+  assert.equal(smRows[0].sharePercent, 75);
+
+  // 2. Date dimension zero-fills missing days and aligns previous period by position
+  const dateReport = {
+    dimensionHeaders: [{ name: 'date' }, { name: 'dateRange' }],
+    rows: [
+      {
+        dimensionValues: [{ value: '20261008' }, { value: 'current' }],
+        metricValues: [
+          { value: '120' },
+          { value: '100' },
+          { value: '70' },
+          { value: '80' },
+          { value: '0.667' },
+          { value: '6' },
+          { value: '15000' },
+        ],
+      },
+      {
+        dimensionValues: [{ value: '20261010' }, { value: 'current' }],
+        metricValues: [
+          { value: '180' },
+          { value: '150' },
+          { value: '90' },
+          { value: '120' },
+          { value: '0.667' },
+          { value: '9' },
+          { value: '22500' },
+        ],
+      },
+      {
+        dimensionValues: [{ value: '20261005' }, { value: 'previous' }],
+        metricValues: [
+          { value: '100' },
+          { value: '80' },
+          { value: '50' },
+          { value: '60' },
+          { value: '0.6' },
+          { value: '4' },
+          { value: '12000' },
+        ],
+      },
+    ],
+  };
+
+  const dateRows = mapGA4TrafficBreakdownResponse(
+    dateReport,
+    'date',
+    '2026-10-08',
+    '2026-10-10',
+    '2026-10-05',
+    '2026-10-07'
+  );
+  assert.equal(dateRows.length, 3);
+  assert.equal(dateRows[0].dimensionValue, '2026-10-08');
+  assert.equal(dateRows[0].compareDate, '2026-10-05');
+  assert.equal(dateRows[0].sessions, 120);
+  assert.equal(dateRows[0].previousSessions, 100);
+  assert.equal(dateRows[0].sessionsChangePercent, 20);
+
+  // Middle day (2026-10-09) is zero-filled
+  assert.equal(dateRows[1].dimensionValue, '2026-10-09');
+  assert.equal(dateRows[1].compareDate, '2026-10-06');
+  assert.equal(dateRows[1].sessions, 0);
+  assert.equal(dateRows[1].previousSessions, 0);
+});
+
+test('sourceGroups and aiTraffic mappers and mock adapter preserve session totals and classify paid Meta and AI sources properly', async () => {
+  const sgReport = mapGA4SourceGroupsResponse({
+    dimensionHeaders: [
+      { name: 'sessionSource' },
+      { name: 'sessionMedium' },
+      { name: 'sessionDefaultChannelGroup' },
+      { name: 'dateRange' },
+    ],
+    rows: [
+      {
+        dimensionValues: [
+          { value: 'meta' },
+          { value: 'paid_social' },
+          { value: 'Paid Social' },
+          { value: 'current' },
+        ],
+        metricValues: [{ value: '400' }, { value: '250' }, { value: '20' }],
+      },
+      {
+        dimensionValues: [
+          { value: 'facebook' },
+          { value: 'cpc' },
+          { value: 'Paid Social' },
+          { value: 'current' },
+        ],
+        metricValues: [{ value: '100' }, { value: '60' }, { value: '5' }],
+      },
+      {
+        dimensionValues: [
+          { value: 'chatgpt.com' },
+          { value: 'referral' },
+          { value: 'Referral' },
+          { value: 'current' },
+        ],
+        metricValues: [{ value: '50' }, { value: '40' }, { value: '4' }],
+      },
+    ],
+  });
+
+  assert.equal(sgReport.totalSessions, 550);
+  const sumGroupSessions = sgReport.groups.reduce((s, g) => s + g.sessions, 0);
+  assert.equal(sumGroupSessions, sgReport.totalSessions);
+  const paidGroup = sgReport.groups.find((g) => g.group === 'Paid');
+  assert.equal(paidGroup?.sessions, 500, 'Paid Meta traffic (paid_social and cpc) lands in Paid');
+  const aiGroup = sgReport.groups.find((g) => g.group === 'AI assistants');
+  assert.equal(aiGroup?.sessions, 50);
+  assert.ok(sgReport.rules.length >= 8);
+
+  // Verify mock GA4 adapter sourceGroups and aiTraffic
+  setSourceLiveMode('ga4', false);
+  const range = computeDateRange('Last 28 days');
+  const [mockOverview, mockSourceGroups, mockAiTraffic] = await Promise.all([
+    adapters.ga4.getOverview(range),
+    adapters.ga4.getSourceGroups(range),
+    adapters.ga4.getAiTraffic(range),
+  ]);
+
+  const mockGroupSum = mockSourceGroups.groups.reduce((s, g) => s + g.sessions, 0);
+  assert.equal(mockGroupSum, mockSourceGroups.totalSessions);
+  assert.equal(mockSourceGroups.totalSessions, mockOverview.sessions.value);
+  assert.ok(
+    mockAiTraffic.aiSharePercent >= 1 && mockAiTraffic.aiSharePercent <= 4,
+    `Expected mock AI share between 1% and 4%, got ${mockAiTraffic.aiSharePercent}%`
+  );
+  assert.equal(
+    mockAiTraffic.note,
+    'AI visits without a referrer or UTM tag are counted as Direct / unknown, so real AI traffic may be higher.'
+  );
+  assert.equal(mockAiTraffic.byDate.length, 28);
+});
+
+test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs and /api/reports + new /api/ga4 routes work', async () => {
+  const { reportRegistry } = await import('../../server/reports/registry.js');
+  await import('../../server/reports/ga4Reports.js');
+  const { app } = await import('../../server/index.js');
+  const { clearGA4Cache } = await import('../../server/routes/ga4.js');
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+
+  const listed = reportRegistry.list();
+  const ids = listed.map((r) => r.id);
+  for (const expectedId of [
+    'ga4.overview',
+    'ga4.trafficOverTime',
+    'ga4.acquisition',
+    'ga4.campaigns',
+    'ga4.topPages',
+    'ga4.conversions',
+    'ga4.propertyInfo',
+    'ga4.trafficBreakdown',
+    'ga4.sourceGroups',
+    'ga4.aiTraffic',
+  ]) {
+    assert.ok(ids.includes(expectedId), `Expected reportRegistry to include "${expectedId}"`);
+    const item = listed.find((r) => r.id === expectedId)!;
+    assert.equal(item.source, 'ga4');
+    assert.ok(item.title.length > 0);
+    assert.ok(item.description.length > 20);
+    assert.equal(item.input.type, 'object');
+  }
+
+  clearGA4Cache();
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-secret-key-sprint-6';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 1. /api/reports without session -> 401 GOOGLE_NOT_CONNECTED
+    const resUnauth = await originalFetch(`${baseUrl}/api/reports`);
+    assert.equal(resUnauth.status, 401);
+
+    const cookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        google: {
+          refreshToken: 'ref-s6',
+          accessToken: 'acc-s6',
+          accessTokenExpiry: Date.now() + 3600_000,
+          email: 'analyst@convay.com',
+          ga4Property: { id: '123456', name: 'Convay GA4' },
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY
+    )}`;
+
+    // 2. /api/reports with Google session -> 200 list of definitions
+    const resReports = await originalFetch(`${baseUrl}/api/reports`, {
+      headers: { Cookie: cookie },
+    });
+    assert.equal(resReports.status, 200);
+    const reportsJson = (await resReports.json()) as { id: string; input: { type: string } }[];
+    assert.ok(reportsJson.length >= 10);
+    assert.ok(reportsJson.some((r) => r.id === 'ga4.trafficBreakdown'));
+
+    // 3. Test /api/ga4/ai-traffic with mocked upstream GA4 runReport
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) return originalFetch(input, init);
+
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        dimensions?: { name: string }[];
+      };
+      const dimNames = (body.dimensions ?? []).map((d) => d.name);
+
+      if (dimNames.includes('landingPage')) {
+        return new Response(
+          JSON.stringify({
+            dimensionHeaders: [
+              { name: 'sessionSource' },
+              { name: 'landingPage' },
+              { name: 'dateRange' },
+            ],
+            rows: [
+              {
+                dimensionValues: [
+                  { value: 'chatgpt.com' },
+                  { value: '/pricing' },
+                  { value: 'current' },
+                ],
+                metricValues: [
+                  { value: '40' },
+                  { value: '32' },
+                  { value: '28' },
+                  { value: '30' },
+                  { value: '4' },
+                ],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (dimNames.includes('date')) {
+        return new Response(
+          JSON.stringify({
+            dimensionHeaders: [{ name: 'sessionSource' }, { name: 'date' }, { name: 'dateRange' }],
+            rows: [
+              {
+                dimensionValues: [
+                  { value: 'chatgpt.com' },
+                  { value: '20261008' },
+                  { value: 'current' },
+                ],
+                metricValues: [{ value: '40' }],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          dimensionHeaders: [{ name: 'dateRange' }],
+          rows: [
+            {
+              dimensionValues: [{ value: 'current' }],
+              metricValues: [{ value: '2000' }],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const resAi = await originalFetch(
+      `${baseUrl}/api/ga4/ai-traffic?startDate=2026-10-08&endDate=2026-10-10`,
+      { headers: { Cookie: cookie } }
+    );
+    assert.equal(resAi.status, 200);
+    assert.equal(resAi.headers.get('x-adlens-cache'), 'false');
+    const aiBody = (await resAi.json()) as {
+      aiSessions: number;
+      totalSessions: number;
+      aiSharePercent: number;
+      byDate: { date: string; sessions: number }[];
+    };
+    assert.equal(aiBody.aiSessions, 40);
+    assert.equal(aiBody.totalSessions, 2000);
+    assert.equal(aiBody.aiSharePercent, 2);
+    assert.equal(aiBody.byDate.length, 3);
+    assert.equal(aiBody.byDate[0].sessions, 40);
+    assert.equal(aiBody.byDate[1].sessions, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    server.close();
+  }
+});
+
 
 
 

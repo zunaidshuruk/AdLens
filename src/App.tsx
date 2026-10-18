@@ -9,6 +9,7 @@ import { Layout } from './components/Layout';
 import { APP_NAME, APP_TAGLINE } from './config/app';
 import { AppProvider } from './context/AppContext';
 import { AIAnalystPage } from './pages/AIAnalystPage';
+import { AITrafficPage } from './pages/AITrafficPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
 import { GA4Page } from './pages/GA4Page';
 import { MetaAdsPage } from './pages/MetaAdsPage';
@@ -28,6 +29,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<OverviewPage />} />
             <Route path="/ga4" element={<GA4Page />} />
+            <Route path="/ai-traffic" element={<AITrafficPage />} />
             <Route path="/search-console" element={<SearchConsolePage />} />
             <Route path="/meta-ads" element={<MetaAdsPage />} />
             <Route path="/ai-analyst" element={<AIAnalystPage />} />

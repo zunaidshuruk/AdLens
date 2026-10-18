@@ -139,7 +139,15 @@ export async function metaGet<T = unknown>(
     let nextUrl = firstPage.paging?.next;
 
     while (nextUrl && accumulated.length < MAX_PAGINATED_ROWS) {
-      const parsedNext = new URL(nextUrl);
+      let parsedNext: URL;
+      try {
+        parsedNext = new URL(nextUrl);
+      } catch {
+        break;
+      }
+      if (parsedNext.hostname !== 'graph.facebook.com') {
+        break;
+      }
       if (!parsedNext.searchParams.has('access_token')) {
         parsedNext.searchParams.set('access_token', cfg.metaAccessToken);
       }

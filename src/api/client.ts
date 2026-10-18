@@ -2,6 +2,7 @@ import type {
   ComputedDateRange,
   ConnectionsResponse,
   GA4AcquisitionReport,
+  GA4AiTrafficReport,
   GA4CampaignRow,
   GA4ConversionEventRow,
   GA4Overview,
@@ -9,6 +10,10 @@ import type {
   GA4PropertyInfo,
   GA4PropertyOption,
   GA4SelectedProperty,
+  GA4SourceGroupsReport,
+  GA4TrafficBreakdownDimension,
+  GA4TrafficBreakdownFilters,
+  GA4TrafficBreakdownRow,
   GA4TrafficPoint,
   HealthStatusResponse,
   MetaAccountInfo,
@@ -150,6 +155,28 @@ export const apiClient = {
 
   getGA4PropertyInfo(): Promise<GA4PropertyInfo> {
     return apiRequest<GA4PropertyInfo>('/api/ga4/property-info');
+  },
+
+  getGA4TrafficBreakdown(
+    range: ComputedDateRange,
+    dimension: GA4TrafficBreakdownDimension,
+    filters?: GA4TrafficBreakdownFilters
+  ): Promise<GA4TrafficBreakdownRow[]> {
+    const params = new URLSearchParams(buildDateRangeParams(range));
+    params.set('dimension', dimension);
+    if (filters?.country) params.set('country', filters.country);
+    if (filters?.deviceCategory) params.set('deviceCategory', filters.deviceCategory);
+    if (filters?.browser) params.set('browser', filters.browser);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    return apiRequest<GA4TrafficBreakdownRow[]>(`/api/ga4/traffic-breakdown?${params.toString()}`);
+  },
+
+  getGA4SourceGroups(range: ComputedDateRange): Promise<GA4SourceGroupsReport> {
+    return apiRequest<GA4SourceGroupsReport>(`/api/ga4/source-groups?${buildDateRangeParams(range)}`);
+  },
+
+  getGA4AiTraffic(range: ComputedDateRange): Promise<GA4AiTrafficReport> {
+    return apiRequest<GA4AiTrafficReport>(`/api/ga4/ai-traffic?${buildDateRangeParams(range)}`);
   },
 
   // Live Search Console API routes (/api/search-console/*)

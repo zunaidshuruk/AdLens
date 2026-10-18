@@ -35,6 +35,7 @@ export const OverviewPage: React.FC = () => {
       metaSpend,
       metaCampaigns,
       topQueries,
+      aiTraffic,
     ] = await Promise.all([
       registry.ga4.getOverview(range),
       registry.searchConsole.getOverview(range),
@@ -43,6 +44,7 @@ export const OverviewPage: React.FC = () => {
       registry.metaAds.getSpendOverTime(range),
       registry.metaAds.getCampaigns(range),
       registry.searchConsole.getTopQueries(range),
+      registry.ga4.getAiTraffic(range),
     ]);
 
     return {
@@ -53,6 +55,7 @@ export const OverviewPage: React.FC = () => {
       metaSpend,
       metaCampaigns,
       topQueries,
+      aiTraffic,
     };
   });
 
@@ -314,6 +317,17 @@ export const OverviewPage: React.FC = () => {
           changePercent={data?.gscOverview.avgPosition.changePercent}
           compareEnabled={compareEnabled}
           invertPolarity
+        />
+        <KpiCard
+          label="AI assistant sessions"
+          source="ga4"
+          loading={loading}
+          formattedValue={formatNumber(data?.aiTraffic.aiSessions ?? 0)}
+          previousFormattedValue={formatNumber(data?.aiTraffic.previousAiSessions ?? 0)}
+          changePercent={data?.aiTraffic.aiSessionsChangePercent ?? 0}
+          compareEnabled={compareEnabled}
+          subtitle={`${formatPercent(data?.aiTraffic.aiSharePercent ?? 0, 1)} share`}
+          to="/ai-traffic"
         />
       </div>
 

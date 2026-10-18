@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Globe } from 'lucide-react';
+import { Clock, Filter, Globe, Info, X } from 'lucide-react';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
@@ -15,6 +16,9 @@ import type {
   GA4ConversionEventRow,
   GA4CountryRow,
   GA4PageRow,
+  GA4SourceGroupRow,
+  GA4TrafficBreakdownDimension,
+  GA4TrafficBreakdownRow,
 } from '../types';
 import { addDays, getTodayInTimezone } from '../utils/dateUtils';
 import {
@@ -24,21 +28,64 @@ import {
   formatSignedPercent,
 } from '../utils/formatters';
 
+const BREAKDOWN_DIMENSIONS: { id: GA4TrafficBreakdownDimension; label: string }[] = [
+  { id: 'channel', label: 'Channel' },
+  { id: 'sourceMedium', label: 'Source / medium' },
+  { id: 'referrer', label: 'Referrer' },
+  { id: 'landingPage', label: 'Landing page' },
+  { id: 'country', label: 'Country' },
+  { id: 'device', label: 'Device' },
+  { id: 'browser', label: 'Browser' },
+];
+
+const SOURCE_GROUP_COLORS: Record<string, string> = {
+  Search: '#2563eb',
+  Paid: '#0d9488',
+  'Direct / unknown': '#64748b',
+  Referral: '#7c3aed',
+  Social: '#ea580c',
+  Email: '#d97706',
+  'AI assistants': '#0284c7',
+  Other: '#94a3b8',
+};
+
+const COUNTRY_FILTER_OPTIONS = [
+  'Bangladesh',
+  'Singapore',
+  'United Arab Emirates',
+  'United States',
+  'United Kingdom',
+  'Malaysia',
+];
+
+const DEVICE_FILTER_OPTIONS = ['desktop', 'mobile', 'tablet'];
+
+const BROWSER_FILTER_OPTIONS = ['Chrome', 'Safari', 'Edge', 'Firefox', 'Samsung Internet'];
+
 export const GA4Page: React.FC = () => {
   const navigate = useNavigate();
   const { dateRange, compareEnabled, timezone } = useDateRange();
   const { isGA4Live } = useAdapterStatus();
   const { propertyInfo } = useGA4PropertyInfo();
 
+  const [breakdownDimension, setBreakdownDimension] =
+    useState<GA4TrafficBreakdownDimension>('channel');
+  const [countryFilter, setCountryFilter] = useState<string>('');
+  const [deviceFilter, setDeviceFilter] = useState<string>('');
+  const [browserFilter, setBrowserFilter] = useState<string>('');
+  const [showSourceGroupRules, setShowSourceGroupRules] = useState<boolean>(false);
+
   const { data, loading, error, errorCode, refetch } = useReport(async (registry, range) => {
-    const [overview, traffic, acquisition, campaigns, topPages, conversions] = await Promise.all([
-      registry.ga4.getOverview(range),
-      registry.ga4.getTrafficOverTime(range),
-      registry.ga4.getAcquisition(range),
-      registry.ga4.getCampaigns(range),
-      registry.ga4.getTopPages(range),
-      registry.ga4.getConversions(range),
-    ]);
+    const [overview, traffic, acquisition, campaigns, topPages, conversions, sourceGroups] =
+      await Promise.all([
+        registry.ga4.getOverview(range),
+        registry.ga4.getTrafficOverTime(range),
+        registry.ga4.getAcquisition(range),
+        registry.ga4.getCampaigns(range),
+        registry.ga4.getTopPages(range),
+        registry.ga4.getConversions(range),
+        registry.ga4.getSourceGroups(range),
+      ]);
 
     return {
       overview,
@@ -47,8 +94,23 @@ export const GA4Page: React.FC = () => {
       campaigns,
       topPages,
       conversions,
+      sourceGroups,
     };
   });
+
+  const {
+    data: breakdownRows,
+    loading: breakdownLoading,
+  } = useReport(
+    async (registry, range) => {
+      return registry.ga4.getTrafficBreakdown(range, breakdownDimension, {
+        ...(countryFilter ? { country: countryFilter } : {}),
+        ...(deviceFilter ? { deviceCategory: deviceFilter } : {}),
+        ...(browserFilter ? { browser: browserFilter } : {}),
+      });
+    },
+    [breakdownDimension, countryFilter, deviceFilter, browserFilter]
+  );
 
   // Check if selected date range includes today or yesterday
   const includesRecent48h = useMemo(() => {
@@ -77,6 +139,148 @@ export const GA4Page: React.FC = () => {
       data.conversions.length === 0
     );
   }, [data]);
+
+  const activeDimensionLabel = useMemo(() => {
+    return (
+      BREAKDOWN_DIMENSIONS.find((d) => d.id === breakdownDimension)?.label ?? 'Dimension'
+    );
+  }, [breakdownDimension]);
+
+  const breakdownColumns = useMemo<
+    DataTableColumn<GA4TrafficBreakdownRow & Record<string, unknown>>[]
+  >(
+    () => [
+      {
+        key: 'dimensionValue',
+        header: activeDimensionLabel,
+        render: (r) => (
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {r.dimensionValue}
+          </span>
+        ),
+      },
+      {
+        key: 'sessions',
+        header: 'Sessions',
+        align: 'right',
+        render: (r) => formatNumber(r.sessions),
+      },
+      {
+        key: 'activeUsers',
+        header: 'Users',
+        align: 'right',
+        render: (r) => formatNumber(r.activeUsers),
+      },
+      {
+        key: 'newUsers',
+        header: 'New Users',
+        align: 'right',
+        render: (r) => formatNumber(r.newUsers),
+      },
+      {
+        key: 'engagedSessions',
+        header: 'Engaged Sessions',
+        align: 'right',
+        render: (r) => formatNumber(r.engagedSessions),
+      },
+      {
+        key: 'engagementRate',
+        header: 'Engagement Rate',
+        align: 'right',
+        render: (r) => formatPercent(r.engagementRate, 1),
+        csvFormat: (v) => formatPercent(Number(v), 1),
+      },
+      {
+        key: 'keyEvents',
+        header: 'Key Events',
+        align: 'right',
+        render: (r) => formatNumber(r.keyEvents),
+      },
+      {
+        key: 'avgEngagementTimeSec',
+        header: 'Avg. Engagement Time',
+        align: 'right',
+        render: (r) => formatDurationSeconds(r.avgEngagementTimeSec),
+        csvFormat: (v) => formatDurationSeconds(Number(v)),
+      },
+      {
+        key: 'changePercent',
+        header: '% Change',
+        align: 'right',
+        render: (r) => (
+          <span
+            className={
+              r.changePercent >= 0
+                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                : 'text-red-600 dark:text-red-400 font-semibold'
+            }
+          >
+            {formatSignedPercent(r.changePercent)}
+          </span>
+        ),
+        csvFormat: (v) => formatSignedPercent(Number(v)),
+      },
+    ],
+    [activeDimensionLabel]
+  );
+
+  const sourceGroupColumns = useMemo<
+    DataTableColumn<GA4SourceGroupRow & Record<string, unknown>>[]
+  >(
+    () => [
+      {
+        key: 'group',
+        header: 'Source Group',
+        render: (r) => (
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: SOURCE_GROUP_COLORS[r.group] || '#64748b' }}
+            />
+            <span className="font-medium text-slate-900 dark:text-slate-100">{r.group}</span>
+          </div>
+        ),
+      },
+      {
+        key: 'sessions',
+        header: 'Sessions',
+        align: 'right',
+        render: (r) => formatNumber(r.sessions),
+      },
+      {
+        key: 'sharePercent',
+        header: 'Share',
+        align: 'right',
+        render: (r) => formatPercent(r.sharePercent, 1),
+        csvFormat: (v) => formatPercent(Number(v), 1),
+      },
+      {
+        key: 'keyEventRate',
+        header: 'Key Event Rate',
+        align: 'right',
+        render: (r) => formatPercent(r.keyEventRate, 1),
+        csvFormat: (v) => formatPercent(Number(v), 1),
+      },
+      {
+        key: 'changePercent',
+        header: 'Change',
+        align: 'right',
+        render: (r) => (
+          <span
+            className={
+              r.changePercent >= 0
+                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                : 'text-red-600 dark:text-red-400 font-semibold'
+            }
+          >
+            {formatSignedPercent(r.changePercent)}
+          </span>
+        ),
+        csvFormat: (v) => formatSignedPercent(Number(v)),
+      },
+    ],
+    []
+  );
 
   const channelColumns = useMemo<DataTableColumn<GA4ChannelRow & Record<string, unknown>>[]>(
     () => [
@@ -315,6 +519,15 @@ export const GA4Page: React.FC = () => {
     []
   );
 
+  const availableCountryOptions = useMemo(() => {
+    const dynamic = (data?.acquisition.countries ?? [])
+      .map((c) => c.country)
+      .filter((c) => c && c !== '(not set)');
+    return Array.from(new Set([...dynamic, ...COUNTRY_FILTER_OPTIONS]));
+  }, [data?.acquisition.countries]);
+
+  const hasActiveFilters = Boolean(countryFilter || deviceFilter || browserFilter);
+
   const needsConnectionAction =
     errorCode === 'GA4_PERMISSION_DENIED' ||
     errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
@@ -506,6 +719,243 @@ export const GA4Page: React.FC = () => {
                 : []),
             ]}
           />
+
+          {/* Source Groups Card (Donut Chart + Table + Info Icon for SOURCE_GROUP_RULES) */}
+          <div
+            data-testid="ga4-source-groups-card"
+            className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Source groups
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  All GA4 sessions classified into AdLens source groups (total:{' '}
+                  <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                    {formatNumber(data?.sourceGroups.totalSessions ?? 0)}
+                  </span>{' '}
+                  sessions)
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSourceGroupRules((prev) => !prev)}
+                aria-expanded={showSourceGroupRules}
+                aria-label="Toggle source group classification rules"
+                data-testid="source-group-rules-toggle"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <Info className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>Classification rules</span>
+              </button>
+            </div>
+
+            {showSourceGroupRules && (
+              <div
+                data-testid="source-group-rules-panel"
+                className="p-3.5 rounded-lg border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30 text-xs text-slate-700 dark:text-slate-300 space-y-1.5"
+              >
+                <div className="font-semibold text-slate-900 dark:text-slate-100">
+                  Source Group Classification Rules (evaluated in order)
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-300">
+                  {(data?.sourceGroups.rules ?? []).map((rule) => (
+                    <li key={rule}>{rule}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+              {/* Donut Chart */}
+              <div className="h-60 w-full flex flex-col items-center justify-center">
+                {loading ? (
+                  <div className="w-44 h-44 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={(data?.sourceGroups.groups ?? []).filter((g) => g.sessions > 0)}
+                        dataKey="sessions"
+                        nameKey="group"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={56}
+                        outerRadius={88}
+                        paddingAngle={2}
+                      >
+                        {(data?.sourceGroups.groups ?? [])
+                          .filter((g) => g.sessions > 0)
+                          .map((entry) => (
+                            <Cell
+                              key={entry.group}
+                              fill={SOURCE_GROUP_COLORS[entry.group] || '#64748b'}
+                            />
+                          ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: unknown, name: unknown) => [
+                          formatNumber(Number(value)),
+                          String(name),
+                        ]}
+                        contentStyle={{
+                          borderRadius: '0.5rem',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '12px',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Source Groups Table */}
+              <div className="lg:col-span-2">
+                <DataTable
+                  title="Sessions by Source Group"
+                  subtitle="Share of total sessions, key event conversion rate, and period change"
+                  tableName="ga4_source_groups"
+                  columns={sourceGroupColumns}
+                  data={
+                    (data?.sourceGroups.groups ?? []) as (GA4SourceGroupRow &
+                      Record<string, unknown>)[]
+                  }
+                  rowKey={(r) => r.group}
+                  loading={loading}
+                  pageSize={8}
+                  defaultSortKey="sessions"
+                  searchPlaceholder="Filter source groups..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Traffic Breakdown Section (Dimension Tabs + Country/Device/Browser Filters + Sortable Table) */}
+          <div
+            data-testid="ga4-traffic-breakdown-section"
+            className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4"
+          >
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Traffic breakdown
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Explore sessions, users, engagement, and key events across dimensions with
+                  country, device, and browser filters
+                </p>
+              </div>
+
+              {/* Country, Device, Browser Filter Dropdowns */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Filters:</span>
+                </span>
+
+                <select
+                  aria-label="Filter by country"
+                  value={countryFilter}
+                  onChange={(e) => setCountryFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                >
+                  <option value="">All countries</option>
+                  {availableCountryOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  aria-label="Filter by device"
+                  value={deviceFilter}
+                  onChange={(e) => setDeviceFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                >
+                  <option value="">All devices</option>
+                  {DEVICE_FILTER_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  aria-label="Filter by browser"
+                  value={browserFilter}
+                  onChange={(e) => setBrowserFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                >
+                  <option value="">All browsers</option>
+                  {BROWSER_FILTER_OPTIONS.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCountryFilter('');
+                      setDeviceFilter('');
+                      setBrowserFilter('');
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Clear</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Dimension Tabs */}
+            <div
+              role="tablist"
+              aria-label="Traffic breakdown dimensions"
+              className="flex items-center gap-1.5 flex-wrap border-b border-slate-200 dark:border-slate-800 pb-3"
+            >
+              {BREAKDOWN_DIMENSIONS.map((dim) => {
+                const isActive = breakdownDimension === dim.id;
+                return (
+                  <button
+                    key={dim.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setBreakdownDimension(dim.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {dim.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Breakdown Table */}
+            <DataTable
+              title={`Traffic by ${activeDimensionLabel}`}
+              subtitle="Sessions, active users, new users, engaged sessions, engagement rate, key events, avg engagement time, and % change"
+              tableName={`ga4_traffic_breakdown_${breakdownDimension}`}
+              columns={breakdownColumns}
+              data={
+                (breakdownRows ?? []) as (GA4TrafficBreakdownRow & Record<string, unknown>)[]
+              }
+              rowKey={(r, i) => `${r.dimensionValue}_${i}`}
+              loading={breakdownLoading}
+              defaultSortKey="sessions"
+              searchPlaceholder={`Search ${activeDimensionLabel.toLowerCase()}...`}
+            />
+          </div>
 
           {/* Acquisition Breakdown: Channels & Countries */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

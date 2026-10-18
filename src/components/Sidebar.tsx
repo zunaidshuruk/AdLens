@@ -9,6 +9,7 @@ import {
   Plug,
   Search,
   Settings,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { APP_NAME, APP_TAGLINE, TRACKED_SITE } from '../config/app';
@@ -21,6 +22,7 @@ interface SidebarProps {
 const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/ga4', label: 'Google Analytics', icon: BarChart3 },
+  { to: '/ai-traffic', label: 'AI Traffic', icon: Sparkles },
   { to: '/search-console', label: 'Search Console', icon: Search },
   { to: '/meta-ads', label: 'Meta Ads', icon: Megaphone },
   { to: '/ai-analyst', label: 'AI Analyst', icon: Bot },

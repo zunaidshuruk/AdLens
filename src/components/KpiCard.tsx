@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowDownRight, ArrowUpRight, ChevronRight, Minus } from 'lucide-react';
 import type { DataSourceId } from '../types';
 import { evaluateChangeSentiment, formatSignedPercent } from '../utils/formatters';
 import { SourceBadge } from './SourceBadge';
@@ -14,6 +15,7 @@ interface KpiCardProps {
   source?: DataSourceId;
   subtitle?: string;
   loading?: boolean;
+  to?: string;
 }
 
 export const KpiCard: React.FC<KpiCardProps> = ({
@@ -26,6 +28,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   source,
   subtitle,
   loading = false,
+  to,
 }) => {
   if (loading) {
     return (
@@ -51,8 +54,8 @@ export const KpiCard: React.FC<KpiCardProps> = ({
         ? 'text-red-600 dark:text-red-400'
         : 'text-slate-500 dark:text-slate-400';
 
-  return (
-    <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between transition-colors">
+  const cardContent = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
           {label}
@@ -64,12 +67,19 @@ export const KpiCard: React.FC<KpiCardProps> = ({
         <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 font-mono tabular-nums">
           {formattedValue}
         </span>
+        {subtitle && compareEnabled && (
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 font-mono">
+            {subtitle}
+          </span>
+        )}
       </div>
 
       <div className="mt-2.5 flex items-center justify-between gap-2 min-h-[18px] text-xs">
         {compareEnabled ? (
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={`inline-flex items-center gap-0.5 font-semibold font-mono tabular-nums ${sentimentColor}`}>
+            <span
+              className={`inline-flex items-center gap-0.5 font-semibold font-mono tabular-nums ${sentimentColor}`}
+            >
               {isRising ? (
                 <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
               ) : isFalling ? (
@@ -90,7 +100,30 @@ export const KpiCard: React.FC<KpiCardProps> = ({
             {subtitle || 'Period comparison off'}
           </span>
         )}
+        {to && (
+          <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 shrink-0">
+            <span>View</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </span>
+        )}
       </div>
+    </>
+  );
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-400 dark:hover:border-blue-500 flex flex-col justify-between transition-colors group"
+      >
+        {cardContent}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between transition-colors">
+      {cardContent}
     </div>
   );
 };

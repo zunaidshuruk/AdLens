@@ -7,6 +7,7 @@ import { connectionsRouter, googleApiRouter } from './routes/connections.js';
 import { ga4Router } from './routes/ga4.js';
 import { healthRouter } from './routes/health.js';
 import { metaRouter } from './routes/meta.js';
+import { reportsRouter } from './routes/reports.js';
 import { searchConsoleRouter } from './routes/searchConsole.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,6 +48,7 @@ app.use('/api/google', googleApiRouter);
 app.use('/api/ga4', ga4Router);
 app.use('/api/search-console', searchConsoleRouter);
 app.use('/api/meta', metaRouter);
+app.use('/api/reports', reportsRouter);
 
 // Serve static frontend build in production when running npm start (not needed on Vercel, which serves /dist directly)
 const isProduction = process.env.NODE_ENV === 'production' || !process.env.API_PORT;

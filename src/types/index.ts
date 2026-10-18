@@ -115,6 +115,128 @@ export interface GA4AcquisitionReport {
   countries: GA4CountryRow[];
 }
 
+export type GA4TrafficBreakdownDimension =
+  | 'channel'
+  | 'sourceMedium'
+  | 'referrer'
+  | 'landingPage'
+  | 'country'
+  | 'device'
+  | 'browser'
+  | 'date';
+
+export interface GA4TrafficBreakdownFilters {
+  country?: string;
+  deviceCategory?: string;
+  browser?: string;
+  limit?: number;
+}
+
+export interface GA4TrafficBreakdownRow {
+  dimensionValue: string;
+  compareDate?: string;
+  sessions: number;
+  previousSessions: number;
+  sessionsChangePercent: number;
+  activeUsers: number;
+  previousActiveUsers: number;
+  activeUsersChangePercent: number;
+  newUsers: number;
+  previousNewUsers: number;
+  newUsersChangePercent: number;
+  engagedSessions: number;
+  previousEngagedSessions: number;
+  engagedSessionsChangePercent: number;
+  engagementRate: number;
+  previousEngagementRate: number;
+  engagementRateChangePercent: number;
+  keyEvents: number;
+  previousKeyEvents: number;
+  keyEventsChangePercent: number;
+  avgEngagementTimeSec: number;
+  previousAvgEngagementTimeSec: number;
+  avgEngagementTimeChangePercent: number;
+  sharePercent: number;
+  changePercent: number;
+}
+
+export type GA4SourceGroupName =
+  | 'AI assistants'
+  | 'Search'
+  | 'Social'
+  | 'Email'
+  | 'Referral'
+  | 'Paid'
+  | 'Direct / unknown'
+  | 'Other';
+
+export interface GA4SourceGroupRow {
+  group: GA4SourceGroupName;
+  sessions: number;
+  previousSessions: number;
+  changePercent: number;
+  engagedSessions: number;
+  keyEvents: number;
+  sharePercent: number;
+  keyEventRate: number;
+}
+
+export interface GA4SourceGroupsReport {
+  totalSessions: number;
+  previousTotalSessions: number;
+  groups: GA4SourceGroupRow[];
+  rules: string[];
+}
+
+export interface GA4AiAssistantRow {
+  assistant: string;
+  sessions: number;
+  activeUsers: number;
+  newUsers: number;
+  engagedSessions: number;
+  keyEvents: number;
+  keyEventRate: number;
+  shareOfAiPercent: number;
+  shareOfAllSessionsPercent: number;
+}
+
+export interface GA4AiLandingPageRow {
+  landingPage: string;
+  sessions: number;
+  keyEvents: number;
+  topAssistant: string;
+}
+
+export interface GA4AiDatePoint {
+  date: string;
+  compareDate?: string;
+  sessions: number;
+  previousSessions?: number;
+}
+
+export interface GA4AiTrafficReport {
+  listVersion: string;
+  note: string;
+  trackedAssistants: { name: string; domains: string[]; aliases?: string[] }[];
+  totalSessions: number;
+  previousTotalSessions: number;
+  aiSessions: number;
+  previousAiSessions: number;
+  aiSessionsChangePercent: number;
+  aiSharePercent: number;
+  previousAiSharePercent: number;
+  aiShareChangePercent: number;
+  aiKeyEvents: number;
+  previousAiKeyEvents: number;
+  aiKeyEventsChangePercent: number;
+  aiKeyEventRate: number;
+  previousAiKeyEventRate: number;
+  aiKeyEventRateChangePercent: number;
+  byAssistant: GA4AiAssistantRow[];
+  byLandingPage: GA4AiLandingPageRow[];
+  byDate: GA4AiDatePoint[];
+}
+
 // ---------------- Search Console Types ----------------
 export interface SearchConsoleOverview {
   clicks: MetricWithComparison;
