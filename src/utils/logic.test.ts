@@ -16,8 +16,8 @@ import {
   formatNumber,
   formatPercent,
 } from './formatters.ts';
-import { adapters, setGA4LiveMode } from '../adapters/index.ts';
-import { decryptPayload, encryptPayload } from '../../server/lib/crypto.ts';
+import { adapters, setGA4LiveMode, setSourceLiveMode } from '../adapters';
+import { decryptPayload, encryptPayload } from '../../server/lib/crypto';
 import {
   formatGA4Date,
   mapGA4AcquisitionResponse,
@@ -26,7 +26,17 @@ import {
   mapGA4OverviewResponse,
   mapGA4TopPagesResponse,
   mapGA4TrafficOverTimeResponse,
-} from '../../server/lib/ga4Mapper.ts';
+} from '../../server/lib/ga4Mapper';
+import {
+  alpha3ToCountryName,
+  computeImpressionWeightedPosition,
+  mapSearchConsoleCountriesResponse,
+  mapSearchConsoleDevicesResponse,
+  mapSearchConsoleOverviewResponse,
+  mapSearchConsolePerformanceOverTimeResponse,
+  mapSearchConsoleTopPagesResponse,
+  mapSearchConsoleTopQueriesResponse,
+} from '../../server/lib/searchConsoleMapper';
 
 test('config constants are defined cleanly', () => {
   assert.ok(APP_NAME.length > 0);
@@ -551,5 +561,324 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     server.close();
   }
 });
+
+test('Search Console mapper computes impression-weighted position, maps alpha-3 codes to country names, and zero-fills days with null position', () => {
+  // 1. Impression-weighted position (NOT simple average)
+  // Row A: position 2.0 with 900 impressions; Row B: position 12.0 with 100 impressions
+  // Simple average would be 7.0; impression-weighted average is (2*900 + 12*100)/1000 = 3.0
+  const weighted = computeImpressionWeightedPosition([
+    { impressions: 900, position: 2.0 },
+    { impressions: 100, position: 12.0 },
+  ]);
+  assert.equal(weighted, 3.0);
+  assert.equal(computeImpressionWeightedPosition([{ impressions: 0, position: 5.0 }]), null);
+
+  // 2. ISO 3166-1 alpha-3 lowercase/uppercase -> English country name via Intl.DisplayNames
+  assert.equal(alpha3ToCountryName('bgd').country, 'Bangladesh');
+  assert.equal(alpha3ToCountryName('usa').country, 'United States');
+  assert.equal(alpha3ToCountryName('gbr').country, 'United Kingdom');
+  assert.equal(alpha3ToCountryName('sgp').country, 'Singapore');
+  assert.equal(alpha3ToCountryName('xyz').country, 'XYZ'); // Fallback to uppercase code
+
+  const countries = mapSearchConsoleCountriesResponse({
+    rows: [
+      { keys: ['bgd'], clicks: 450, impressions: 5000, ctr: 0.09, position: 3.4 },
+      { keys: ['usa'], clicks: 120, impressions: 3000, ctr: 0.04, position: 8.2 },
+    ],
+  });
+  assert.equal(countries.length, 2);
+  assert.equal(countries[0].country, 'Bangladesh');
+  assert.equal(countries[0].code, 'BD');
+  assert.equal(countries[0].ctr, 9.0);
+  assert.equal(countries[1].country, 'United States');
+  assert.equal(countries[1].code, 'US');
+
+  // 3. Zero-filled days have avgPosition === null (never 0)
+  const perf = mapSearchConsolePerformanceOverTimeResponse(
+    {
+      rows: [
+        { keys: ['2026-10-10'], clicks: 50, impressions: 1000, ctr: 0.05, position: 4.2 },
+        // 2026-10-11 is missing -> zero-filled with avgPosition: null
+        { keys: ['2026-10-12'], clicks: 0, impressions: 0, ctr: 0, position: 0 }, // explicit zero-impression day -> avgPosition: null
+      ],
+    },
+    {
+      rows: [{ keys: ['2026-10-07'], clicks: 40, impressions: 800, ctr: 0.05, position: 4.5 }],
+    },
+    '2026-10-10',
+    '2026-10-12',
+    '2026-10-07',
+    '2026-10-09'
+  );
+  assert.equal(perf.length, 3);
+  assert.equal(perf[0].date, '2026-10-10');
+  assert.equal(perf[0].clicks, 50);
+  assert.equal(perf[0].previousClicks, 40);
+  assert.equal(perf[0].avgPosition, 4.2);
+
+  assert.equal(perf[1].date, '2026-10-11');
+  assert.equal(perf[1].clicks, 0);
+  assert.equal(perf[1].impressions, 0);
+  assert.equal(perf[1].avgPosition, null);
+
+  assert.equal(perf[2].date, '2026-10-12');
+  assert.equal(perf[2].impressions, 0);
+  assert.equal(perf[2].avgPosition, null);
+
+  // 4. Overview & Devices & Queries & Pages
+  const overview = mapSearchConsoleOverviewResponse(
+    { rows: [{ clicks: 300, impressions: 6000, ctr: 0.05, position: 4.8 }] },
+    { rows: [{ clicks: 200, impressions: 5000, ctr: 0.04, position: 6.0 }] }
+  );
+  assert.equal(overview.clicks.value, 300);
+  assert.equal(overview.clicks.changePercent, 50);
+  assert.equal(overview.ctr.value, 5.0);
+  assert.equal(overview.avgPosition.value, 4.8);
+  assert.equal(overview.avgPosition.changePercent, -20);
+
+  const devices = mapSearchConsoleDevicesResponse({
+    rows: [
+      { keys: ['DESKTOP'], clicks: 200, impressions: 4000, position: 4.1 },
+      { keys: ['MOBILE'], clicks: 90, impressions: 1800, position: 5.5 },
+      { keys: ['TABLET'], clicks: 10, impressions: 200, position: 6.0 },
+    ],
+  });
+  assert.equal(devices[0].device, 'Desktop');
+  assert.equal(devices[1].device, 'Mobile');
+  assert.equal(devices[2].device, 'Tablet');
+
+  const queries = mapSearchConsoleTopQueriesResponse(
+    {
+      rows: [
+        { keys: ['convay'], clicks: 150, impressions: 1000, position: 1.2 },
+        { keys: ['video conferencing bangladesh'], clicks: 220, impressions: 3000, position: 2.4 },
+      ],
+    },
+    {
+      rows: [{ keys: ['video conferencing bangladesh'], clicks: 200, impressions: 2800, position: 2.6 }],
+    }
+  );
+  assert.equal(queries[0].query, 'video conferencing bangladesh');
+  assert.equal(queries[0].changePercent, 10);
+
+  const pages = mapSearchConsoleTopPagesResponse({
+    rows: [
+      { keys: ['https://convay.com/'], clicks: 120, impressions: 900, position: 2.0 },
+      { keys: ['https://convay.com/'], clicks: 30, impressions: 100, position: 12.0 },
+    ],
+  });
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].avgPosition, 3.0); // Impression-weighted across combined rows
+
+  // 5. Generalised registry switching
+  setSourceLiveMode('ga4', true);
+  setSourceLiveMode('search_console', true);
+  assert.equal(adapters.ga4.isMock, false);
+  assert.equal(adapters.searchConsole.isMock, false);
+  assert.equal(adapters.metaAds.isMock, true);
+  assert.equal(adapters.isAnyMocked(), true); // Meta is still mock so MOCK DATA badge stays active
+  setSourceLiveMode('ga4', false);
+  setSourceLiveMode('search_console', false);
+});
+
+test('/api/search-console routes support sc-domain: and https:// sites, parallel comparison requests, caching, error mapping, and Vercel api/index.ts export', async () => {
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-4';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+
+  const vercelAppModule = await import('../../api/index');
+  const { app } = await import('../../server/app');
+  assert.equal(vercelAppModule.default, app, 'api/index.ts exports the Express app as default');
+
+  const { clearSearchConsoleCache } = await import('../../server/routes/searchConsole');
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session');
+
+  clearSearchConsoleCache();
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 1. Session without searchConsoleSite -> 409 SC_NOT_SELECTED
+    const noSiteCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        google: {
+          refreshToken: 'ref-1',
+          accessToken: 'acc-1',
+          accessTokenExpiry: Date.now() + 3600_000,
+          email: 'analyst@convay.com',
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY
+    )}`;
+
+    const res409 = await originalFetch(
+      `${baseUrl}/api/search-console/overview?startDate=2026-10-01&endDate=2026-10-07`,
+      { headers: { Cookie: noSiteCookie } }
+    );
+    assert.equal(res409.status, 409);
+    const body409 = (await res409.json()) as { error: { code: string } };
+    assert.equal(body409.error.code, 'SC_NOT_SELECTED');
+
+    // 2. Test both "sc-domain:convay.com" and "https://convay.com/" formats + comparison parallel requests
+    for (const siteUrl of ['sc-domain:convay.com', 'https://convay.com/']) {
+      clearSearchConsoleCache();
+      const siteCookie: string = `${SESSION_COOKIE_NAME}=${encryptPayload(
+        JSON.stringify({
+          google: {
+            refreshToken: 'ref-1',
+            accessToken: 'acc-1',
+            accessTokenExpiry: Date.now() + 3600_000,
+            email: 'analyst@convay.com',
+            searchConsoleSite: { url: siteUrl },
+          },
+        }),
+        process.env.TOKEN_ENCRYPTION_KEY!
+      )}`;
+
+      let upstreamQueries = 0;
+      globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+        const urlStr =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        if (urlStr.startsWith(baseUrl)) {
+          return originalFetch(input, init);
+        }
+
+        const expectedEncoded = encodeURIComponent(siteUrl);
+        if (!urlStr.includes(`/sites/${expectedEncoded}`)) {
+          throw new Error(`Upstream URL did not encode siteUrl (${expectedEncoded})`);
+        }
+
+        if (urlStr.endsWith(`/sites/${expectedEncoded}`)) {
+          return new Response(
+            JSON.stringify({ siteUrl, permissionLevel: 'siteOwner' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        upstreamQueries += 1;
+        const reqBody = JSON.parse(String(init?.body ?? '{}')) as { startDate?: string };
+        const isCurrent = reqBody.startDate === '2026-10-08';
+
+        return new Response(
+          JSON.stringify({
+            rows: [
+              {
+                clicks: isCurrent ? 300 : 200,
+                impressions: isCurrent ? 6000 : 5000,
+                ctr: isCurrent ? 0.05 : 0.04,
+                position: isCurrent ? 4.2 : 5.0,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      };
+
+      const resOverview1: Response = await originalFetch(
+        `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
+        { headers: { Cookie: siteCookie } }
+      );
+      assert.equal(resOverview1.status, 200);
+      assert.equal(resOverview1.headers.get('x-adlens-cache'), 'false');
+      assert.equal(upstreamQueries, 2, 'Two parallel requests made for current + previous periods');
+
+      const overviewJson = (await resOverview1.json()) as {
+        clicks: { value: number; previousValue: number; changePercent: number };
+      };
+      assert.equal(overviewJson.clicks.value, 300);
+      assert.equal(overviewJson.clicks.previousValue, 200);
+      assert.equal(overviewJson.clicks.changePercent, 50);
+
+      // Cached second request
+      const resOverview2: Response = await originalFetch(
+        `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
+        { headers: { Cookie: siteCookie } }
+      );
+      assert.equal(resOverview2.status, 200);
+      assert.equal(resOverview2.headers.get('x-adlens-cache'), 'true');
+      assert.equal(upstreamQueries, 2);
+
+      // Site info endpoint
+      const resSiteInfo = await originalFetch(`${baseUrl}/api/search-console/site-info`, {
+        headers: { Cookie: siteCookie },
+      });
+      assert.equal(resSiteInfo.status, 200);
+      const siteInfo = (await resSiteInfo.json()) as { siteUrl: string; permissionLevel: string };
+      assert.equal(siteInfo.siteUrl, siteUrl);
+      assert.equal(siteInfo.permissionLevel, 'siteOwner');
+    }
+
+    // 3. Test 403 -> SC_PERMISSION_DENIED and 429 -> SC_QUOTA_EXCEEDED
+    clearSearchConsoleCache();
+    const validCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        google: {
+          refreshToken: 'ref-1',
+          accessToken: 'acc-1',
+          accessTokenExpiry: Date.now() + 3600_000,
+          email: 'analyst@convay.com',
+          searchConsoleSite: { url: 'sc-domain:convay.com' },
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY
+    )}`;
+
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) return originalFetch(input, init);
+      return new Response(JSON.stringify({ error: { status: 'PERMISSION_DENIED' } }), {
+        status: 403,
+      });
+    };
+
+    const res403 = await originalFetch(
+      `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(res403.status, 403);
+    const body403 = (await res403.json()) as { error: { code: string } };
+    assert.equal(body403.error.code, 'SC_PERMISSION_DENIED');
+
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) return originalFetch(input, init);
+      return new Response(JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED' } }), {
+        status: 429,
+      });
+    };
+
+    const res429 = await originalFetch(
+      `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14`,
+      { headers: { Cookie: validCookie } }
+    );
+    assert.equal(res429.status, 429);
+    const body429 = (await res429.json()) as { error: { code: string } };
+    assert.equal(body429.error.code, 'SC_QUOTA_EXCEEDED');
+
+    // 4. Verify Vercel rewrite header normalization (/api? with x-now-route-matches: 1=health)
+    const resRewrittenHealth = await originalFetch(`${baseUrl}/api`, {
+      headers: { 'x-now-route-matches': '1=health' },
+    });
+    assert.equal(resRewrittenHealth.status, 200);
+    const healthBody = (await resRewrittenHealth.json()) as { ok: boolean; app: string };
+    assert.equal(healthBody.ok, true);
+    assert.equal(healthBody.app, 'AdLens');
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    server.close();
+  }
+});
+
 
 

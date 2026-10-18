@@ -131,7 +131,7 @@ export interface SearchConsolePerformancePoint {
   impressions: number;
   previousImpressions: number;
   ctr: number;
-  avgPosition: number;
+  avgPosition: number | null;
 }
 
 export interface SearchConsoleQueryRow {
@@ -167,6 +167,11 @@ export interface SearchConsoleDeviceRow {
   ctr: number;
   avgPosition: number;
   sharePercent: number;
+}
+
+export interface SearchConsoleSiteInfo {
+  siteUrl: string;
+  permissionLevel: string;
 }
 
 // ---------------- Meta Ads Types ----------------

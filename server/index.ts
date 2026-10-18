@@ -1,30 +1,7 @@
-import cookieParser from 'cookie-parser';
-import express from 'express';
 import http from 'http';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { authRouter } from './routes/auth.ts';
-import { connectionsRouter, googleApiRouter } from './routes/connections.ts';
-import { ga4Router } from './routes/ga4.ts';
-import { healthRouter } from './routes/health.ts';
+import { app } from './app';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-export const app = express();
-
-// Enable Secure cookies behind reverse proxy / Cloud Run
-app.set('trust proxy', 1);
-
-app.use(express.json());
-app.use(cookieParser());
-
-// Mount API routes
-app.use('/api/health', healthRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/connections', connectionsRouter);
-app.use('/api/google', googleApiRouter);
-app.use('/api/ga4', ga4Router);
+export { app };
 
 let activeServer: http.Server | null = null;
 
@@ -43,21 +20,6 @@ if (process.env.NODE_ENV !== 'production') {
       return;
     }
     res.status(403).end();
-  });
-}
-
-// Serve static frontend build in production (or when running npm start)
-const isProduction = process.env.NODE_ENV === 'production' || !process.env.API_PORT;
-const distPath = path.resolve(__dirname, '../dist');
-
-if (isProduction) {
-  app.use(express.static(distPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      next();
-      return;
-    }
-    res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 

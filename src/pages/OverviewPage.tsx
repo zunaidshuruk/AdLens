@@ -195,15 +195,19 @@ export const OverviewPage: React.FC = () => {
           onRetry={refetch}
           actionLabel={
             errorCode === 'GA4_PERMISSION_DENIED' ||
+            errorCode === 'SC_PERMISSION_DENIED' ||
             errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
-            errorCode === 'GA4_NOT_SELECTED'
+            errorCode === 'GA4_NOT_SELECTED' ||
+            errorCode === 'SC_NOT_SELECTED'
               ? 'Go to Connections'
               : undefined
           }
           onAction={
             errorCode === 'GA4_PERMISSION_DENIED' ||
+            errorCode === 'SC_PERMISSION_DENIED' ||
             errorCode === 'GOOGLE_REAUTH_REQUIRED' ||
-            errorCode === 'GA4_NOT_SELECTED'
+            errorCode === 'GA4_NOT_SELECTED' ||
+            errorCode === 'SC_NOT_SELECTED'
               ? () => navigate('/connections')
               : undefined
           }

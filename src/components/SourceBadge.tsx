@@ -34,7 +34,7 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({
   const { isSourceLive } = useAdapterStatus();
   const info = SOURCE_LABELS[source];
   const isLive = isSourceLive(source);
-  const displayModeBadge = showMode ?? source === 'ga4';
+  const displayModeBadge = showMode ?? (source === 'ga4' || source === 'search_console');
 
   return (
     <span

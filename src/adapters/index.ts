@@ -1,13 +1,20 @@
-import { apiClient } from '../api/client.ts';
-import type { DataSourceAdapter, GA4Adapter } from './ga4.ts';
-import { liveGA4Adapter } from './live/ga4Live.ts';
-import type { MetaAdsAdapter } from './metaAds.ts';
-import { mockGA4Adapter } from './mock/ga4Mock.ts';
-import { mockMetaAdsAdapter } from './mock/metaAdsMock.ts';
-import { mockSearchConsoleAdapter } from './mock/searchConsoleMock.ts';
-import type { SearchConsoleAdapter } from './searchConsole.ts';
+import { apiClient } from '../api/client';
+import type { DataSourceId } from '../types';
+import type { DataSourceAdapter, GA4Adapter } from './ga4';
+import { liveGA4Adapter } from './live/ga4Live';
+import { liveSearchConsoleAdapter } from './live/searchConsoleLive';
+import type { MetaAdsAdapter } from './metaAds';
+import { mockGA4Adapter } from './mock/ga4Mock';
+import { mockMetaAdsAdapter } from './mock/metaAdsMock';
+import { mockSearchConsoleAdapter } from './mock/searchConsoleMock';
+import type { SearchConsoleAdapter } from './searchConsole';
 
-let ga4LiveActive = false;
+const liveModeBySource: Record<DataSourceId, boolean> = {
+  ga4: false,
+  search_console: false,
+  meta_ads: false,
+};
+
 let registryInitialized = false;
 let initPromise: Promise<void> | null = null;
 const listeners = new Set<() => void>();
@@ -18,12 +25,27 @@ function emitRegistryChange() {
   }
 }
 
-export function setGA4LiveMode(isLive: boolean): void {
+/**
+ * Generalised mechanism to switch any data source between live and mock adapters.
+ */
+export function setSourceLiveMode(source: DataSourceId, isLive: boolean): void {
   registryInitialized = true;
-  if (ga4LiveActive !== isLive) {
-    ga4LiveActive = isLive;
+  if (liveModeBySource[source] !== isLive) {
+    liveModeBySource[source] = isLive;
     emitRegistryChange();
   }
+}
+
+export function isSourceLiveMode(source: DataSourceId): boolean {
+  return liveModeBySource[source];
+}
+
+export function setGA4LiveMode(isLive: boolean): void {
+  setSourceLiveMode('ga4', isLive);
+}
+
+export function setSearchConsoleLiveMode(isLive: boolean): void {
+  setSourceLiveMode('search_console', isLive);
 }
 
 export function subscribeAdapterRegistry(listener: () => void): () => void {
@@ -33,18 +55,21 @@ export function subscribeAdapterRegistry(listener: () => void): () => void {
   };
 }
 
-export async function syncAdapterRegistryWithConnections(): Promise<boolean> {
+export async function syncAdapterRegistryWithConnections(): Promise<Record<DataSourceId, boolean>> {
   if (typeof window === 'undefined') {
-    return ga4LiveActive;
+    return { ...liveModeBySource };
   }
   try {
     const conn = await apiClient.getConnections();
-    const shouldBeLive = Boolean(conn.google.connected && conn.google.ga4Property?.id);
-    setGA4LiveMode(shouldBeLive);
-    return shouldBeLive;
+    const ga4Live = Boolean(conn.google.connected && conn.google.ga4Property?.id);
+    const scLive = Boolean(conn.google.connected && conn.google.searchConsoleSite?.url);
+    setSourceLiveMode('ga4', ga4Live);
+    setSourceLiveMode('search_console', scLive);
+    return { ...liveModeBySource };
   } catch {
-    setGA4LiveMode(false);
-    return false;
+    setSourceLiveMode('ga4', false);
+    setSourceLiveMode('search_console', false);
+    return { ...liveModeBySource };
   }
 }
 
@@ -70,9 +95,11 @@ export interface AdapterRegistry {
 
 export const adapters: AdapterRegistry = {
   get ga4(): GA4Adapter {
-    return ga4LiveActive ? liveGA4Adapter : mockGA4Adapter;
+    return liveModeBySource.ga4 ? liveGA4Adapter : mockGA4Adapter;
   },
-  searchConsole: mockSearchConsoleAdapter,
+  get searchConsole(): SearchConsoleAdapter {
+    return liveModeBySource.search_console ? liveSearchConsoleAdapter : mockSearchConsoleAdapter;
+  },
   metaAds: mockMetaAdsAdapter,
 
   getAll(): DataSourceAdapter[] {

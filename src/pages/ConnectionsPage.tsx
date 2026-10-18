@@ -292,12 +292,16 @@ export const ConnectionsPage: React.FC = () => {
                 <div
                   data-testid="gsc-connection-status"
                   className={`text-xs font-medium ${
-                    googleConnected
+                    googleConnected && connections?.google.searchConsoleSite
                       ? 'text-emerald-700 dark:text-emerald-400'
                       : 'text-amber-700 dark:text-amber-400'
                   }`}
                 >
-                  {googleConnected ? 'Connected — live data in Sprint 4' : 'Mock data'}
+                  {googleConnected
+                    ? connections?.google.searchConsoleSite
+                      ? 'Connected — Live data active'
+                      : 'Connected — select a verified site below'
+                    : 'Mock data'}
                 </div>
                 {googleConnected && connections?.google.searchConsoleSite && (
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">

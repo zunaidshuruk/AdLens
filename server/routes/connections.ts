@@ -1,12 +1,12 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import { getServerConfig, requireGoogleConfigured } from '../config.ts';
+import { getServerConfig, requireGoogleConfigured } from '../config';
 import {
   fetchGA4Properties,
   fetchSearchConsoleSites,
   getValidAccessToken,
   GoogleApiError,
-} from '../lib/google.ts';
-import { readSession, writeSession } from '../lib/session.ts';
+} from '../lib/google';
+import { readSession, writeSession } from '../lib/session';
 
 export const connectionsRouter = Router();
 export const googleApiRouter = Router();

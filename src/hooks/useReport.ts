@@ -6,7 +6,12 @@ import {
   subscribeAdapterRegistry,
 } from '../adapters';
 import { ApiClientError, apiClient } from '../api/client';
-import type { ComputedDateRange, DataSourceId, GA4PropertyInfo } from '../types';
+import type {
+  ComputedDateRange,
+  DataSourceId,
+  GA4PropertyInfo,
+  SearchConsoleSiteInfo,
+} from '../types';
 import { useDateRange } from './useDateRange';
 
 export interface UseReportResult<T> {
@@ -121,6 +126,7 @@ export function useAdapterStatus() {
     isMocked,
     sources,
     isGA4Live: !adapters.ga4.isMock,
+    isSearchConsoleLive: !adapters.searchConsole.isMock,
     isSourceLive,
   };
 }
@@ -163,6 +169,48 @@ export function useGA4PropertyInfo() {
 
   return {
     propertyInfo: info,
+    loading,
+  };
+}
+
+export function useSearchConsoleSiteInfo() {
+  const { isSearchConsoleLive } = useAdapterStatus();
+  const [info, setInfo] = useState<SearchConsoleSiteInfo | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isSearchConsoleLive) {
+      setInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    apiClient
+      .getSearchConsoleSiteInfo()
+      .then((res) => {
+        if (!cancelled) {
+          setInfo(res);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInfo(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSearchConsoleLive]);
+
+  return {
+    siteInfo: info,
     loading,
   };
 }

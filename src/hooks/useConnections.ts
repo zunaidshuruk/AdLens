@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { setGA4LiveMode } from '../adapters';
+import { setSourceLiveMode } from '../adapters';
 import { ApiClientError, apiClient } from '../api/client';
 import type {
   ConnectionsResponse,
@@ -13,6 +13,14 @@ function notifyConnectionsChanged() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(CONNECTIONS_SYNC_EVENT));
   }
+}
+
+function applyConnectionLiveModes(conn: ConnectionsResponse | null) {
+  setSourceLiveMode('ga4', Boolean(conn?.google.connected && conn?.google.ga4Property?.id));
+  setSourceLiveMode(
+    'search_console',
+    Boolean(conn?.google.connected && conn?.google.searchConsoleSite?.url)
+  );
 }
 
 export interface UseConnectionsResult {
@@ -59,7 +67,7 @@ export function useConnections(): UseConnectionsResult {
       ]);
 
       setConnections(connRes);
-      setGA4LiveMode(Boolean(connRes.google.connected && connRes.google.ga4Property?.id));
+      applyConnectionLiveModes(connRes);
 
       const missing = connRes.google.missing ?? healthRes?.missing ?? [];
       setMissingSecrets(missing);
@@ -78,7 +86,7 @@ export function useConnections(): UseConnectionsResult {
           if (optErr instanceof ApiClientError && optErr.code === 'GOOGLE_REAUTH_REQUIRED') {
             const refreshed = await apiClient.getConnections();
             setConnections(refreshed);
-            setGA4LiveMode(Boolean(refreshed.google.connected && refreshed.google.ga4Property?.id));
+            applyConnectionLiveModes(refreshed);
           }
           setOptionsError(
             optErr instanceof Error ? optErr.message : 'Unable to fetch Google properties or sites.'
@@ -118,7 +126,7 @@ export function useConnections(): UseConnectionsResult {
     setError(null);
     try {
       await apiClient.disconnectGoogle();
-      setGA4LiveMode(false);
+      applyConnectionLiveModes(null);
       await loadData();
       notifyConnectionsChanged();
       return true;
@@ -150,7 +158,7 @@ export function useConnections(): UseConnectionsResult {
                 },
               }
             : prev;
-          setGA4LiveMode(Boolean(next?.google.connected && res.ga4Property?.id));
+          applyConnectionLiveModes(next);
           return next;
         });
         notifyConnectionsChanged();

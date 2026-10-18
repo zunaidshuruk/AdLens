@@ -7,9 +7,9 @@ import type {
   GA4Overview,
   GA4PageRow,
   GA4TrafficPoint,
-} from '../../src/types/index.ts';
-import { enumerateDates } from '../../src/utils/dateUtils.ts';
-import { calculatePercentChange } from '../../src/utils/formatters.ts';
+} from '../../src/types';
+import { enumerateDates } from '../../src/utils/dateUtils';
+import { calculatePercentChange } from '../../src/utils/formatters';
 
 export interface GA4RunReportResponse {
   dimensionHeaders?: { name?: string }[];

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { APP_NAME, APP_VERSION } from '../../src/config/app.ts';
-import { getServerConfig } from '../config.ts';
+import { APP_NAME, APP_VERSION } from '../../src/config/app';
+import { getServerConfig } from '../config';
 
 export const healthRouter = Router();
 
