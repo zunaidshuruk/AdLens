@@ -1,0 +1,16 @@
+.gcloudignore
+.git
+.github
+.gitignore
+.dockerignore
+node_modules
+dist
+dist-server
+.env*
+!.env.example
+.aistudio
+.playwright-cli
+coverage
+*.log
+bun.lock
+docs
