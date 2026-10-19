@@ -21,7 +21,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 4 | Live Search Console data + Vercel support | ✅ Verified (import fix `c72ab43`) | `dddd714` |
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
-| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault | ✅ 7A + 7B verified · 🔄 7B-2 prompt sent (rules + image helper ready) | `9b447e8` (7A), `3c829da` (7B) |
+| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault (7C-1, 7C-2, 7C-3) | ✅ 7A, 7B, 7B-2 verified (`82c215f`) · 🔄 7C-1/7C-2 prompts sent (vault module ready) | `9b447e8` (7A), `3c829da` (7B) |
 | 8 | **Design system, appearance & theming** (UI/UX overhaul) | ⬜ Planned | — |
 | 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
 | 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
@@ -73,6 +73,17 @@ Legend: ⚠️ needs attention · ✅ done · 🔄 in progress · 🧩 prep work
    - Never upload to GitHub while AI Studio has unpushed work.
 
 ---
+
+## Prompt sizing rule (from 19 Oct 2026)
+
+Long prompts make AI Studio run for 25+ minutes and tend to drop parts. From now on each prompt is one small deliverable:
+- **One layer per prompt:** server OR screens, not both.
+- **At most ~6 files touched** and **at most 5 acceptance checks**.
+- **Target: about 10 minutes of build time.** If AI Studio runs past 20 minutes, stop it and use Checkpoint/Restore; the prompt was too big.
+- AI Studio runs `tsc` and `npm test` **once, at the end**, and replies with at most 10 lines.
+- Push to GitHub after every prompt; Claude verifies; pull before the next prompt.
+- **Publish only when a whole sprint is done**; test in AI Studio's preview in between.
+- Claude's tested files are uploaded to GitHub only while AI Studio has nothing unpushed.
 
 ## Architecture (fixed rules)
 
@@ -328,11 +339,20 @@ Adopts #8–10 and #12.
   - owner/admin-only logos.
 - Type-checked locally. The checks run against the real Firebase emulator in GitHub Actions on every push (the emulator can't be downloaded in Claude's sandbox), and `npm run test:rules` runs them.
 
-### 7C — Token vault + account lifecycle
+### 7C — Token vault + account lifecycle (3 small prompts)
 
-- Google/Meta tokens move from the cookie to a **server-only** Firestore collection `connections/{id}` (rules deny all browser access). Tokens are encrypted with AES-256-GCM before storage, and tied to the signed-in user.
-- **Delete account:** revoke Google/Meta tokens, delete Firestore data and uploads, then delete the Firebase Auth user.
-- Usage counters written by the server.
+**Design (19 Oct 2026):**
+- Google (and later Meta) tokens move from the browser cookie into a **server-only Firestore collection `connections`**, one document per user per provider (`{uid}_{provider}`). The published rules deny all browser access; only the server (Admin SDK) reads and writes.
+- **Encryption:** AES-256-GCM, key derived with HKDF from `TOKEN_ENCRYPTION_KEY`. Every ciphertext is **bound to its owner** (user id + provider + connection id), so a copied document can't be decrypted by someone else.
+- **Key rotation:** keep the old secret in the optional `TOKEN_ENCRYPTION_KEY_PREVIOUS` (comma-separated); tokens are re-sealed with the new key the next time they refresh.
+- **Whose connection is used:** each person's data requests use **their own** Google/Meta connection. A teammate who hasn't connected sees "Connect Google to view this project". Shared project connections can be added later if needed.
+- Refreshes are coalesced (one refresh per connection even under many requests); a revoked token marks the connection "needs reconnect" and stops retrying; temporary errors keep it active.
+- Prep done and tested (19 Oct 2026): `server/lib/tokenVault.ts` + `tokenVault.test.ts` (15 tests; mutation-checked: removing the owner binding or the single-flight makes tests fail).
+
+**Prompts:**
+- **7C-1:** vault wiring: Firestore store adapter, Google refresher, OAuth callback saves into the vault (cookie kept for now), Connections reports vault status.
+- **7C-2:** switch all data routes to the vault; lazy migration of existing cookie connections; disconnect revokes at Google and deletes the vault document; tokens leave the cookie entirely.
+- **7C-3:** delete account: revoke tokens, delete Firestore data (users, workspaces owned, projects, usage, assets, connections), delete the Firebase Auth user; re-authentication required.
 
 **Firebase plan:** the free Spark plan covers 7A–7C at beta scale. Blaze (pay-as-you-go) is needed later for Identity Platform features (SAML/OIDC, MFA) and higher limits. Firestore location: **asia-southeast1 (Singapore)**. This can't be changed later.
 
@@ -550,6 +570,7 @@ Adopts #30.
 | 18 Oct 2026 | Uploads = profile pictures and workspace logos (Cloud Storage); settings and configuration stored in Firestore and synced across devices. CSV data imports not planned |
 | 18 Oct 2026 | SSO in two stages: social SSO (Google, Microsoft) in Sprint 7A; enterprise SAML/OIDC in Sprint 17 |
 | 18 Oct 2026 | Public-mode safeguard: the Meta system-user token is usable only by allow-listed emails, so other users can never see Synesis IT ad accounts |
+| 19 Oct 2026 | Token vault: per-user, owner-bound encryption in server-only Firestore collection `connections`; each person uses their own Google/Meta connection; optional TOKEN_ENCRYPTION_KEY_PREVIOUS for key rotation |
 | 18 Oct 2026 | Business model: **subscription** (details parked). Sprint 7 adds plan fields and usage counters; billing built in Sprint 16 |
 | 18 Oct 2026 | **AdLens goes public:** anyone can sign up and connect their own accounts. Accounts, database and projects move to Sprint 7; launch readiness and platform reviews added as Sprint 9; plan now 16 sprints |
 | 19 Oct 2026 | UI/UX overhaul: **design system + appearance settings** (themes, custom colours, font size, density, chart palettes) as new Sprint 8; **custom dashboards with template gallery + drag-and-drop builder** as new Sprint 14. Later sprints renumbered (now 19 sprints) |
