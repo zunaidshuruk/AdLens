@@ -13,12 +13,12 @@ export interface GA4PropertyCandidateInput {
   propertyId: string;
   displayName: string;
   accountName?: string;
-  /** Web data stream default URIs, e.g. ["https://www.convay.com"] */
+  /** Web data stream default URIs, e.g. ["https://www.acme.com"] */
   streamUris?: string[];
 }
 
 export interface SearchConsoleSiteInput {
-  siteUrl: string; // "sc-domain:convay.com" or "https://www.convay.com/"
+  siteUrl: string; // "sc-domain:acme.com" or "https://www.acme.com/"
   permissionLevel?: string; // siteOwner | siteFullUser | siteRestrictedUser | siteUnverifiedUser
 }
 
@@ -48,7 +48,7 @@ export interface SourceMatchResult {
 // Domain helpers
 // ---------------------------------------------------------------------------
 
-/** "https://www.Convay.com/pricing" → "convay.com". Returns '' for invalid input. */
+/** "https://www.Acme.com/pricing" → "acme.com". Returns '' for invalid input. */
 export function normalizeDomain(input: string | undefined | null): string {
   if (!input) return '';
   let s = input.trim().toLowerCase();
@@ -59,7 +59,7 @@ export function normalizeDomain(input: string | undefined | null): string {
   return /^[a-z0-9.-]+\.[a-z0-9-]{2,}$/.test(s) ? s : '';
 }
 
-/** First label of the registrable part, used for display-name matching: "convay.com" → "convay". */
+/** First label of the registrable part, used for display-name matching: "acme.com" → "acme". */
 export function brandLabel(domain: string): string {
   const parts = domain.split('.');
   if (parts.length <= 2) return parts[0] ?? '';

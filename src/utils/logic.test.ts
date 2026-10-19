@@ -132,9 +132,9 @@ test('AES-256-GCM crypto encrypt/decrypt round-trip produces distinct IVs and re
       refreshToken: '1//0g_sample_refresh_token',
       accessToken: 'ya29.sample_access_token',
       accessTokenExpiry: 1792281600000,
-      email: 'analyst@convay.com',
-      ga4Property: { id: '44981234', name: 'Convay Web' },
-      searchConsoleSite: { url: 'sc-domain:convay.com' },
+      email: 'analyst@acme.com',
+      ga4Property: { id: '44981234', name: 'Acme Web' },
+      searchConsoleSite: { url: 'sc-domain:acme.com' },
     },
   });
 
@@ -155,7 +155,7 @@ test('AES-256-GCM crypto encrypt/decrypt round-trip produces distinct IVs and re
 
 test('AES-256-GCM decrypt rejects tampered ciphertext, tampered auth tag, and wrong key', () => {
   const secret = 'test-encryption-secret-key-for-sprint-2';
-  const plaintext = JSON.stringify({ google: { email: 'analyst@convay.com' } });
+  const plaintext = JSON.stringify({ google: { email: 'analyst@acme.com' } });
   const token = encryptPayload(plaintext, secret);
 
   // Wrong key must fail
@@ -266,7 +266,7 @@ test('GA4 mapper accurately maps overview, zero-fills missing traffic days, filt
       },
       {
         dimensionValues: [
-          { value: 'convay_enterprise_demo_q4' },
+          { value: 'acme_enterprise_demo_q4' },
           { value: 'facebook' },
           { value: 'paid_social' },
         ],
@@ -275,7 +275,7 @@ test('GA4 mapper accurately maps overview, zero-fills missing traffic days, filt
     ],
   });
   assert.equal(campaigns.length, 1);
-  assert.equal(campaigns[0].campaign, 'convay_enterprise_demo_q4');
+  assert.equal(campaigns[0].campaign, 'acme_enterprise_demo_q4');
   assert.equal(campaigns[0].sourceMedium, 'facebook / paid_social');
 
   // Campaigns keep (direct) / (not set) if they are the ONLY rows
@@ -349,7 +349,7 @@ test('GA4 mapper accurately maps overview, zero-fills missing traffic days, filt
   const topPages = mapGA4TopPagesResponse({
     rows: [
       {
-        dimensionValues: [{ value: '/pricing' }, { value: 'Convay Pricing' }],
+        dimensionValues: [{ value: '/pricing' }, { value: 'Acme Pricing' }],
         metricValues: [{ value: '300' }, { value: '200' }, { value: '18000' }, { value: '0.25' }, { value: '9' }],
       },
     ],
@@ -379,7 +379,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
   setTestTokenVerifier(async () => ({
     uid: 'user-sprint3',
-    email: 'analyst@convay.com',
+    email: 'analyst@acme.com',
     email_verified: true,
     firebase: { identities: { 'google.com': ['g-1'] }, sign_in_provider: 'google.com' },
   }) as never);
@@ -403,7 +403,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@convay.com',
+          email: 'analyst@acme.com',
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
@@ -426,8 +426,8 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@convay.com',
-          ga4Property: { id: '44981234', name: 'Convay Production' },
+          email: 'analyst@acme.com',
+          ga4Property: { id: '44981234', name: 'Acme Production' },
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
@@ -456,7 +456,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
         return new Response(
           JSON.stringify({
             name: 'properties/44981234',
-            displayName: 'Convay Production',
+            displayName: 'Acme Production',
             timeZone: 'Asia/Dhaka',
             currencyCode: 'BDT',
           }),
@@ -521,7 +521,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
       currencyCode: string;
     };
     assert.equal(propInfo.propertyId, '44981234');
-    assert.equal(propInfo.displayName, 'Convay Production');
+    assert.equal(propInfo.displayName, 'Acme Production');
     assert.equal(propInfo.timeZone, 'Asia/Dhaka');
     assert.equal(propInfo.currencyCode, 'BDT');
 
@@ -668,7 +668,7 @@ test('Search Console mapper computes impression-weighted position, maps alpha-3 
   const queries = mapSearchConsoleTopQueriesResponse(
     {
       rows: [
-        { keys: ['convay'], clicks: 150, impressions: 1000, position: 1.2 },
+        { keys: ['acme'], clicks: 150, impressions: 1000, position: 1.2 },
         { keys: ['video conferencing bangladesh'], clicks: 220, impressions: 3000, position: 2.4 },
       ],
     },
@@ -681,8 +681,8 @@ test('Search Console mapper computes impression-weighted position, maps alpha-3 
 
   const pages = mapSearchConsoleTopPagesResponse({
     rows: [
-      { keys: ['https://convay.com/'], clicks: 120, impressions: 900, position: 2.0 },
-      { keys: ['https://convay.com/'], clicks: 30, impressions: 100, position: 12.0 },
+      { keys: ['https://acme.com/'], clicks: 120, impressions: 900, position: 2.0 },
+      { keys: ['https://acme.com/'], clicks: 30, impressions: 100, position: 12.0 },
     ],
   });
   assert.equal(pages.length, 1);
@@ -715,7 +715,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
   setTestTokenVerifier(async () => ({
     uid: 'user-sprint4',
-    email: 'analyst@convay.com',
+    email: 'analyst@acme.com',
     email_verified: true,
     firebase: { identities: { 'google.com': ['g-4'] }, sign_in_provider: 'google.com' },
   }) as never);
@@ -739,7 +739,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@convay.com',
+          email: 'analyst@acme.com',
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
@@ -753,8 +753,8 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
     const body409 = (await res409.json()) as { error: { code: string } };
     assert.equal(body409.error.code, 'SC_NOT_SELECTED');
 
-    // 2. Test both "sc-domain:convay.com" and "https://convay.com/" formats + comparison parallel requests
-    for (const siteUrl of ['sc-domain:convay.com', 'https://convay.com/']) {
+    // 2. Test both "sc-domain:acme.com" and "https://acme.com/" formats + comparison parallel requests
+    for (const siteUrl of ['sc-domain:acme.com', 'https://acme.com/']) {
       clearSearchConsoleCache();
       const siteCookie: string = `${SESSION_COOKIE_NAME}=${encryptPayload(
         JSON.stringify({
@@ -764,7 +764,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
             refreshToken: 'ref-1',
             accessToken: 'acc-1',
             accessTokenExpiry: Date.now() + 3600_000,
-            email: 'analyst@convay.com',
+            email: 'analyst@acme.com',
             searchConsoleSite: { url: siteUrl },
           },
         }),
@@ -854,8 +854,8 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@convay.com',
-          searchConsoleSite: { url: 'sc-domain:convay.com' },
+          email: 'analyst@acme.com',
+          searchConsoleSite: { url: 'sc-domain:acme.com' },
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
@@ -999,7 +999,7 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
         return new Response(
           JSON.stringify({
             id: 'act_987654321',
-            name: 'Convay BDT Account',
+            name: 'Acme BDT Account',
             currency: 'BDT',
             timezone_name: 'Asia/Dhaka',
             account_status: 1,
@@ -1041,7 +1041,7 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
       status: string;
     };
     assert.equal(accountJson.accountId, '987654321');
-    assert.equal(accountJson.name, 'Convay BDT Account');
+    assert.equal(accountJson.name, 'Acme BDT Account');
     assert.equal(accountJson.currency, 'BDT');
     assert.equal(accountJson.status, 'Active');
 
@@ -1330,7 +1330,7 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
 
   setTestTokenVerifier(async () => ({
     uid: 'user-sprint6',
-    email: 'analyst@convay.com',
+    email: 'analyst@acme.com',
     email_verified: true,
     firebase: { identities: { 'google.com': ['g-6'] }, sign_in_provider: 'google.com' },
   }) as never);
@@ -1385,8 +1385,8 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
           refreshToken: 'ref-s6',
           accessToken: 'acc-s6',
           accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@convay.com',
-          ga4Property: { id: '123456', name: 'Convay GA4' },
+          email: 'analyst@acme.com',
+          ga4Property: { id: '123456', name: 'Acme GA4' },
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
@@ -1550,15 +1550,15 @@ test('requireUser middleware enforces AUTH_REQUIRED, EMAIL_NOT_VERIFIED, SSO ver
     if (token === 'unverified-password-token') {
       return {
         uid: 'uid-unverified',
-        email: 'newuser@convay.com',
+        email: 'newuser@acme.com',
         email_verified: false,
-        firebase: { identities: { password: ['newuser@convay.com'] }, sign_in_provider: 'password' },
+        firebase: { identities: { password: ['newuser@acme.com'] }, sign_in_provider: 'password' },
       } as never;
     }
     if (token === 'microsoft-sso-token') {
       return {
         uid: 'uid-ms',
-        email: 'sso@convay.com',
+        email: 'sso@acme.com',
         email_verified: false, // Microsoft SSO counts as verified even when email_verified is false
         firebase: { identities: { 'microsoft.com': ['ms-1'] }, sign_in_provider: 'microsoft.com' },
       } as never;
@@ -1566,9 +1566,9 @@ test('requireUser middleware enforces AUTH_REQUIRED, EMAIL_NOT_VERIFIED, SSO ver
     if (token === 'valid-user-a') {
       return {
         uid: 'uid-user-a',
-        email: 'usera@convay.com',
+        email: 'usera@acme.com',
         email_verified: true,
-        firebase: { identities: { password: ['usera@convay.com'] }, sign_in_provider: 'password' },
+        firebase: { identities: { password: ['usera@acme.com'] }, sign_in_provider: 'password' },
       } as never;
     }
     throw new Error('Invalid token');
@@ -1615,7 +1615,7 @@ test('requireUser middleware enforces AUTH_REQUIRED, EMAIL_NOT_VERIFIED, SSO ver
         google: {
           uid: 'uid-user-b',
           refreshToken: 'ref-b',
-          email: 'userb@convay.com',
+          email: 'userb@acme.com',
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
@@ -1671,14 +1671,14 @@ test('Meta System User allowlist restricts /api/meta/* and /api/connections to a
   process.env.META_ACCESS_TOKEN = 'meta-token';
   process.env.META_APP_SECRET = 'meta-secret';
   process.env.META_AD_ACCOUNT_ID = 'act_11223344';
-  process.env.META_SYSTEM_USER_ALLOWED_EMAILS = 'zunaid@synesisit.com.bd, admin@convay.com';
+  process.env.META_SYSTEM_USER_ALLOWED_EMAILS = 'zunaid@synesisit.com.bd, admin@acme.com';
 
   const { app } = await import('../../server/index.js');
   const { isEmailAllowedForMetaSystemUser } = await import('../../server/config.js');
   const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
 
   assert.equal(isEmailAllowedForMetaSystemUser('Zunaid@SynesisIT.com.bd'), true);
-  assert.equal(isEmailAllowedForMetaSystemUser('admin@convay.com'), true);
+  assert.equal(isEmailAllowedForMetaSystemUser('admin@acme.com'), true);
   assert.equal(isEmailAllowedForMetaSystemUser('other@example.com'), false);
   assert.equal(isEmailAllowedForMetaSystemUser(null), false);
 
@@ -1787,7 +1787,7 @@ test('Firebase error-code message mapper, password checklist rules, and /api/pub
 
   const weakRules = evaluatePasswordRules('short');
   assert.equal(weakRules.allValid, false);
-  const strongRules = evaluatePasswordRules('Convay2026');
+  const strongRules = evaluatePasswordRules('Acme2026');
   assert.equal(strongRules.minLength, true);
   assert.equal(strongRules.hasUpper, true);
   assert.equal(strongRules.hasLower, true);

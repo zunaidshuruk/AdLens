@@ -44,7 +44,7 @@ test('token parsing, effective expiry and reconnect status', () => {
 test('ad accounts are mapped, invalid IDs dropped, usable first', () => {
   const list = mapAdAccounts([
     { id: 'act_222', name: 'Closed one', account_status: 101, currency: 'USD' },
-    { id: 'act_111', account_id: '111', name: 'Convay Ads', account_status: 1, currency: 'BDT', timezone_name: 'Asia/Dhaka', business: { name: 'Synesis IT' } },
+    { id: 'act_111', account_id: '111', name: 'Acme Ads', account_status: 1, currency: 'BDT', timezone_name: 'Asia/Dhaka', business: { name: 'Synesis IT' } },
     { id: 'weird', name: 'Broken' },
   ]);
   assert.deepEqual(list.map((a) => [a.accountId, a.status, a.usable]), [['111', 'Active', true], ['222', 'Closed', false]]);

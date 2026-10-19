@@ -22,7 +22,7 @@ test('findOpportunities applies all rules and ranks by estimated extra clicks', 
   const r = findOpportunities([
     { query: 'secure video conferencing', clicks: 5, impressions: 2000, position: 6 }, // 0.25% vs 5% typical → yes
     { query: 'zoom alternative bangladesh', clicks: 2, impressions: 400, position: 8 }, // 0.5% vs 3.2% → yes
-    { query: 'convay', clicks: 300, impressions: 1000, position: 1.2 }, // position too high → no
+    { query: 'acme', clicks: 300, impressions: 1000, position: 1.2 }, // position too high → no
     { query: 'video meeting app', clicks: 30, impressions: 1000, position: 7 }, // 3% vs 4% → not below half → no
     { query: 'rare term', clicks: 0, impressions: 50, position: 9 }, // too few impressions → no
     { query: 'deep page', clicks: 0, impressions: 500, position: 25 }, // beyond 20 → no
@@ -35,17 +35,17 @@ test('findOpportunities applies all rules and ranks by estimated extra clicks', 
 
 test('detectCannibalisation flags queries split across 2+ pages at >=10% share', () => {
   const out = detectCannibalisation([
-    { query: 'video conferencing software', page: 'https://convay.com/', clicks: 10, impressions: 600, position: 8 },
-    { query: 'video conferencing software', page: 'https://convay.com/features', clicks: 4, impressions: 350, position: 12 },
-    { query: 'video conferencing software', page: 'https://convay.com/blog/x', clicks: 0, impressions: 50, position: 30 },
-    { query: 'convay login', page: 'https://convay.com/login', clicks: 90, impressions: 300, position: 1 },
-    { query: 'convay login', page: 'https://convay.com/', clicks: 1, impressions: 10, position: 4 },
+    { query: 'video conferencing software', page: 'https://acme.com/', clicks: 10, impressions: 600, position: 8 },
+    { query: 'video conferencing software', page: 'https://acme.com/features', clicks: 4, impressions: 350, position: 12 },
+    { query: 'video conferencing software', page: 'https://acme.com/blog/x', clicks: 0, impressions: 50, position: 30 },
+    { query: 'acme login', page: 'https://acme.com/login', clicks: 90, impressions: 300, position: 1 },
+    { query: 'acme login', page: 'https://acme.com/', clicks: 1, impressions: 10, position: 4 },
   ]);
   assert.equal(out.length, 1);
   assert.equal(out[0].query, 'video conferencing software');
   assert.deepEqual(out[0].pages.map((p) => [p.page, p.sharePercent]), [
-    ['https://convay.com/', 60],
-    ['https://convay.com/features', 35],
+    ['https://acme.com/', 60],
+    ['https://acme.com/features', 35],
   ]);
 });
 
@@ -67,10 +67,10 @@ test('groupQueriesIntoTopics groups by shared phrases and ignores brand terms', 
       { query: 'video conferencing software', clicks: 10, impressions: 500, position: 8 },
       { query: 'best video conferencing app', clicks: 6, impressions: 300, position: 9 },
       { query: 'secure meeting app', clicks: 3, impressions: 200, position: 11 },
-      { query: 'convay pricing', clicks: 20, impressions: 80, position: 1 },
-      { query: 'convay login', clicks: 40, impressions: 90, position: 1 },
+      { query: 'acme pricing', clicks: 20, impressions: 80, position: 1 },
+      { query: 'acme login', clicks: 40, impressions: 90, position: 1 },
     ],
-    { ignore: ['convay'] }
+    { ignore: ['acme'] }
   );
   const topic = groups.find((g) => g.topic === 'video conferencing')!;
   assert.deepEqual(topic.queries.sort(), ['best video conferencing app', 'video conferencing software']);
@@ -79,34 +79,34 @@ test('groupQueriesIntoTopics groups by shared phrases and ignores brand terms', 
 });
 
 test('normalizeHost handles URLs, sc-domain-style input and www', () => {
-  assert.equal(normalizeHost('https://www.convay.com/pricing?a=1'), 'convay.com');
-  assert.equal(normalizeHost('app.convay.com'), 'app.convay.com');
-  assert.equal(normalizeHost('https://convay.com:443/sitemap.xml'), 'convay.com');
+  assert.equal(normalizeHost('https://www.acme.com/pricing?a=1'), 'acme.com');
+  assert.equal(normalizeHost('app.acme.com'), 'app.acme.com');
+  assert.equal(normalizeHost('https://acme.com:443/sitemap.xml'), 'acme.com');
 });
 
 test('buildHostBreakdown merges sources, excludes local hosts and flags gaps', () => {
   const b = buildHostBreakdown(
     [
-      { hostName: 'convay.com', sessions: 900, activeUsers: 700, keyEvents: 30 },
-      { hostName: 'app.convay.com', sessions: 400, activeUsers: 200, keyEvents: 0 },
+      { hostName: 'acme.com', sessions: 900, activeUsers: 700, keyEvents: 30 },
+      { hostName: 'app.acme.com', sessions: 400, activeUsers: 200, keyEvents: 0 },
       { hostName: 'localhost', sessions: 50, activeUsers: 1, keyEvents: 0 },
     ],
     [
-      { page: 'https://convay.com/', clicks: 80, impressions: 2000, position: 4 },
-      { page: 'https://convay.com/features', clicks: 20, impressions: 2000, position: 10 },
-      { page: 'https://blog.convay.com/post', clicks: 0, impressions: 0, position: 0 },
+      { page: 'https://acme.com/', clicks: 80, impressions: 2000, position: 4 },
+      { page: 'https://acme.com/features', clicks: 20, impressions: 2000, position: 10 },
+      { page: 'https://blog.acme.com/post', clicks: 0, impressions: 0, position: 0 },
     ],
     [
-      { path: 'https://convay.com/sitemap.xml', errors: 2 },
-      { path: 'https://docs.convay.com/sitemap.xml' },
+      { path: 'https://acme.com/sitemap.xml', errors: 2 },
+      { path: 'https://docs.acme.com/sitemap.xml' },
     ]
   );
-  const main = b.hosts.find((h) => h.host === 'convay.com')!;
+  const main = b.hosts.find((h) => h.host === 'acme.com')!;
   assert.equal(main.position, 7); // impression-weighted (4 and 10)
   assert.equal(main.ctr, 2.5);
   assert.deepEqual(main.flags, ['sitemap_errors']);
-  assert.deepEqual(b.hosts.find((h) => h.host === 'app.convay.com')!.flags, ['traffic_without_sitemap']);
-  assert.deepEqual(b.hosts.find((h) => h.host === 'docs.convay.com')!.flags, ['sitemap_without_traffic']);
+  assert.deepEqual(b.hosts.find((h) => h.host === 'app.acme.com')!.flags, ['traffic_without_sitemap']);
+  assert.deepEqual(b.hosts.find((h) => h.host === 'docs.acme.com')!.flags, ['sitemap_without_traffic']);
   assert.deepEqual(b.excludedHosts, ['localhost']);
   assert.equal(b.totals.sessions, 1300);
 });
