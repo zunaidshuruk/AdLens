@@ -26,7 +26,7 @@ service cloud.firestore {
     function verified() {
       return signedIn() && (
         request.auth.token.email_verified == true ||
-        request.auth.token.firebase.sign_in_provider in ['google.com', 'microsoft.com']
+        request.auth.token.get('firebase', {}).get('sign_in_provider', '') in ['google.com', 'microsoft.com']
       );
     }
 
