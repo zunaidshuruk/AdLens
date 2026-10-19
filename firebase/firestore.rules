@@ -4,7 +4,9 @@ rules_version = '2';
 //
 // Data model
 //   users/{uid}                              profile + personal settings (owner edits)
-//   workspaces/{wsId}                        name, logo, defaults, plan, members map
+//   users/{uid}/assets/avatar                custom profile picture as a small data URL (owner edits)
+//   workspaces/{wsId}                        name, defaults, plan, members map
+//   workspaces/{wsId}/assets/logo            workspace logo as a small data URL (owner/admin edit)
 //   workspaces/{wsId}/projects/{projectId}   project configuration (members read; SERVER writes)
 //   workspaces/{wsId}/usage/{period}         usage counters (members read; SERVER writes)
 //   connections/{id}                         encrypted Google/Meta tokens (SERVER ONLY)
@@ -59,9 +61,18 @@ service cloud.firestore {
       return v is string && v.size() >= 1 && v.size() <= 64 && v.matches('^[A-Za-z0-9_+/-]+$');
     }
 
-    function isStorageUrlOrNull(v) {
-      return v == null || (v is string && v.size() <= 2048 &&
-        v.matches('^https://firebasestorage[.]googleapis[.]com/.*'));
+    // Images are stored as base64 data URLs (no Cloud Storage). The browser resizes and
+    // compresses them first; these limits are a hard ceiling (Firestore docs max out at 1 MiB).
+    function validImageAsset(maxChars) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['dataUrl', 'mimeType', 'width', 'height', 'updatedAt'])
+        && d.mimeType in ['image/png', 'image/jpeg', 'image/webp']
+        && d.dataUrl is string
+        && d.dataUrl.size() <= maxChars
+        && d.dataUrl.matches('^data:' + d.mimeType + ';base64,[A-Za-z0-9+/]+={0,2}$')
+        && d.width is int && d.width >= 16 && d.width <= 1024
+        && d.height is int && d.height >= 16 && d.height <= 1024
+        && d.updatedAt == request.time;
     }
 
     // ---------- users ----------
@@ -88,14 +99,13 @@ service cloud.firestore {
         && validNotifications(s.get('emailNotifications', {}));
     }
 
+    // photoURL (e.g. the Google profile photo) is set by the server only.
     function validUserUpdate(uid) {
       let d = request.resource.data;
-      return changedOnly(['displayName', 'photoURL', 'photoPath', 'settings', 'updatedAt'])
+      return changedOnly(['displayName', 'settings', 'hasCustomAvatar', 'updatedAt'])
         && stampedNow()
         && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 100
-        && isStorageUrlOrNull(d.get('photoURL', null))
-        && (d.get('photoPath', null) == null ||
-            (d.photoPath is string && d.photoPath.matches('^users/' + uid + '/avatar/[^/]{1,100}$')))
+        && d.get('hasCustomAvatar', false) is bool
         && validUserSettings(d.get('settings', {}));
     }
 
@@ -103,18 +113,24 @@ service cloud.firestore {
       allow get: if signedIn() && request.auth.uid == uid;
       allow update: if verified() && request.auth.uid == uid && validUserUpdate(uid);
       // create/delete: server only (first-sign-in bootstrap and account deletion)
+
+      // Profile picture: any verified user may view it (it appears next to names in shared
+      // workspaces); only the owner sets or removes it. ~100 KB of base64 ≈ 75 KB image.
+      match /assets/avatar {
+        allow get: if verified();
+        allow create, update: if verified() && request.auth.uid == uid && validImageAsset(100000);
+        allow delete: if verified() && request.auth.uid == uid;
+      }
     }
 
     // ---------- workspaces ----------
 
     function validWorkspaceUpdate(wsId) {
       let d = request.resource.data;
-      return changedOnly(['name', 'logoURL', 'logoPath', 'defaults', 'updatedAt'])
+      return changedOnly(['name', 'hasLogo', 'defaults', 'updatedAt'])
         && stampedNow()
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 100
-        && isStorageUrlOrNull(d.get('logoURL', null))
-        && (d.get('logoPath', null) == null ||
-            (d.logoPath is string && d.logoPath.matches('^workspaces/' + wsId + '/logo/[^/]{1,100}$')))
+        && d.get('hasLogo', false) is bool
         && d.get('defaults', {}) is map
         && d.get('defaults', {}).keys().hasOnly(['currency', 'timezone'])
         && isCurrency(d.get('defaults', {}).get('currency', 'USD'))
@@ -125,7 +141,7 @@ service cloud.firestore {
       // Reading a single workspace or listing "my" workspaces (where memberIds array-contains uid)
       allow get: if verified() && request.auth.uid in resource.data.members;
       allow list: if verified() && request.auth.uid in resource.data.memberIds;
-      // Owners/admins may edit name, logo and defaults. Plan, owner and members: server only.
+      // Owners/admins may edit name, logo flag and defaults. Plan, owner and members: server only.
       allow update: if hasRole(wsId, ['owner', 'admin']) && validWorkspaceUpdate(wsId);
 
       match /projects/{projectId} {
@@ -136,6 +152,13 @@ service cloud.firestore {
 
       match /usage/{period} {
         allow read: if isMember(wsId);
+      }
+
+      // Workspace logo: members view; owners/admins set or remove. ~200 KB base64 ≈ 150 KB image.
+      match /assets/logo {
+        allow get: if isMember(wsId);
+        allow create, update: if hasRole(wsId, ['owner', 'admin']) && validImageAsset(200000);
+        allow delete: if hasRole(wsId, ['owner', 'admin']);
       }
     }
 

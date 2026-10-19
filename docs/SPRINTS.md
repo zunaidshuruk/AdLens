@@ -21,7 +21,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 4 | Live Search Console data + Vercel support | ✅ Verified (import fix `c72ab43`) | `dddd714` |
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
-| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + uploads · 7C token vault | ✅ 7A + 7B verified · 7B-2 next | `9b447e8` (7A), `3c829da` (7B) |
+| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault | ✅ 7A + 7B verified · 🔄 7B-2 prompt sent (rules + image helper ready) | `9b447e8` (7A), `3c829da` (7B) |
 | 8 | **Design system, appearance & theming** (UI/UX overhaul) | ⬜ Planned | — |
 | 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
 | 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
@@ -554,6 +554,7 @@ Adopts #30.
 | 18 Oct 2026 | **AdLens goes public:** anyone can sign up and connect their own accounts. Accounts, database and projects move to Sprint 7; launch readiness and platform reviews added as Sprint 9; plan now 16 sprints |
 | 19 Oct 2026 | UI/UX overhaul: **design system + appearance settings** (themes, custom colours, font size, density, chart palettes) as new Sprint 8; **custom dashboards with template gallery + drag-and-drop builder** as new Sprint 14. Later sprints renumbered (now 19 sprints) |
 | 19 Oct 2026 | **Hosting: AI Studio only; Vercel dropped.** Vercel's older Node runtime crashed the server (ERR_REQUIRE_ESM from firebase-admin → jwks-rsa → jose 6). `vercel.json`/`api/index.ts` are harmless and can be removed later. Custom domain on AI Studio hosting to be confirmed before Sprint 10 (needed for Google verification and branded email) |
+| 19 Oct 2026 | **No Blaze plan / no Cloud Storage.** Profile pictures and workspace logos are stored as small base64 data URLs in Firestore (`users/{uid}/assets/avatar` ≤ 100k chars, `workspaces/{ws}/assets/logo` ≤ 200k chars), resized in the browser by `src/utils/imageAssets.ts`. Storage rules and tests removed. Revisit if Blaze is adopted later (Sprint 18/19) |
 
 ## Open decisions
 

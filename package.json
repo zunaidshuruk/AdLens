@@ -11,7 +11,7 @@
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
     "test": "tsx --test",
-    "test:rules": "firebase emulators:exec --only firestore,storage --project demo-adlens 'tsx --test --test-concurrency=1 firebase/rules-checks/firestoreRules.check.ts firebase/rules-checks/storageRules.check.ts'"
+    "test:rules": "firebase emulators:exec --only firestore --project demo-adlens 'tsx --test --test-concurrency=1 firebase/rules-checks/firestoreRules.check.ts'"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -47,6 +47,6 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   }
 }

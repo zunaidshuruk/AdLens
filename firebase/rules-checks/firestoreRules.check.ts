@@ -63,7 +63,6 @@ beforeEach(async () => {
         email: `${uid}@example.com`,
         displayName: uid,
         photoURL: null,
-        photoPath: null,
         settings: { theme: 'light' },
       });
     }
@@ -96,12 +95,11 @@ describe('users', () => {
     await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'users', ALICE)));
   });
 
-  test('update own name, photo and valid settings', async () => {
+  test('update own name, avatar flag and valid settings', async () => {
     await assertSucceeds(
       updateDoc(doc(ctx(ALICE), 'users', ALICE), {
         displayName: 'Alice H',
-        photoURL: 'https://firebasestorage.googleapis.com/v0/b/x/o/users%2Falice%2Favatar%2Fa.webp',
-        photoPath: 'users/alice/avatar/a.webp',
+        hasCustomAvatar: true,
         settings: {
           theme: 'dark',
           defaultDateRange: 'Last 90 days',
@@ -116,13 +114,13 @@ describe('users', () => {
     );
   });
 
-  test('rejects invalid settings, foreign photo paths, protected fields and missing timestamp', async () => {
+  test('rejects invalid settings, server-only fields and missing timestamp', async () => {
     const me = doc(ctx(ALICE), 'users', ALICE);
     await assertFails(updateDoc(me, { settings: { theme: 'neon' }, updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(me, { settings: { displayCurrency: 'usd' }, updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(me, { settings: { hacker: true }, updatedAt: serverTimestamp() }));
-    await assertFails(updateDoc(me, { photoPath: 'users/bob/avatar/x.png', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(me, { photoURL: 'https://evil.example/x.png', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(me, { hasCustomAvatar: 'yes', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(me, { email: 'new@example.com', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(me, { displayName: 'No timestamp' }));
     await assertFails(updateDoc(me, { displayName: '', updatedAt: serverTimestamp() }));
@@ -164,11 +162,10 @@ describe('workspaces', () => {
     await assertFails(getDocs(collection(db, 'workspaces')));
   });
 
-  test('owner and admin edit name, logo and defaults; member cannot', async () => {
+  test('owner and admin edit name, logo flag and defaults; member cannot', async () => {
     const update = {
       name: 'Synesis Marketing',
-      logoURL: 'https://firebasestorage.googleapis.com/v0/b/x/o/logo.png',
-      logoPath: 'workspaces/ws_a/logo/logo.png',
+      hasLogo: true,
       defaults: { currency: 'BDT', timezone: 'Asia/Dhaka' },
       updatedAt: serverTimestamp(),
     };
@@ -186,9 +183,10 @@ describe('workspaces', () => {
     await assertFails(updateDoc(ws, { memberIds: [ALICE, BOB], updatedAt: serverTimestamp() }));
   });
 
-  test('logo path must belong to the same workspace; defaults validated', async () => {
+  test('logo flag must be boolean; old URL fields rejected; defaults validated', async () => {
     const ws = doc(ctx(ALICE), 'workspaces', 'ws_a');
-    await assertFails(updateDoc(ws, { logoPath: 'workspaces/ws_b/logo/x.png', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ws, { hasLogo: 'yes', updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ws, { logoURL: 'https://evil.example/x.png', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(ws, { defaults: { currency: 'dollars' }, updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(ws, { defaults: { currency: 'USD', extra: 1 }, updatedAt: serverTimestamp() }));
   });
@@ -221,6 +219,70 @@ describe('projects and usage', () => {
 
   test('unverified members cannot read workspace data', async () => {
     await assertFails(getDoc(doc(ctx(UNVERIFIED, { verified: false }), 'workspaces/ws_a/projects/p1')));
+  });
+});
+
+// ---------------- images stored as data URLs ----------------
+
+const TINY_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+function asset(overrides: Record<string, unknown> = {}) {
+  return { dataUrl: TINY_PNG, mimeType: 'image/png', width: 256, height: 256, updatedAt: serverTimestamp(), ...overrides };
+}
+
+describe('profile pictures (users/{uid}/assets/avatar)', () => {
+  test('owner sets and removes own avatar; others cannot', async () => {
+    await assertSucceeds(setDoc(doc(ctx(ALICE), 'users/alice/assets/avatar'), asset()));
+    await assertFails(setDoc(doc(ctx(BOB), 'users/alice/assets/avatar'), asset()));
+    await assertFails(deleteDoc(doc(ctx(BOB), 'users/alice/assets/avatar')));
+    await assertSucceeds(deleteDoc(doc(ctx(ALICE), 'users/alice/assets/avatar')));
+  });
+
+  test('verified users can view avatars; signed-out and unverified cannot', async () => {
+    await env.withSecurityRulesDisabled(async (admin) => {
+      await setDoc(doc(admin.firestore(), 'users/alice/assets/avatar'), { dataUrl: TINY_PNG, mimeType: 'image/png', width: 256, height: 256 });
+    });
+    await assertSucceeds(getDoc(doc(ctx(BOB), 'users/alice/assets/avatar')));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'users/alice/assets/avatar')));
+    await assertFails(getDoc(doc(ctx(UNVERIFIED, { verified: false }), 'users/alice/assets/avatar')));
+  });
+
+  test('rejects wrong types, mismatched mime, oversize, bad dimensions, extra fields', async () => {
+    const ref = doc(ctx(ALICE), 'users/alice/assets/avatar');
+    await assertFails(setDoc(ref, asset({ mimeType: 'image/svg+xml', dataUrl: 'data:image/svg+xml;base64,PHN2Zz4=' })));
+    await assertFails(setDoc(ref, asset({ mimeType: 'image/jpeg' }))); // data URL says png
+    await assertFails(setDoc(ref, asset({ dataUrl: 'data:image/png;base64,' + 'A'.repeat(100001) })));
+    await assertFails(setDoc(ref, asset({ dataUrl: 'https://evil.example/x.png' })));
+    await assertFails(setDoc(ref, asset({ width: 4096 })));
+    await assertFails(setDoc(ref, asset({ width: 256.5 })));
+    await assertFails(setDoc(ref, asset({ extra: true })));
+    await assertFails(setDoc(ref, { dataUrl: TINY_PNG, mimeType: 'image/png', width: 256, height: 256 })); // no timestamp
+  });
+});
+
+describe('workspace logos (workspaces/{wsId}/assets/logo)', () => {
+  test('owner and admin set the logo; member and outsider cannot', async () => {
+    await assertSucceeds(setDoc(doc(ctx(ALICE), 'workspaces/ws_a/assets/logo'), asset({ width: 512, height: 128 })));
+    await assertSucceeds(setDoc(doc(ctx(DAVE), 'workspaces/ws_a/assets/logo'), asset({ width: 512, height: 512 })));
+    await assertFails(setDoc(doc(ctx(CAROL), 'workspaces/ws_a/assets/logo'), asset()));
+    await assertFails(setDoc(doc(ctx(BOB), 'workspaces/ws_a/assets/logo'), asset()));
+  });
+
+  test('members view the logo; outsiders cannot; only owner/admin delete', async () => {
+    await env.withSecurityRulesDisabled(async (admin) => {
+      await setDoc(doc(admin.firestore(), 'workspaces/ws_a/assets/logo'), { dataUrl: TINY_PNG, mimeType: 'image/png', width: 512, height: 512 });
+    });
+    await assertSucceeds(getDoc(doc(ctx(CAROL), 'workspaces/ws_a/assets/logo')));
+    await assertFails(getDoc(doc(ctx(BOB), 'workspaces/ws_a/assets/logo')));
+    await assertFails(deleteDoc(doc(ctx(CAROL), 'workspaces/ws_a/assets/logo')));
+    await assertSucceeds(deleteDoc(doc(ctx(DAVE), 'workspaces/ws_a/assets/logo')));
+  });
+
+  test('logo size limit is larger than avatars but still capped', async () => {
+    const ref = doc(ctx(ALICE), 'workspaces/ws_a/assets/logo');
+    await assertSucceeds(setDoc(ref, asset({ dataUrl: 'data:image/png;base64,' + 'A'.repeat(150000) })));
+    await assertFails(setDoc(ref, asset({ dataUrl: 'data:image/png;base64,' + 'A'.repeat(200001) })));
   });
 });
 
