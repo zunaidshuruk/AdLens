@@ -31,13 +31,34 @@ import {
 } from 'firebase/auth';
 import { setSourceLiveMode } from '../adapters';
 import { apiClient } from '../api/client';
-import { initFirebase, registerAuthTokenGetter } from '../lib/firebase';
+import {
+  initFirebase,
+  lastInitError,
+  registerAuthTokenGetter,
+  type FirebaseInitError,
+} from '../lib/firebase';
 import { extractFirebaseErrorCode, mapFirebaseErrorMessage } from '../utils/firebaseErrors';
+
+export function formatFirebaseInitError(err: FirebaseInitError | null): string {
+  if (!err || err.reason === 'config_missing') {
+    return 'Firebase Authentication is not configured. Please set FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, and FIREBASE_APP_ID.';
+  }
+  if (err.reason === 'sdk_error') {
+    return 'Sign-in could not start (Firebase SDK error). Please reload the page.';
+  }
+  return (
+    err.message ||
+    'Could not connect to the authentication service. Please check your connection and try again.'
+  );
+}
 
 export interface AuthContextValue {
   user: User | null;
   loading: boolean;
   firebaseReady: boolean;
+  initError: FirebaseInitError | null;
+  initErrorMessage: string | null;
+  retryFirebaseInit: () => Promise<Auth | null>;
   emailVerified: boolean;
   providers: string[];
   pendingLinkEmail: string | null;
@@ -85,6 +106,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [firebaseReady, setFirebaseReady] = useState<boolean>(false);
+  const [initError, setInitError] = useState<FirebaseInitError | null>(null);
+  const [retryingInit, setRetryingInit] = useState<boolean>(false);
   const [, setRenderTick] = useState<number>(0);
 
   const [pendingLinkCredential, setPendingLinkCredential] = useState<AuthCredential | null>(null);
@@ -96,22 +119,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRenderTick((t) => t + 1);
   }, []);
 
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    let cancelled = false;
-
-    void (async () => {
-      const auth = await initFirebase();
-      if (cancelled) return;
-
-      if (!auth) {
-        setFirebaseReady(false);
-        setLoading(false);
-        return;
-      }
-
+  const attachAuthInstance = useCallback(
+    (auth: Auth): (() => void) => {
       setAuthInstance(auth);
       setFirebaseReady(true);
+      setInitError(null);
 
       registerAuthTokenGetter(async (forceRefresh = false) => {
         const current = auth.currentUser;
@@ -123,7 +135,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
 
-      // Handle redirect result if user fell back to signInWithRedirect
       getRedirectResult(auth).catch((err) => {
         const code = extractFirebaseErrorCode(err);
         if (code === 'auth/account-exists-with-different-credential') {
@@ -139,32 +150,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
 
-      unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-        if (cancelled) return;
+      const unsub = onAuthStateChanged(auth, (nextUser) => {
         setUser(nextUser);
         setLoading(false);
         forceUserRefresh();
       });
+
+      return unsub;
+    },
+    [forceUserRefresh]
+  );
+
+  const unsubRef = React.useRef<(() => void) | null>(null);
+
+  const retryFirebaseInit = useCallback(async (): Promise<Auth | null> => {
+    setRetryingInit(true);
+    try {
+      const auth = await initFirebase();
+      if (!auth) {
+        setFirebaseReady(false);
+        setInitError(lastInitError);
+        setLoading(false);
+        return null;
+      }
+      if (unsubRef.current) {
+        unsubRef.current();
+      }
+      unsubRef.current = attachAuthInstance(auth);
+      return auth;
+    } finally {
+      setRetryingInit(false);
+    }
+  }, [attachAuthInstance]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const auth = await initFirebase();
+      if (cancelled) return;
+
+      if (!auth) {
+        setFirebaseReady(false);
+        setInitError(lastInitError);
+        setLoading(false);
+        return;
+      }
+
+      unsubRef.current = attachAuthInstance(auth);
     })();
 
     return () => {
       cancelled = true;
       registerAuthTokenGetter(null);
-      if (unsubscribe) unsubscribe();
+      if (unsubRef.current) {
+        unsubRef.current();
+        unsubRef.current = null;
+      }
     };
-  }, [forceUserRefresh]);
+  }, [attachAuthInstance]);
 
   const providers = extractProviders(user);
   const emailVerified = isUserVerified(user, providers);
+  const initErrorMessage = !firebaseReady && !loading ? formatFirebaseInitError(initError ?? lastInitError) : null;
 
   const requireAuthInstance = useCallback((): Auth => {
     if (!authInstance) {
-      throw new Error(
-        'Firebase Authentication is not configured. Please set FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, and FIREBASE_APP_ID.'
-      );
+      throw new Error(formatFirebaseInitError(initError ?? lastInitError));
     }
     return authInstance;
-  }, [authInstance]);
+  }, [authInstance, initError]);
 
   const maybeLinkPendingCredential = useCallback(
     async (signedInUser: User) => {
@@ -445,6 +500,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       loading,
       firebaseReady,
+      initError,
+      initErrorMessage,
+      retryFirebaseInit,
       emailVerified,
       providers,
       pendingLinkEmail,
@@ -469,6 +527,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       loading,
       firebaseReady,
+      initError,
+      initErrorMessage,
+      retryFirebaseInit,
       emailVerified,
       providers,
       pendingLinkEmail,
@@ -491,7 +552,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {!loading && !firebaseReady && initErrorMessage && (
+        <div
+          role="alert"
+          data-testid="firebase-init-error-banner"
+          className="w-full px-4 py-3 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-xs sm:text-sm flex flex-wrap items-center justify-center gap-3"
+        >
+          <span>{initErrorMessage}</span>
+          <button
+            type="button"
+            onClick={() => void retryFirebaseInit()}
+            disabled={retryingInit}
+            className="px-3 py-1 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {retryingInit ? 'Retrying...' : 'Retry'}
+          </button>
+        </div>
+      )}
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export function useAuth(): AuthContextValue {

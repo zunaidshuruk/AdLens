@@ -1820,7 +1820,43 @@ test('Firebase error-code message mapper, password checklist rules, and /api/pub
   }
 });
 
+test('initFirebase records lastInitError and resets initPromise so subsequent calls retry', async () => {
+  const firebaseLib = await import('../lib/firebase.js');
+  const originalFetch = globalThis.fetch;
 
+  try {
+    firebaseLib.resetFirebaseInitForTest();
 
+    // 1. Network error -> reason: "network" and initPromise reset
+    let callCount = 0;
+    globalThis.fetch = async () => {
+      callCount += 1;
+      throw new Error('Connection refused');
+    };
 
+    const resNet = await firebaseLib.initFirebase();
+    assert.equal(resNet, null);
+    assert.equal(callCount, 1);
+    assert.equal(firebaseLib.lastInitError?.reason, 'network');
+    assert.ok(firebaseLib.lastInitError?.message.includes('Connection refused'));
 
+    // 2. Subsequent call retries instead of returning cached failed promise -> missing config -> reason: "config_missing"
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          firebase: { apiKey: '', authDomain: '', projectId: '', appId: '' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+
+    const resMissing = await firebaseLib.initFirebase();
+    assert.equal(resMissing, null);
+    assert.equal(firebaseLib.lastInitError?.reason, 'config_missing');
+    assert.ok(
+      firebaseLib.lastInitError?.message.includes('Firebase Authentication is not configured')
+    );
+  } finally {
+    firebaseLib.resetFirebaseInitForTest();
+    globalThis.fetch = originalFetch;
+  }
+});
