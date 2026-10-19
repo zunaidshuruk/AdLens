@@ -6,7 +6,7 @@ import { ErrorState } from '../components/ErrorState';
 import { KpiCard } from '../components/KpiCard';
 import { SourceBadge } from '../components/SourceBadge';
 import { TrendChart } from '../components/TrendChart';
-import { TRACKED_SITE } from '../config/app';
+import { DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAdapterStatus, useDateRange, useMetaAccountInfo, useReport } from '../hooks';
 import type { MetaAdRow, MetaAdSetRow, MetaCampaignRow, MetaStatusLabel } from '../types';
@@ -71,7 +71,11 @@ const FRIENDLY_META_ERRORS: Record<string, { title: string; message: string }> =
 
 export const MetaAdsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { currency } = useAppContext();
+  const { currency, activeProject } = useAppContext();
+  const TRACKED_SITE = {
+    name: activeProject?.name || DEMO_PROJECT.name,
+    domain: activeProject?.domain || DEMO_PROJECT.domain,
+  };
   const { compareEnabled, timezone } = useDateRange();
   const { isMetaAdsLive } = useAdapterStatus();
   const { accountInfo } = useMetaAccountInfo();

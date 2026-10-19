@@ -32,6 +32,7 @@ import {
 import { setSourceLiveMode } from '../adapters';
 import { apiClient } from '../api/client';
 import {
+  configuredAuthProviders,
   initFirebase,
   lastInitError,
   registerAuthTokenGetter,
@@ -61,6 +62,7 @@ export interface AuthContextValue {
   retryFirebaseInit: () => Promise<Auth | null>;
   emailVerified: boolean;
   providers: string[];
+  enabledProviders: string[];
   pendingLinkEmail: string | null;
   pendingLinkProviderLabel: string | null;
   accountLinkNotice: string | null;
@@ -106,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [firebaseReady, setFirebaseReady] = useState<boolean>(false);
+  const [enabledProviders, setEnabledProviders] = useState<string[]>(configuredAuthProviders);
   const [initError, setInitError] = useState<FirebaseInitError | null>(null);
   const [retryingInit, setRetryingInit] = useState<boolean>(false);
   const [, setRenderTick] = useState<number>(0);
@@ -167,6 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRetryingInit(true);
     try {
       const auth = await initFirebase();
+      setEnabledProviders([...configuredAuthProviders]);
       if (!auth) {
         setFirebaseReady(false);
         setInitError(lastInitError);
@@ -189,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void (async () => {
       const auth = await initFirebase();
       if (cancelled) return;
+      setEnabledProviders([...configuredAuthProviders]);
 
       if (!auth) {
         setFirebaseReady(false);
@@ -505,6 +510,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       retryFirebaseInit,
       emailVerified,
       providers,
+      enabledProviders,
       pendingLinkEmail,
       pendingLinkProviderLabel,
       accountLinkNotice,
@@ -532,6 +538,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       retryFirebaseInit,
       emailVerified,
       providers,
+      enabledProviders,
       pendingLinkEmail,
       pendingLinkProviderLabel,
       accountLinkNotice,

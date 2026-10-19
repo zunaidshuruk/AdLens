@@ -12,6 +12,7 @@ import {
   mapSearchConsoleTopQueriesResponse,
 } from '../lib/searchConsoleMapper.js';
 import { readSession } from '../lib/session.js';
+import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
@@ -214,10 +215,11 @@ function handleSearchConsoleError(res: Response, err: unknown): void {
   });
 }
 
-// Middleware: rate limiter + requireUser + verifyGoogleSessionOwnership + Google configured + connected session with selected searchConsoleSite
+// Middleware: rate limiter + requireUser + verifyGoogleSessionOwnership + loadProject + Google configured + connected session with selected searchConsoleSite
 searchConsoleRouter.use(googleRateLimitMiddleware);
 searchConsoleRouter.use(requireUser);
 searchConsoleRouter.use(verifyGoogleSessionOwnership);
+searchConsoleRouter.use(loadProject);
 searchConsoleRouter.use(requireGoogleConfigured);
 
 async function requireSearchConsoleSession(
@@ -227,7 +229,9 @@ async function requireSearchConsoleSession(
 ): Promise<void> {
   try {
     const session = readSession(req);
-    if (!session.google?.refreshToken || !session.google?.searchConsoleSite?.url) {
+    const selectedSiteUrl =
+      req.project?.searchConsoleSite || session.google?.searchConsoleSite?.url;
+    if (!session.google?.refreshToken || !selectedSiteUrl) {
       res.status(409).json({
         error: {
           code: 'SC_NOT_SELECTED',
@@ -238,7 +242,7 @@ async function requireSearchConsoleSession(
     }
 
     const accessToken = await getValidAccessToken(session, res);
-    res.locals.scSiteUrl = session.google.searchConsoleSite.url;
+    res.locals.scSiteUrl = selectedSiteUrl;
     res.locals.googleAccessToken = accessToken;
     next();
   } catch (err) {

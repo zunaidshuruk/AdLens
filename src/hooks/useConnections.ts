@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { setSourceLiveMode } from '../adapters';
 import { ApiClientError, apiClient } from '../api/client';
+import { useApp } from '../context/AppContext';
 import type {
   ConnectionsResponse,
   GA4PropertyOption,
@@ -19,8 +20,15 @@ function notifyConnectionsChanged() {
 
 function applyConnectionLiveModes(
   conn: ConnectionsResponse | null,
-  health?: HealthStatusResponse | null
+  health?: HealthStatusResponse | null,
+  isDemo?: boolean
 ) {
+  if (isDemo) {
+    setSourceLiveMode('ga4', false);
+    setSourceLiveMode('search_console', false);
+    setSourceLiveMode('meta_ads', false);
+    return;
+  }
   setSourceLiveMode('ga4', Boolean(conn?.google.connected && conn?.google.ga4Property?.id));
   setSourceLiveMode(
     'search_console',
@@ -61,6 +69,7 @@ export interface UseConnectionsResult {
 }
 
 export function useConnections(): UseConnectionsResult {
+  const { activeProject, isDemoMode, refreshMe } = useApp();
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [missingSecrets, setMissingSecrets] = useState<string[]>([]);
   const [metaConfigured, setMetaConfigured] = useState<boolean>(false);
@@ -87,7 +96,7 @@ export function useConnections(): UseConnectionsResult {
       ]);
 
       setConnections(connRes);
-      applyConnectionLiveModes(connRes, healthRes);
+      applyConnectionLiveModes(connRes, healthRes, isDemoMode || activeProject?.isDemo);
 
       const missing = connRes.google.missing ?? healthRes?.missing ?? [];
       setMissingSecrets(missing);
@@ -162,7 +171,7 @@ export function useConnections(): UseConnectionsResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeProject?.id, activeProject?.isDemo, isDemoMode]);
 
   useEffect(() => {
     void loadData();
@@ -226,13 +235,18 @@ export function useConnections(): UseConnectionsResult {
                 },
               }
             : prev;
-          setSourceLiveMode('ga4', Boolean(next?.google.connected && next?.google.ga4Property?.id));
+          const isDemo = Boolean(isDemoMode || activeProject?.isDemo);
+          setSourceLiveMode(
+            'ga4',
+            !isDemo && Boolean(next?.google.connected && next?.google.ga4Property?.id)
+          );
           setSourceLiveMode(
             'search_console',
-            Boolean(next?.google.connected && next?.google.searchConsoleSite?.url)
+            !isDemo && Boolean(next?.google.connected && next?.google.searchConsoleSite?.url)
           );
           return next;
         });
+        await refreshMe().catch(() => {});
         notifyConnectionsChanged();
         return true;
       } catch (err) {
@@ -242,7 +256,7 @@ export function useConnections(): UseConnectionsResult {
         setSaving(false);
       }
     },
-    []
+    [activeProject?.isDemo, isDemoMode, refreshMe]
   );
 
   return {

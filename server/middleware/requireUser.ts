@@ -5,6 +5,7 @@ import { clearSession, readSession } from '../lib/session.js';
 export interface AuthenticatedUser {
   uid: string;
   email: string | null;
+  name?: string | null;
   emailVerified: boolean;
   providers: string[];
 }
@@ -84,6 +85,7 @@ export async function requireUser(
     req.user = {
       uid: decoded.uid,
       email: typeof decoded.email === 'string' ? decoded.email : null,
+      name: typeof decoded.name === 'string' && decoded.name.trim() ? decoded.name.trim() : null,
       emailVerified: true,
       providers,
     };

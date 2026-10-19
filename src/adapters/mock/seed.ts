@@ -1,4 +1,4 @@
-import { TRACKED_SITE } from '../../config/app.ts';
+import { DEMO_PROJECT as TRACKED_SITE } from '../../config/app.js';
 import type { MetaObjectiveLabel, MetaStatusLabel } from '../../types/index.js';
 
 /**

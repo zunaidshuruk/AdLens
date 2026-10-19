@@ -17,12 +17,14 @@ import type {
   GA4TrafficBreakdownRow,
   GA4TrafficPoint,
   HealthStatusResponse,
+  MeResponse,
   MetaAccountInfo,
   MetaAdRow,
   MetaAdSetRow,
   MetaAdsOverview,
   MetaCampaignRow,
   MetaSpendPoint,
+  ProjectConfig,
   PublicConfigResponse,
   SearchConsoleCountryRow,
   SearchConsoleDeviceRow,
@@ -33,6 +35,9 @@ import type {
   SearchConsoleSelectedSite,
   SearchConsoleSiteInfo,
   SearchConsoleSiteOption,
+  UserProfile,
+  UserSettings,
+  WorkspaceSummary,
 } from '../types';
 
 export class ApiClientError extends Error {
@@ -45,6 +50,16 @@ export class ApiClientError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+let activeProjectHeader: string | null = null;
+
+export function setActiveProjectHeader(header: string | null): void {
+  activeProjectHeader = header && header.trim() ? header.trim() : null;
+}
+
+export function getActiveProjectHeader(): string | null {
+  return activeProjectHeader;
 }
 
 const PUBLIC_AUTH_ROUTES = new Set([
@@ -86,6 +101,10 @@ async function performFetch(
 
   if (idToken) {
     headers.Authorization = `Bearer ${idToken}`;
+  }
+
+  if (!isPublicEndpoint && activeProjectHeader && !headers['X-AdLens-Project']) {
+    headers['X-AdLens-Project'] = activeProjectHeader;
   }
 
   return fetch(path, {
@@ -178,6 +197,101 @@ export const apiClient = {
 
   getPublicConfig(): Promise<PublicConfigResponse> {
     return apiRequest<PublicConfigResponse>('/api/public-config');
+  },
+
+  bootstrapMe(displayName?: string): Promise<MeResponse> {
+    return apiRequest<MeResponse>('/api/me/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify(displayName ? { displayName } : {}),
+    });
+  },
+
+  getMe(): Promise<MeResponse> {
+    return apiRequest<MeResponse>('/api/me');
+  },
+
+  updateMe(patch: {
+    displayName?: string;
+    photoURL?: string | null;
+    photoPath?: string | null;
+    settings?: UserSettings;
+  }): Promise<{ user: UserProfile }> {
+    return apiRequest<{ user: UserProfile }>('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  },
+
+  updateWorkspace(
+    wsId: string,
+    patch: {
+      name?: string;
+      logoURL?: string | null;
+      logoPath?: string | null;
+      defaults?: { currency: string; timezone: string };
+    }
+  ): Promise<{ workspace: WorkspaceSummary }> {
+    return apiRequest<{ workspace: WorkspaceSummary }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }
+    );
+  },
+
+  createProject(
+    wsId: string,
+    payload: {
+      name: string;
+      domain?: string;
+      timezone?: string;
+      currency?: string;
+      isDemo?: boolean;
+    }
+  ): Promise<{ project: ProjectConfig }> {
+    return apiRequest<{ project: ProjectConfig }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}/projects`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  updateProject(
+    wsId: string,
+    projectId: string,
+    patch: Partial<{
+      name: string;
+      domain: string;
+      timezone: string;
+      currency: string;
+      brandTerms: string[];
+      hostnameFilters: string[];
+      ga4PropertyId: string | null;
+      ga4PropertyName: string | null;
+      searchConsoleSite: string | null;
+      metaAdAccountId: string | null;
+      metaAdAccountName: string | null;
+    }>
+  ): Promise<{ project: ProjectConfig }> {
+    return apiRequest<{ project: ProjectConfig }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}/projects/${encodeURIComponent(projectId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }
+    );
+  },
+
+  deleteProject(wsId: string, projectId: string): Promise<{ ok: boolean }> {
+    return apiRequest<{ ok: boolean }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}/projects/${encodeURIComponent(projectId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
   },
 
   getConnections(): Promise<ConnectionsResponse> {

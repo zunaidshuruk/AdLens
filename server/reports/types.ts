@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import type { ProjectDoc } from '../lib/firestore.js';
 import type { SessionData } from '../lib/session.js';
 
 export type ReportSource = 'ga4' | 'search_console' | 'meta' | 'combined';
@@ -9,6 +10,7 @@ export interface ReportContext {
   ga4PropertyId?: string;
   ga4PropertyName?: string;
   searchConsoleSite?: string;
+  project?: ProjectDoc;
 }
 
 export interface ReportDefinition<I = unknown, O = unknown> {

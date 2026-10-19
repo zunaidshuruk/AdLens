@@ -3,6 +3,7 @@ import type { MetaAccountInfo } from '../../src/types/index.js';
 import {
   getServerConfig,
   isEmailAllowedForMetaSystemUser,
+  normalizeMetaAdAccountId,
   requireMetaConfigured,
 } from '../config.js';
 import { MetaApiError, metaGet } from '../lib/meta.js';
@@ -17,6 +18,7 @@ import {
   mapMetaOverview,
   mapMetaSpendOverTime,
 } from '../lib/metaAdsMapper.js';
+import { loadProject } from '../middleware/loadProject.js';
 import { requireUser } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
@@ -214,16 +216,24 @@ function requireMetaSystemUserAllowlist(
   next();
 }
 
-// Apply rate limiter, requireUser, Meta allowlist safeguard, and Meta configuration check to all /api/meta/* routes
+function resolveMetaAccountId(req: Request): string {
+  const cfg = getServerConfig();
+  if (req.project?.metaAdAccountId) {
+    return normalizeMetaAdAccountId(req.project.metaAdAccountId) || cfg.metaAdAccountId;
+  }
+  return cfg.metaAdAccountId;
+}
+
+// Apply rate limiter, requireUser, loadProject, Meta allowlist safeguard, and Meta configuration check to all /api/meta/* routes
 metaRouter.use(googleRateLimitMiddleware);
 metaRouter.use(requireUser);
+metaRouter.use(loadProject);
 metaRouter.use(requireMetaSystemUserAllowlist);
 metaRouter.use(requireMetaConfigured);
 
 // GET /api/meta/account -> MetaAccountInfo
-metaRouter.get('/account', async (_req: Request, res: Response) => {
-  const cfg = getServerConfig();
-  const accountId = cfg.metaAdAccountId;
+metaRouter.get('/account', async (req: Request, res: Response) => {
+  const accountId = resolveMetaAccountId(req);
   const cacheKey = `${accountId}:account`;
 
   const cached = getCache<MetaAccountInfo>(cacheKey);
@@ -265,8 +275,7 @@ metaRouter.get('/overview', async (req: Request, res: Response) => {
   const dates = validateDateQuery(req, res);
   if (!dates) return;
 
-  const cfg = getServerConfig();
-  const accountId = cfg.metaAdAccountId;
+  const accountId = resolveMetaAccountId(req);
   const cacheKey = buildCacheKey(accountId, 'overview', dates);
 
   const cached = getCache(cacheKey);
@@ -309,8 +318,7 @@ metaRouter.get('/spend-over-time', async (req: Request, res: Response) => {
   const dates = validateDateQuery(req, res);
   if (!dates) return;
 
-  const cfg = getServerConfig();
-  const accountId = cfg.metaAdAccountId;
+  const accountId = resolveMetaAccountId(req);
   const cacheKey = buildCacheKey(accountId, 'spend-over-time', dates);
 
   const cached = getCache(cacheKey);
@@ -360,8 +368,7 @@ metaRouter.get('/campaigns', async (req: Request, res: Response) => {
   const dates = validateDateQuery(req, res);
   if (!dates) return;
 
-  const cfg = getServerConfig();
-  const accountId = cfg.metaAdAccountId;
+  const accountId = resolveMetaAccountId(req);
   const cacheKey = buildCacheKey(accountId, 'campaigns', dates);
 
   const cached = getCache(cacheKey);
@@ -405,8 +412,7 @@ metaRouter.get('/adsets', async (req: Request, res: Response) => {
       ? req.query.campaignId.trim()
       : undefined;
 
-  const cfg = getServerConfig();
-  const accountId = cfg.metaAdAccountId;
+  const accountId = resolveMetaAccountId(req);
   const cacheKey = buildCacheKey(accountId, 'adsets', dates, campaignId ?? 'all');
 
   const cached = getCache(cacheKey);
@@ -468,8 +474,7 @@ metaRouter.get('/ads', async (req: Request, res: Response) => {
       ? req.query.adSetId.trim()
       : undefined;
 
-  const cfg = getServerConfig();
-  const accountId = cfg.metaAdAccountId;
+  const accountId = resolveMetaAccountId(req);
   const cacheKey = buildCacheKey(accountId, 'ads', dates, adSetId ?? 'all');
 
   const cached = getCache(cacheKey);

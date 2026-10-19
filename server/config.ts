@@ -48,7 +48,26 @@ export interface ServerConfig {
   firebaseServiceAccountJson: string;
   firebaseConfigured: boolean;
   firebaseMissing: RequiredFirebaseEnvVar[];
+  authProviders: string[];
   isProduction: boolean;
+}
+
+export const DEFAULT_AUTH_PROVIDERS = ['password', 'google'] as const;
+
+export function parseAuthProviders(raw: string | undefined): string[] {
+  if (!raw || !raw.trim()) {
+    return [...DEFAULT_AUTH_PROVIDERS];
+  }
+  const parsed = raw
+    .split(',')
+    .map((p) => {
+      const token = p.trim().toLowerCase();
+      if (token === 'google.com') return 'google';
+      if (token === 'microsoft.com') return 'microsoft';
+      return token;
+    })
+    .filter(Boolean);
+  return parsed.length > 0 ? Array.from(new Set(parsed)) : [...DEFAULT_AUTH_PROVIDERS];
 }
 
 export function normalizeMetaAdAccountId(raw: string | undefined): string {
@@ -113,6 +132,7 @@ export function getServerConfig(): ServerConfig {
   const metaSystemUserAllowedEmails = parseAllowedEmails(
     process.env.META_SYSTEM_USER_ALLOWED_EMAILS
   );
+  const authProviders = parseAuthProviders(process.env.AUTH_PROVIDERS);
 
   return {
     googleClientId: (process.env.GOOGLE_CLIENT_ID || '').trim(),
@@ -134,6 +154,7 @@ export function getServerConfig(): ServerConfig {
     firebaseServiceAccountJson,
     firebaseConfigured: firebaseMissing.length === 0,
     firebaseMissing,
+    authProviders,
     isProduction: process.env.NODE_ENV === 'production',
   };
 }

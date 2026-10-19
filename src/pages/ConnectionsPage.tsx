@@ -13,7 +13,8 @@ import {
   X,
 } from 'lucide-react';
 import { ConnectionStatus } from '../components/ConnectionStatus';
-import { APP_NAME, TRACKED_SITE } from '../config/app';
+import { APP_NAME, DEMO_PROJECT } from '../config/app';
+import { useAppContext } from '../context/AppContext';
 import { useConnections } from '../hooks';
 import type { GA4PropertyOption } from '../types';
 
@@ -30,6 +31,11 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 export const ConnectionsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { activeProject } = useAppContext();
+  const TRACKED_SITE = {
+    name: activeProject?.name || DEMO_PROJECT.name,
+    domain: activeProject?.domain || DEMO_PROJECT.domain,
+  };
   const {
     connections,
     missingSecrets,

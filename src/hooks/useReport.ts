@@ -6,6 +6,7 @@ import {
   subscribeAdapterRegistry,
 } from '../adapters';
 import { ApiClientError, apiClient } from '../api/client';
+import { useApp } from '../context/AppContext';
 import type {
   ComputedDateRange,
   DataSourceId,
@@ -26,13 +27,14 @@ export interface UseReportResult<T> {
 
 /**
  * Generic report hook that talks exclusively to the adapter registry and re-runs
- * whenever the selected date range, adapter live/mock state, or extra dependency keys change.
+ * whenever the selected date range, active project, adapter live/mock state, or extra dependency keys change.
  */
 export function useReport<T>(
   fetcher: (registry: AdapterRegistry, range: ComputedDateRange) => Promise<T>,
   deps: readonly unknown[] = []
 ): UseReportResult<T> {
   const { dateRange } = useDateRange();
+  const { activeProject, isDemoMode } = useApp();
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +79,8 @@ export function useReport<T>(
     dateRange.compareStartDate,
     dateRange.compareEndDate,
     dateRange.timezone,
+    activeProject?.id,
+    isDemoMode,
     reloadTrigger,
     ...deps,
   ]);
@@ -135,6 +139,7 @@ export function useAdapterStatus() {
 
 export function useGA4PropertyInfo() {
   const { isGA4Live } = useAdapterStatus();
+  const { activeProject } = useApp();
   const [info, setInfo] = useState<GA4PropertyInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -167,7 +172,7 @@ export function useGA4PropertyInfo() {
     return () => {
       cancelled = true;
     };
-  }, [isGA4Live]);
+  }, [isGA4Live, activeProject?.id, activeProject?.ga4PropertyId]);
 
   return {
     propertyInfo: info,
@@ -177,6 +182,7 @@ export function useGA4PropertyInfo() {
 
 export function useSearchConsoleSiteInfo() {
   const { isSearchConsoleLive } = useAdapterStatus();
+  const { activeProject } = useApp();
   const [info, setInfo] = useState<SearchConsoleSiteInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -209,7 +215,7 @@ export function useSearchConsoleSiteInfo() {
     return () => {
       cancelled = true;
     };
-  }, [isSearchConsoleLive]);
+  }, [isSearchConsoleLive, activeProject?.id, activeProject?.searchConsoleSite]);
 
   return {
     siteInfo: info,
@@ -219,6 +225,7 @@ export function useSearchConsoleSiteInfo() {
 
 export function useMetaAccountInfo() {
   const { isMetaAdsLive } = useAdapterStatus();
+  const { activeProject } = useApp();
   const [info, setInfo] = useState<MetaAccountInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -251,7 +258,7 @@ export function useMetaAccountInfo() {
     return () => {
       cancelled = true;
     };
-  }, [isMetaAdsLive]);
+  }, [isMetaAdsLive, activeProject?.id, activeProject?.metaAdAccountId]);
 
   return {
     accountInfo: info,

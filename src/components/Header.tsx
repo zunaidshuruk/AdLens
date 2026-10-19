@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Settings, Sun, X } from 'lucide-react';
-import { APP_NAME, TRACKED_SITE } from '../config/app';
+import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useConnections } from '../hooks/useConnections';
@@ -25,7 +25,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const navigate = useNavigate();
   const { isMocked } = useAdapterStatus();
   const { googleConnected, connections } = useConnections();
-  const { theme, toggleTheme, currency, setCurrency } = useAppContext();
+  const { theme, toggleTheme, currency, setCurrency, activeProject, userProfile, isDemoMode } =
+    useAppContext();
   const { user, signOut, accountLinkNotice, dismissAccountLinkNotice } = useAuth();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,10 +44,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
     };
   }, []);
 
-  const displayName = user?.displayName || user?.email?.split('@')[0] || 'AdLens User';
+  const displayName =
+    userProfile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'AdLens User';
   const email = user?.email || '';
-  const photoURL = user?.photoURL || null;
-  const initials = getInitials(user?.displayName, user?.email);
+  const photoURL = userProfile?.photoURL || user?.photoURL || null;
+  const initials = getInitials(displayName, user?.email);
+
+  const projectName = activeProject?.name || DEMO_PROJECT.name;
+  const projectDomain = activeProject?.domain || DEMO_PROJECT.domain;
+  const isDemo = Boolean(activeProject?.isDemo || isDemoMode);
 
   const handleSignOut = async () => {
     setMenuOpen(false);
@@ -95,13 +101,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                 {APP_NAME}
               </span>
               <span className="hidden md:inline font-semibold text-slate-900 dark:text-slate-100">
-                {TRACKED_SITE.name}
+                {projectName}
               </span>
               <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">
                 ·
               </span>
               <span className="font-mono text-slate-500 dark:text-slate-400">
-                {TRACKED_SITE.domain}
+                {projectDomain}
               </span>
             </div>
 
@@ -110,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                 data-testid="mock-data-badge"
                 className="px-2 py-0.5 text-[11px] font-mono font-semibold tracking-wide bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-800 rounded-md whitespace-nowrap shrink-0"
               >
-                MOCK DATA
+                {isDemo ? 'DEMO STORE' : 'MOCK DATA'}
               </span>
             )}
 

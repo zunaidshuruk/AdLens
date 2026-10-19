@@ -2,8 +2,10 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import {
   getServerConfig,
   isEmailAllowedForMetaSystemUser,
+  normalizeMetaAdAccountId,
   requireGoogleConfigured,
 } from '../config.js';
+import { getFirestoreStore } from '../lib/firestore.js';
 import {
   fetchGA4Properties,
   fetchSearchConsoleSites,
@@ -11,6 +13,7 @@ import {
   GoogleApiError,
 } from '../lib/google.js';
 import { readSession, writeSession } from '../lib/session.js';
+import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 
 export const connectionsRouter = Router();
@@ -68,6 +71,7 @@ function sendError(res: Response, err: unknown): void {
 // Require authenticated & verified Firebase user and matching Google session uid
 connectionsRouter.use(requireUser);
 connectionsRouter.use(verifyGoogleSessionOwnership);
+connectionsRouter.use(loadProject);
 
 // GET /api/connections
 connectionsRouter.get('/', (req: Request, res: Response) => {
@@ -77,29 +81,51 @@ connectionsRouter.get('/', (req: Request, res: Response) => {
   const isConnected = Boolean(cfg.googleConfigured && googleSession?.refreshToken);
   const metaAllowed = isEmailAllowedForMetaSystemUser(req.user?.email);
 
+  const projectGa4 =
+    req.project?.ga4PropertyId
+      ? {
+          id: req.project.ga4PropertyId,
+          name: req.project.ga4PropertyName || req.project.ga4PropertyId,
+        }
+      : null;
+  const projectSc =
+    req.project?.searchConsoleSite
+      ? {
+          url: req.project.searchConsoleSite,
+        }
+      : null;
+
+  const effectiveGa4 = isConnected ? projectGa4 ?? googleSession?.ga4Property ?? null : null;
+  const effectiveSc = isConnected ? projectSc ?? googleSession?.searchConsoleSite ?? null : null;
+  const effectiveMetaAccountId =
+    cfg.metaConfigured && metaAllowed
+      ? normalizeMetaAdAccountId(req.project?.metaAdAccountId || cfg.metaAdAccountId)
+      : null;
+
   res.json({
     google: {
       configured: cfg.googleConfigured,
       missing: cfg.missing,
       connected: isConnected,
       email: isConnected ? googleSession?.email ?? null : null,
-      ga4Property: isConnected ? googleSession?.ga4Property ?? null : null,
-      searchConsoleSite: isConnected ? googleSession?.searchConsoleSite ?? null : null,
+      ga4Property: effectiveGa4,
+      searchConsoleSite: effectiveSc,
     },
     meta: {
       configured: cfg.metaConfigured,
       missing: cfg.metaMissing,
       connected: Boolean(cfg.metaConfigured && metaAllowed),
-      adAccountId: cfg.metaConfigured && metaAllowed ? cfg.metaAdAccountId : null,
+      adAccountId: effectiveMetaAccountId,
       notAvailable: !metaAllowed,
     },
   });
 });
 
-// Apply rate limit, auth, session ownership, and configuration check to all /api/google/* routes
+// Apply rate limit, auth, session ownership, project loader, and configuration check to all /api/google/* routes
 googleApiRouter.use(googleRateLimitMiddleware);
 googleApiRouter.use(requireUser);
 googleApiRouter.use(verifyGoogleSessionOwnership);
+googleApiRouter.use(loadProject);
 googleApiRouter.use(requireGoogleConfigured);
 
 // GET /api/google/ga4/properties
@@ -198,6 +224,24 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
     session.uid = req.user?.uid ?? session.uid;
     session.google.uid = req.user?.uid ?? session.google.uid;
     writeSession(res, session);
+
+    // Also PATCH the active project in Firestore if X-AdLens-Project was sent
+    if (req.project) {
+      const store = getFirestoreStore();
+      await store.updateProject(req.project.workspaceId, req.project.id, {
+        ...(body.ga4PropertyId !== undefined
+          ? {
+              ga4PropertyId: session.google.ga4Property?.id ?? null,
+              ga4PropertyName: session.google.ga4Property?.name ?? null,
+            }
+          : {}),
+        ...(body.searchConsoleSiteUrl !== undefined
+          ? {
+              searchConsoleSite: session.google.searchConsoleSite?.url ?? null,
+            }
+          : {}),
+      });
+    }
 
     res.json({
       ok: true,

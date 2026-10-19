@@ -1,4 +1,4 @@
-import { TRACKED_SITE } from '../../config/app.ts';
+import { DEMO_PROJECT as TRACKED_SITE } from '../../config/app.js';
 import type {
   ComputedDateRange,
   MetaAdRow,
@@ -6,11 +6,11 @@ import type {
   MetaAdsOverview,
   MetaCampaignRow,
   MetaSpendPoint,
-} from '../../types/index.ts';
-import { enumerateDates } from '../../utils/dateUtils.ts';
-import { calculatePercentChange } from '../../utils/formatters.ts';
-import type { MetaAdsAdapter } from '../metaAds.ts';
-import { dayOfWeekFactor, seededVariance, SHARED_CAMPAIGNS, simulateLatency } from './seed.ts';
+} from '../../types/index.js';
+import { enumerateDates } from '../../utils/dateUtils.js';
+import { calculatePercentChange } from '../../utils/formatters.js';
+import type { MetaAdsAdapter } from '../metaAds.js';
+import { dayOfWeekFactor, seededVariance, SHARED_CAMPAIGNS, simulateLatency } from './seed.js';
 
 interface AdSetBlueprint {
   id: string;
@@ -29,7 +29,7 @@ interface AdSetBlueprint {
 }
 
 const AD_SET_BLUEPRINTS: AdSetBlueprint[] = [
-  // Campaign 1: Convay Enterprise Lead Gen - BD
+  // Campaign 1: Enterprise Lead Gen - BD
   {
     id: 'adset_bd_cto_cio',
     campaignId: 'camp_bd_enterprise_leads',

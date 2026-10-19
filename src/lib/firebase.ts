@@ -11,6 +11,7 @@ export interface FirebaseInitError {
 
 export let auth: Auth | null = null;
 export let lastInitError: FirebaseInitError | null = null;
+export let configuredAuthProviders: string[] = ['password', 'google'];
 
 let firebaseApp: FirebaseApp | null = null;
 let initPromise: Promise<Auth | null> | null = null;
@@ -41,6 +42,7 @@ export function resetFirebaseInitForTest(): void {
   firebaseApp = null;
   initPromise = null;
   lastInitError = null;
+  configuredAuthProviders = ['password', 'google'];
 }
 
 export async function initFirebase(): Promise<Auth | null> {
@@ -58,7 +60,7 @@ export async function initFirebase(): Promise<Auth | null> {
       if (!response.ok) {
         const message = `Failed to load Firebase config from /api/public-config (HTTP ${response.status}).`;
         lastInitError = { reason: 'network', message };
-        console.error('[Firebase Init] Network error:', message);
+        console.warn('[Firebase Init] Network error:', message);
         initPromise = null;
         return null;
       }
@@ -68,9 +70,18 @@ export async function initFirebase(): Promise<Auth | null> {
       const detail = err instanceof Error ? err.message : String(err);
       const message = `Failed to reach /api/public-config: ${detail}`;
       lastInitError = { reason: 'network', message };
-      console.error('[Firebase Init] Network error:', err);
+      console.warn('[Firebase Init] Network error:', err);
       initPromise = null;
       return null;
+    }
+
+    if (Array.isArray(data?.providers) && data.providers.length > 0) {
+      const normalized = data.providers
+        .map((p) => String(p).trim().toLowerCase())
+        .filter(Boolean);
+      if (normalized.length > 0) {
+        configuredAuthProviders = normalized;
+      }
     }
 
     const fb = data?.firebase;
@@ -78,7 +89,7 @@ export async function initFirebase(): Promise<Auth | null> {
       const message =
         'Firebase Authentication is not configured. Please set FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, and FIREBASE_APP_ID.';
       lastInitError = { reason: 'config_missing', message };
-      console.error('[Firebase Init] Configuration missing:', message);
+      console.warn('[Firebase Init] Configuration missing:', message);
       initPromise = null;
       return null;
     }
@@ -100,7 +111,7 @@ export async function initFirebase(): Promise<Auth | null> {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       lastInitError = { reason: 'sdk_error', message: detail };
-      console.error('[Firebase Init] SDK error:', err);
+      console.warn('[Firebase Init] SDK error:', err);
       initPromise = null;
       return null;
     }

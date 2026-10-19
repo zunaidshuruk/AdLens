@@ -62,7 +62,7 @@ export function parseServiceAccountJson(rawJson: string): ServiceAccount {
   };
 }
 
-function getFirebaseAdminApp(): App {
+export function getFirebaseAdminApp(): App {
   const { firebaseServiceAccountJson } = getServerConfig();
   const serviceAccount = parseServiceAccountJson(firebaseServiceAccountJson);
   const sig = `${serviceAccount.projectId}:${serviceAccount.clientEmail}`;

@@ -8,7 +8,8 @@ import { ErrorState } from '../components/ErrorState';
 import { KpiCard } from '../components/KpiCard';
 import { SourceBadge } from '../components/SourceBadge';
 import { TrendChart } from '../components/TrendChart';
-import { TRACKED_SITE } from '../config/app';
+import { DEMO_PROJECT } from '../config/app';
+import { useAppContext } from '../context/AppContext';
 import { useAdapterStatus, useDateRange, useGA4PropertyInfo, useReport } from '../hooks';
 import type {
   GA4CampaignRow,
@@ -64,6 +65,11 @@ const BROWSER_FILTER_OPTIONS = ['Chrome', 'Safari', 'Edge', 'Firefox', 'Samsung 
 
 export const GA4Page: React.FC = () => {
   const navigate = useNavigate();
+  const { activeProject } = useAppContext();
+  const TRACKED_SITE = {
+    name: activeProject?.name || DEMO_PROJECT.name,
+    domain: activeProject?.domain || DEMO_PROJECT.domain,
+  };
   const { dateRange, compareEnabled, timezone } = useDateRange();
   const { isGA4Live } = useAdapterStatus();
   const { propertyInfo } = useGA4PropertyInfo();

@@ -43,7 +43,8 @@ import {
 
 test('config constants are defined cleanly', () => {
   assert.ok(APP_NAME.length > 0);
-  assert.equal(TRACKED_SITE.domain, 'convay.com');
+  assert.equal(TRACKED_SITE.name, 'Demo Store');
+  assert.equal(TRACKED_SITE.domain, 'demo-store.example');
 });
 
 test('computeDateRange computes valid ranges and matching compare ranges for all 7 presets', () => {
@@ -1804,18 +1805,27 @@ test('Firebase error-code message mapper, password checklist rules, and /api/pub
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
+    delete process.env.AUTH_PROVIDERS;
     const resPub = await fetch(`${baseUrl}/api/public-config`);
     assert.equal(resPub.status, 200);
     const pubJson = (await resPub.json()) as {
       firebase: { apiKey: string; authDomain: string; projectId: string; appId: string };
+      providers: string[];
     };
     assert.equal(pubJson.firebase.apiKey, 'AIzaSyTestKey');
     assert.equal(pubJson.firebase.projectId, 'adlens-test');
+    assert.deepEqual(pubJson.providers, ['password', 'google']);
+
+    process.env.AUTH_PROVIDERS = 'password,google,microsoft';
+    const resPubCustom = await fetch(`${baseUrl}/api/public-config`);
+    const pubCustomJson = (await resPubCustom.json()) as { providers: string[] };
+    assert.deepEqual(pubCustomJson.providers, ['password', 'google', 'microsoft']);
   } finally {
     delete process.env.FIREBASE_API_KEY;
     delete process.env.FIREBASE_AUTH_DOMAIN;
     delete process.env.FIREBASE_PROJECT_ID;
     delete process.env.FIREBASE_APP_ID;
+    delete process.env.AUTH_PROVIDERS;
     server.close();
   }
 });
@@ -1860,3 +1870,266 @@ test('initFirebase records lastInitError and resets initPromise so subsequent ca
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Sprint 7B: plans config returns beta limits and falls back to beta for unknown plans', async () => {
+  const { PLANS, getPlanLimits } = await import('../../server/config/plans.js');
+  assert.deepEqual(PLANS.beta, { maxProjects: 3 });
+  assert.deepEqual(getPlanLimits('beta'), { maxProjects: 3 });
+  assert.deepEqual(getPlanLimits('unknown_plan'), { maxProjects: 3 });
+  assert.deepEqual(getPlanLimits(undefined), { maxProjects: 3 });
+  assert.deepEqual(getPlanLimits(null), { maxProjects: 3 });
+});
+
+test('Sprint 7B: /api/me/bootstrap, /api/me, projects CRUD, plan limits, and X-AdLens-Project scoping', async () => {
+  const { app } = await import('../../server/index.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const { createInMemoryFirestoreStore, setTestFirestoreStore } = await import(
+    '../../server/lib/firestore.js'
+  );
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+
+  process.env.TOKEN_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef';
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+  process.env.META_ACCESS_TOKEN = 'test-meta-token';
+  process.env.META_APP_SECRET = 'test-meta-secret';
+  process.env.META_AD_ACCOUNT_ID = '999000111';
+  process.env.META_SYSTEM_USER_ALLOWED_EMAILS = 'owner@example.com';
+
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+
+  setTestTokenVerifier(async (token: string) => {
+    if (token === 'token-owner') {
+      return {
+        uid: 'uid_owner',
+        email: 'owner@example.com',
+        name: 'Alice Owner',
+        email_verified: true,
+        firebase: { identities: { 'google.com': ['g1'] }, sign_in_provider: 'google.com' },
+      } as never;
+    }
+    if (token === 'token-member') {
+      return {
+        uid: 'uid_member',
+        email: 'bob.member@example.com',
+        email_verified: true,
+        firebase: { identities: { password: ['bob.member@example.com'] }, sign_in_provider: 'password' },
+      } as never;
+    }
+    if (token === 'token-outsider') {
+      return {
+        uid: 'uid_outsider',
+        email: 'outsider@example.com',
+        email_verified: true,
+        firebase: { identities: { password: ['outsider@example.com'] }, sign_in_provider: 'password' },
+      } as never;
+    }
+    throw new Error('Invalid token');
+  });
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 1. Bootstrap is idempotent and derives displayName from token name or email prefix
+    const boot1 = await originalFetch(`${baseUrl}/api/me/bootstrap`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+    });
+    assert.equal(boot1.status, 200);
+    const boot1Json = (await boot1.json()) as {
+      user: { uid: string; displayName: string; email: string };
+      workspaces: { id: string; name: string; role: string; plan: string; limits: { maxProjects: number } }[];
+      projects: unknown[];
+    };
+    assert.equal(boot1Json.user.uid, 'uid_owner');
+    assert.equal(boot1Json.user.displayName, 'Alice Owner');
+    assert.equal(boot1Json.workspaces.length, 1);
+    assert.equal(boot1Json.workspaces[0].name, 'My workspace');
+    assert.equal(boot1Json.workspaces[0].role, 'owner');
+    assert.equal(boot1Json.workspaces[0].plan, 'beta');
+    assert.deepEqual(boot1Json.workspaces[0].limits, { maxProjects: 3 });
+
+    const wsId = boot1Json.workspaces[0].id;
+
+    // Second bootstrap call is idempotent (still 1 workspace)
+    const boot2 = await originalFetch(`${baseUrl}/api/me/bootstrap`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+    });
+    assert.equal(boot2.status, 200);
+    const boot2Json = (await boot2.json()) as typeof boot1Json;
+    assert.equal(boot2Json.workspaces.length, 1);
+
+    // Bootstrap member without token name -> derives displayName from email before @
+    const bootMember = await originalFetch(`${baseUrl}/api/me/bootstrap`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-member', 'Content-Type': 'application/json' },
+    });
+    const bootMemberJson = (await bootMember.json()) as typeof boot1Json;
+    assert.equal(bootMemberJson.user.displayName, 'bob.member');
+
+    // 2. Create projects with domain normalisation, timezone and currency validation
+    const badTzRes = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Bad TZ Project',
+        domain: 'example.com',
+        timezone: 'Invalid/Timezone_Name',
+        currency: 'USD',
+      }),
+    });
+    assert.equal(badTzRes.status, 400);
+
+    const create1 = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Store One',
+        domain: 'https://www.StoreOne.com/shop?ref=1',
+        timezone: 'Asia/Singapore',
+        currency: 'USD',
+      }),
+    });
+    assert.equal(create1.status, 201);
+    const proj1 = ((await create1.json()) as { project: { id: string; domain: string; timezone: string; currency: string } }).project;
+    assert.equal(proj1.domain, 'storeone.com');
+    assert.equal(proj1.timezone, 'Asia/Singapore');
+    assert.equal(proj1.currency, 'USD');
+
+    // Create 2nd and 3rd project up to beta maxProjects (3)
+    const create2 = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Store Two', domain: 'storetwo.com' }),
+    });
+    assert.equal(create2.status, 201);
+
+    const create3 = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Store Three', domain: 'storethree.com' }),
+    });
+    assert.equal(create3.status, 201);
+    const proj3 = ((await create3.json()) as { project: { id: string } }).project;
+
+    // 4th project exceeds beta limit -> 403 PLAN_LIMIT_REACHED
+    const create4 = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Store Four', domain: 'storefour.com' }),
+    });
+    assert.equal(create4.status, 403);
+    const create4Err = (await create4.json()) as { error: { code: string } };
+    assert.equal(create4Err.error.code, 'PLAN_LIMIT_REACHED');
+
+    // 3. PATCH project updates brandTerms, hostnameFilters, ga4PropertyId, searchConsoleSite, metaAdAccountId
+    const patchRes = await originalFetch(
+      `${baseUrl}/api/workspaces/${wsId}/projects/${proj1.id}`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer token-owner', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandTerms: ['storeone', 'store one'],
+          hostnameFilters: ['https://app.storeone.com/login', 'www.storeone.com'],
+          ga4PropertyId: '777888999',
+          ga4PropertyName: 'StoreOne GA4',
+          searchConsoleSite: 'sc-domain:storeone.com',
+          metaAdAccountId: 'act_555666777',
+          metaAdAccountName: 'StoreOne Ads',
+        }),
+      }
+    );
+    assert.equal(patchRes.status, 200);
+    const patchedProj = ((await patchRes.json()) as {
+      project: {
+        brandTerms: string[];
+        hostnameFilters: string[];
+        ga4PropertyId: string;
+        searchConsoleSite: string;
+        metaAdAccountId: string;
+      };
+    }).project;
+    assert.deepEqual(patchedProj.brandTerms, ['storeone', 'store one']);
+    assert.deepEqual(patchedProj.hostnameFilters, ['app.storeone.com', 'storeone.com']);
+    assert.equal(patchedProj.ga4PropertyId, '777888999');
+    assert.equal(patchedProj.searchConsoleSite, 'sc-domain:storeone.com');
+    assert.equal(patchedProj.metaAdAccountId, 'act_555666777');
+
+    // 4. Non-member cannot access or delete project
+    const outsiderDel = await originalFetch(
+      `${baseUrl}/api/workspaces/${wsId}/projects/${proj3.id}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer token-outsider' },
+      }
+    );
+    assert.equal(outsiderDel.status, 403);
+    const outsiderDelErr = (await outsiderDel.json()) as { error: { code: string } };
+    assert.equal(outsiderDelErr.error.code, 'NOT_ALLOWED');
+
+    // Owner can delete project 3
+    const ownerDel = await originalFetch(
+      `${baseUrl}/api/workspaces/${wsId}/projects/${proj3.id}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer token-owner' },
+      }
+    );
+    assert.equal(ownerDel.status, 200);
+
+    // 5. X-AdLens-Project header: 404 for non-member or missing project
+    const badHeaderRes = await originalFetch(`${baseUrl}/api/connections`, {
+      headers: {
+        Authorization: 'Bearer token-outsider',
+        'X-AdLens-Project': `${wsId}/${proj1.id}`,
+      },
+    });
+    assert.equal(badHeaderRes.status, 404);
+
+    // 6. X-AdLens-Project header scopes /api/connections and /api/google/selection PATCHes active project
+    const sessionCookieVal = encryptPayload(
+      JSON.stringify({
+        v: 1,
+        google: {
+          uid: 'uid_owner',
+          refreshToken: 'refresh-tok',
+          email: 'owner@example.com',
+          ga4Property: { id: '111222333', name: 'Fallback Session GA4' },
+          searchConsoleSite: { url: 'https://fallback.example/' },
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY!
+    );
+
+    const connScopedRes = await originalFetch(`${baseUrl}/api/connections`, {
+      headers: {
+        Authorization: 'Bearer token-owner',
+        Cookie: `${SESSION_COOKIE_NAME}=${sessionCookieVal}`,
+        'X-AdLens-Project': `${wsId}/${proj1.id}`,
+      },
+    });
+    assert.equal(connScopedRes.status, 200);
+    const connScopedJson = (await connScopedRes.json()) as {
+      google: {
+        ga4Property: { id: string; name: string } | null;
+        searchConsoleSite: { url: string } | null;
+      };
+    };
+    // Uses req.project's GA4 property and Search Console site over the cookie fallback
+    assert.equal(connScopedJson.google.ga4Property?.id, '777888999');
+    assert.equal(connScopedJson.google.searchConsoleSite?.url, 'sc-domain:storeone.com');
+  } finally {
+    setTestFirestoreStore(null);
+    setTestTokenVerifier(null);
+    globalThis.fetch = originalFetch;
+    server.close();
+  }
+});
+

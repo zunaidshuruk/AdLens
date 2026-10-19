@@ -1,11 +1,17 @@
 import React from 'react';
 import { Bot, Lock, MessageSquare, Send } from 'lucide-react';
-import { APP_NAME, TRACKED_SITE } from '../config/app';
+import { APP_NAME, DEMO_PROJECT } from '../config/app';
+import { useAppContext } from '../context/AppContext';
 import { useDateRange } from '../hooks';
 import { formatFullDateRange } from '../utils/dateUtils';
 
 export const AIAnalystPage: React.FC = () => {
   const { dateRange } = useDateRange();
+  const { activeProject } = useAppContext();
+  const TRACKED_SITE = {
+    name: activeProject?.name || DEMO_PROJECT.name,
+    domain: activeProject?.domain || DEMO_PROJECT.domain,
+  };
 
   const sampleQuestions = [
     `Which Meta Ads campaign drove the lowest cost per demo_request on ${TRACKED_SITE.domain} during ${formatFullDateRange(dateRange.startDate, dateRange.endDate)}?`,

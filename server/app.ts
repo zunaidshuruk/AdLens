@@ -11,6 +11,7 @@ import { publicConfigRouter } from './routes/publicConfig.js';
 import { reportsRouter } from './routes/reports.js';
 import { searchConsoleRouter } from './routes/searchConsole.js';
 import { sessionRouter } from './routes/session.js';
+import { meRouter, workspacesRouter } from './routes/workspaces.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +48,8 @@ app.use('/api/health', healthRouter);
 app.use('/api/public-config', publicConfigRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/session', sessionRouter);
+app.use('/api/me', meRouter);
+app.use('/api/workspaces', workspacesRouter);
 app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
 app.use('/api/ga4', ga4Router);
@@ -55,7 +58,7 @@ app.use('/api/meta', metaRouter);
 app.use('/api/reports', reportsRouter);
 
 // Serve static frontend build in production when running npm start (not needed on Vercel, which serves /dist directly)
-const isProduction = process.env.NODE_ENV === 'production' || !process.env.API_PORT;
+const isProduction = process.env.NODE_ENV === 'production';
 const isVercel = Boolean(process.env.VERCEL);
 const distPath = path.resolve(__dirname, '../dist');
 

@@ -7,7 +7,8 @@ import { ErrorState } from '../components/ErrorState';
 import { KpiCard } from '../components/KpiCard';
 import { SourceBadge } from '../components/SourceBadge';
 import { TrendChart } from '../components/TrendChart';
-import { TRACKED_SITE } from '../config/app';
+import { DEMO_PROJECT } from '../config/app';
+import { useAppContext } from '../context/AppContext';
 import {
   useAdapterStatus,
   useConnections,
@@ -26,6 +27,11 @@ import { formatNumber, formatPercent, formatSignedPercent } from '../utils/forma
 
 export const SearchConsolePage: React.FC = () => {
   const navigate = useNavigate();
+  const { activeProject } = useAppContext();
+  const TRACKED_SITE = {
+    name: activeProject?.name || DEMO_PROJECT.name,
+    domain: activeProject?.domain || DEMO_PROJECT.domain,
+  };
   const { dateRange, compareEnabled, timezone } = useDateRange();
   const { isSearchConsoleLive } = useAdapterStatus();
   const { siteInfo } = useSearchConsoleSiteInfo();

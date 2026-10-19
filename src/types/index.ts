@@ -411,6 +411,89 @@ export interface PublicConfigResponse {
     projectId: string;
     appId: string;
   };
+  providers?: string[];
+}
+
+export type WorkspaceRole = 'owner' | 'admin' | 'member';
+
+export interface UserEmailNotifications {
+  weeklyReport?: boolean;
+  alerts?: boolean;
+  productUpdates?: boolean;
+}
+
+export type NumberFormatLocale = 'en-US' | 'en-GB' | 'en-IN' | 'de-DE' | 'fr-FR' | 'bn-BD';
+
+export interface UserSettings {
+  theme?: 'light' | 'dark' | 'system';
+  defaultDateRange?:
+    | 'Today'
+    | 'Last 7 days'
+    | 'Last 28 days'
+    | 'Last 90 days'
+    | 'This month'
+    | 'Last month';
+  compareByDefault?: boolean;
+  displayCurrency?: string;
+  timezone?: string;
+  numberFormat?: NumberFormatLocale;
+  emailNotifications?: UserEmailNotifications;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string | null;
+  photoPath: string | null;
+  settings: UserSettings;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  ownerId: string;
+  role: WorkspaceRole;
+  plan: string;
+  limits: {
+    maxProjects: number;
+  };
+  logoURL: string | null;
+  logoPath: string | null;
+  defaults: {
+    currency: string;
+    timezone: string;
+  };
+  members: Record<string, WorkspaceRole>;
+  memberIds: string[];
+}
+
+export interface ProjectConfig {
+  id: string;
+  workspaceId: string;
+  name: string;
+  domain: string;
+  ga4PropertyId: string | null;
+  ga4PropertyName: string | null;
+  searchConsoleSite: string | null;
+  metaAdAccountId: string | null;
+  metaAdAccountName: string | null;
+  timezone: string;
+  currency: string;
+  brandTerms: string[];
+  hostnameFilters: string[];
+  isDemo: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MeResponse {
+  user: UserProfile;
+  workspaces: WorkspaceSummary[];
+  projects: ProjectConfig[];
 }
 
 export interface GA4SelectedProperty {

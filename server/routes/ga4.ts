@@ -21,6 +21,7 @@ import {
   trafficBreakdownInputSchema,
 } from '../reports/schemas.js';
 import type { ReportContext } from '../reports/types.js';
+import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
@@ -124,7 +125,7 @@ function handleGA4Error(res: Response, err: unknown): void {
   });
 }
 
-function buildReportContext(res: Response): ReportContext {
+function buildReportContext(req: Request, res: Response): ReportContext {
   const propertyId = String(res.locals.ga4PropertyId);
   const propertyName = String(res.locals.ga4PropertyName || propertyId);
   const accessToken = String(res.locals.googleAccessToken);
@@ -135,13 +136,15 @@ function buildReportContext(res: Response): ReportContext {
     getAccessToken: async () => accessToken,
     ga4PropertyId: propertyId,
     ga4PropertyName: propertyName,
+    ...(req.project ? { project: req.project } : {}),
   };
 }
 
-// Middleware: rate limit + requireUser + verifyGoogleSessionOwnership + Google configured + connected session with selected ga4Property
+// Middleware: rate limit + requireUser + verifyGoogleSessionOwnership + loadProject + Google configured + connected session with selected ga4Property
 ga4Router.use(googleRateLimitMiddleware);
 ga4Router.use(requireUser);
 ga4Router.use(verifyGoogleSessionOwnership);
+ga4Router.use(loadProject);
 ga4Router.use(requireGoogleConfigured);
 
 async function requireGA4Session(
@@ -151,7 +154,11 @@ async function requireGA4Session(
 ): Promise<void> {
   try {
     const session = readSession(req);
-    if (!session.google?.refreshToken || !session.google?.ga4Property?.id) {
+    const selectedId = req.project?.ga4PropertyId || session.google?.ga4Property?.id;
+    const selectedName =
+      req.project?.ga4PropertyName || session.google?.ga4Property?.name || selectedId;
+
+    if (!session.google?.refreshToken || !selectedId) {
       res.status(409).json({
         error: {
           code: 'GA4_NOT_SELECTED',
@@ -163,8 +170,8 @@ async function requireGA4Session(
 
     const accessToken = await getValidAccessToken(session, res);
     res.locals.session = session;
-    res.locals.ga4PropertyId = session.google.ga4Property.id;
-    res.locals.ga4PropertyName = session.google.ga4Property.name;
+    res.locals.ga4PropertyId = selectedId;
+    res.locals.ga4PropertyName = selectedName;
     res.locals.googleAccessToken = accessToken;
     next();
   } catch (err) {
@@ -189,7 +196,7 @@ ga4Router.get('/overview', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4OverviewReport.run(buildReportContext(res), dates);
+    const data = await ga4OverviewReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -211,7 +218,7 @@ ga4Router.get('/traffic-over-time', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4TrafficOverTimeReport.run(buildReportContext(res), dates);
+    const data = await ga4TrafficOverTimeReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -233,7 +240,7 @@ ga4Router.get('/acquisition', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4AcquisitionReport.run(buildReportContext(res), dates);
+    const data = await ga4AcquisitionReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -255,7 +262,7 @@ ga4Router.get('/campaigns', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4CampaignsReport.run(buildReportContext(res), dates);
+    const data = await ga4CampaignsReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -277,7 +284,7 @@ ga4Router.get('/top-pages', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4TopPagesReport.run(buildReportContext(res), dates);
+    const data = await ga4TopPagesReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -299,7 +306,7 @@ ga4Router.get('/conversions', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4ConversionsReport.run(buildReportContext(res), dates);
+    const data = await ga4ConversionsReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -331,7 +338,7 @@ ga4Router.get('/property-info', async (req: Request, res: Response) => {
   }
 
   try {
-    const info = await ga4PropertyInfoReport.run(buildReportContext(res), parsed.data);
+    const info = await ga4PropertyInfoReport.run(buildReportContext(req, res), parsed.data);
     sendWithCache(res, cacheKey, info, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -399,7 +406,7 @@ ga4Router.get('/traffic-breakdown', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4TrafficBreakdownReport.run(buildReportContext(res), parsed.data);
+    const data = await ga4TrafficBreakdownReport.run(buildReportContext(req, res), parsed.data);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -421,7 +428,7 @@ ga4Router.get('/source-groups', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4SourceGroupsReport.run(buildReportContext(res), dates);
+    const data = await ga4SourceGroupsReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);
@@ -443,7 +450,7 @@ ga4Router.get('/ai-traffic', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await ga4AiTrafficReport.run(buildReportContext(res), dates);
+    const data = await ga4AiTrafficReport.run(buildReportContext(req, res), dates);
     sendWithCache(res, cacheKey, data, false);
   } catch (err) {
     handleGA4Error(res, err);

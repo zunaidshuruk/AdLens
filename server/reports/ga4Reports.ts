@@ -37,7 +37,8 @@ import {
 import type { ReportContext, ReportDefinition } from './types.js';
 
 function requirePropertyId(ctx: ReportContext): string {
-  const propId = ctx.ga4PropertyId || ctx.session.google?.ga4Property?.id;
+  const propId =
+    ctx.project?.ga4PropertyId || ctx.ga4PropertyId || ctx.session.google?.ga4Property?.id;
   if (!propId) {
     throw new GoogleApiError(
       'GA4_NOT_SELECTED',
@@ -305,7 +306,11 @@ export const ga4PropertyInfoReport: ReportDefinition<OptionalDateRangeInput, GA4
     input: optionalDateRangeSchema,
     async run(ctx) {
       const propertyId = requirePropertyId(ctx);
-      const fallbackName = ctx.ga4PropertyName || ctx.session.google?.ga4Property?.name || propertyId;
+      const fallbackName =
+        ctx.project?.ga4PropertyName ||
+        ctx.ga4PropertyName ||
+        ctx.session.google?.ga4Property?.name ||
+        propertyId;
       const accessToken = await ctx.getAccessToken();
 
       const url = `https://analyticsadmin.googleapis.com/v1beta/properties/${propertyId}`;
