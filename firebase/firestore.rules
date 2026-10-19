@@ -1,0 +1,175 @@
+rules_version = '2';
+
+// AdLens — Firestore security rules (Sprint 7B)
+//
+// Data model
+//   users/{uid}                              profile + personal settings (owner edits)
+//   users/{uid}/assets/avatar                custom profile picture as a small data URL (owner edits)
+//   workspaces/{wsId}                        name, defaults, plan, members map
+//   workspaces/{wsId}/assets/logo            workspace logo as a small data URL (owner/admin edit)
+//   workspaces/{wsId}/projects/{projectId}   project configuration (members read; SERVER writes)
+//   workspaces/{wsId}/usage/{period}         usage counters (members read; SERVER writes)
+//   connections/{id}                         encrypted Google/Meta tokens (SERVER ONLY)
+//
+// The AdLens server uses the Firebase Admin SDK, which bypasses these rules. It creates
+// users' docs, workspaces and projects (so plan limits hold), changes plans and members,
+// and is the only reader/writer of the token vault.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Password accounts must verify their email; Google/Microsoft sign-ins count as verified.
+    function verified() {
+      return signedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.get('firebase', {}).get('sign_in_provider', '') in ['google.com', 'microsoft.com']
+      );
+    }
+
+    function changedOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    function stampedNow() {
+      return request.resource.data.updatedAt == request.time;
+    }
+
+    function workspace(wsId) {
+      return get(/databases/$(database)/documents/workspaces/$(wsId)).data;
+    }
+
+    function isMember(wsId) {
+      return verified() && request.auth.uid in workspace(wsId).members;
+    }
+
+    function hasRole(wsId, roles) {
+      let ws = workspace(wsId);
+      return verified() && request.auth.uid in ws.members && ws.members[request.auth.uid] in roles;
+    }
+
+    function isCurrency(v) {
+      return v is string && v.matches('^[A-Z]{3}$');
+    }
+
+    function isTimezone(v) {
+      return v is string && v.size() >= 1 && v.size() <= 64 && v.matches('^[A-Za-z0-9_+/-]+$');
+    }
+
+    // Images are stored as base64 data URLs (no Cloud Storage). The browser resizes and
+    // compresses them first; these limits are a hard ceiling (Firestore docs max out at 1 MiB).
+    function validImageAsset(maxChars) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['dataUrl', 'mimeType', 'width', 'height', 'updatedAt'])
+        && d.mimeType in ['image/png', 'image/jpeg', 'image/webp']
+        && d.dataUrl is string
+        && d.dataUrl.size() <= maxChars
+        && d.dataUrl.matches('^data:' + d.mimeType + ';base64,[A-Za-z0-9+/]+={0,2}$')
+        && d.width is int && d.width >= 16 && d.width <= 1024
+        && d.height is int && d.height >= 16 && d.height <= 1024
+        && d.updatedAt == request.time;
+    }
+
+    // ---------- users ----------
+
+    function validNotifications(n) {
+      return n is map
+        && n.keys().hasOnly(['weeklyReport', 'alerts', 'productUpdates'])
+        && n.get('weeklyReport', false) is bool
+        && n.get('alerts', false) is bool
+        && n.get('productUpdates', false) is bool;
+    }
+
+    function validUserSettings(s) {
+      return s is map
+        && s.keys().hasOnly(['theme', 'defaultDateRange', 'compareByDefault', 'displayCurrency',
+                             'timezone', 'numberFormat', 'emailNotifications'])
+        && s.get('theme', 'light') in ['light', 'dark', 'system']
+        && s.get('defaultDateRange', 'Last 28 days') in
+             ['Today', 'Last 7 days', 'Last 28 days', 'Last 90 days', 'This month', 'Last month']
+        && s.get('compareByDefault', true) is bool
+        && isCurrency(s.get('displayCurrency', 'USD'))
+        && isTimezone(s.get('timezone', 'UTC'))
+        && s.get('numberFormat', 'en-US') in ['en-US', 'en-GB', 'en-IN', 'de-DE', 'fr-FR', 'bn-BD']
+        && validNotifications(s.get('emailNotifications', {}));
+    }
+
+    // photoURL (e.g. the Google profile photo) is set by the server only.
+    function validUserUpdate(uid) {
+      let d = request.resource.data;
+      return changedOnly(['displayName', 'settings', 'hasCustomAvatar', 'updatedAt'])
+        && stampedNow()
+        && d.displayName is string && d.displayName.size() >= 1 && d.displayName.size() <= 100
+        && d.get('hasCustomAvatar', false) is bool
+        && validUserSettings(d.get('settings', {}));
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow update: if verified() && request.auth.uid == uid && validUserUpdate(uid);
+      // create/delete: server only (first-sign-in bootstrap and account deletion)
+
+      // Profile picture: any verified user may view it (it appears next to names in shared
+      // workspaces); only the owner sets or removes it. ~100 KB of base64 ≈ 75 KB image.
+      match /assets/avatar {
+        allow get: if verified();
+        allow create, update: if verified() && request.auth.uid == uid && validImageAsset(100000);
+        allow delete: if verified() && request.auth.uid == uid;
+      }
+    }
+
+    // ---------- workspaces ----------
+
+    function validWorkspaceUpdate(wsId) {
+      let d = request.resource.data;
+      return changedOnly(['name', 'hasLogo', 'defaults', 'updatedAt'])
+        && stampedNow()
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 100
+        && d.get('hasLogo', false) is bool
+        && d.get('defaults', {}) is map
+        && d.get('defaults', {}).keys().hasOnly(['currency', 'timezone'])
+        && isCurrency(d.get('defaults', {}).get('currency', 'USD'))
+        && isTimezone(d.get('defaults', {}).get('timezone', 'UTC'));
+    }
+
+    match /workspaces/{wsId} {
+      // Reading a single workspace or listing "my" workspaces (where memberIds array-contains uid)
+      allow get: if verified() && request.auth.uid in resource.data.members;
+      allow list: if verified() && request.auth.uid in resource.data.memberIds;
+      // Owners/admins may edit name, logo flag and defaults. Plan, owner and members: server only.
+      allow update: if hasRole(wsId, ['owner', 'admin']) && validWorkspaceUpdate(wsId);
+
+      match /projects/{projectId} {
+        allow read: if isMember(wsId);
+        // create/update/delete go through the server API (validation, plan limits,
+        // checking the GA4 property / Search Console site / ad account are accessible).
+      }
+
+      match /usage/{period} {
+        allow read: if isMember(wsId);
+      }
+
+      // Workspace logo: members view; owners/admins set or remove. ~200 KB base64 ≈ 150 KB image.
+      match /assets/logo {
+        allow get: if isMember(wsId);
+        allow create, update: if hasRole(wsId, ['owner', 'admin']) && validImageAsset(200000);
+        allow delete: if hasRole(wsId, ['owner', 'admin']);
+      }
+    }
+
+    // ---------- token vault: no client access, ever ----------
+    match /connections/{id} {
+      allow read, write: if false;
+    }
+
+    // ---------- everything else ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
