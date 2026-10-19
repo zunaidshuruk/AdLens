@@ -1,7 +1,5 @@
-import type { Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { getServerConfig } from '../config.js';
-import { type SessionData, writeSession } from './session.js';
 
 export class GoogleApiError extends Error {
   code: string;
@@ -37,64 +35,6 @@ export function createOAuthClient(): OAuth2Client {
   const cfg = getServerConfig();
   const redirectUri = `${cfg.appBaseUrl}/api/auth/google/callback`;
   return new OAuth2Client(cfg.googleClientId, cfg.googleClientSecret, redirectUri);
-}
-
-/**
- * Returns a valid Google access token for the current session.
- * Refreshes automatically when within 60 seconds of expiry and persists the updated session cookie.
- * If refresh fails, clears google from the session and throws GOOGLE_REAUTH_REQUIRED.
- */
-export async function getValidAccessToken(session: SessionData, res: Response): Promise<string> {
-  if (!session.google || !session.google.refreshToken) {
-    throw new GoogleApiError(
-      'GOOGLE_NOT_CONNECTED',
-      'Google account is not connected.',
-      401
-    );
-  }
-
-  const now = Date.now();
-  const expiresAt = session.google.accessTokenExpiry || 0;
-
-  if (session.google.accessToken && expiresAt - now > 60_000) {
-    return session.google.accessToken;
-  }
-
-  const cfg = getServerConfig();
-  if (!cfg.googleConfigured) {
-    throw new GoogleApiError(
-      'GOOGLE_NOT_CONFIGURED',
-      'Google OAuth credentials are not configured on the server.',
-      503
-    );
-  }
-
-  try {
-    const client = createOAuthClient();
-    client.setCredentials({ refresh_token: session.google.refreshToken });
-    const { credentials } = await client.refreshAccessToken();
-
-    if (!credentials.access_token) {
-      throw new Error('No access_token returned from refresh');
-    }
-
-    session.google.accessToken = credentials.access_token;
-    session.google.accessTokenExpiry = credentials.expiry_date ?? Date.now() + 3600 * 1000;
-    if (credentials.refresh_token) {
-      session.google.refreshToken = credentials.refresh_token;
-    }
-
-    writeSession(res, session);
-    return session.google.accessToken;
-  } catch {
-    delete session.google;
-    writeSession(res, session);
-    throw new GoogleApiError(
-      'GOOGLE_REAUTH_REQUIRED',
-      'Your Google session has expired or been revoked. Please reconnect your Google account.',
-      401
-    );
-  }
 }
 
 interface AnalyticsAdminAccountSummariesResponse {

@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { SearchConsoleSiteInfo } from '../../src/types/index.js';
 import { requireGoogleConfigured } from '../config.js';
-import { getValidAccessToken, GoogleApiError } from '../lib/google.js';
+import { GoogleApiError } from '../lib/google.js';
 import {
   type SearchConsoleQueryResponse,
   mapSearchConsoleCountriesResponse,
@@ -11,7 +11,7 @@ import {
   mapSearchConsoleTopPagesResponse,
   mapSearchConsoleTopQueriesResponse,
 } from '../lib/searchConsoleMapper.js';
-import { readSession } from '../lib/session.js';
+import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
@@ -197,11 +197,12 @@ async function callSearchConsoleQuery(
 }
 
 function handleSearchConsoleError(res: Response, err: unknown): void {
-  if (err instanceof GoogleApiError) {
-    res.status(err.status).json({
+  const mapped = mapVaultError(err) ?? (err instanceof GoogleApiError ? err : null);
+  if (mapped) {
+    res.status(mapped.status).json({
       error: {
-        code: err.code,
-        message: err.message,
+        code: mapped.code,
+        message: mapped.message,
       },
     });
     return;
@@ -215,7 +216,7 @@ function handleSearchConsoleError(res: Response, err: unknown): void {
   });
 }
 
-// Middleware: rate limiter + requireUser + verifyGoogleSessionOwnership + loadProject + Google configured + connected session with selected searchConsoleSite
+// Middleware: rate limiter + requireUser + verifyGoogleSessionOwnership + loadProject + Google configured + connected vault with selected project searchConsoleSite
 searchConsoleRouter.use(googleRateLimitMiddleware);
 searchConsoleRouter.use(requireUser);
 searchConsoleRouter.use(verifyGoogleSessionOwnership);
@@ -228,10 +229,9 @@ async function requireSearchConsoleSession(
   next: NextFunction
 ): Promise<void> {
   try {
-    const session = readSession(req);
-    const selectedSiteUrl =
-      req.project?.searchConsoleSite || session.google?.searchConsoleSite?.url;
-    if (!session.google?.refreshToken || !selectedSiteUrl) {
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'google');
+    const selectedSiteUrl = req.project?.searchConsoleSite;
+    if (!selectedSiteUrl) {
       res.status(409).json({
         error: {
           code: 'SC_NOT_SELECTED',
@@ -241,7 +241,6 @@ async function requireSearchConsoleSession(
       return;
     }
 
-    const accessToken = await getValidAccessToken(session, res);
     res.locals.scSiteUrl = selectedSiteUrl;
     res.locals.googleAccessToken = accessToken;
     next();

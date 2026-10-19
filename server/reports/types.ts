@@ -5,7 +5,7 @@ import type { SessionData } from '../lib/session.js';
 export type ReportSource = 'ga4' | 'search_console' | 'meta' | 'combined';
 
 export interface ReportContext {
-  session: SessionData;
+  session?: SessionData;
   getAccessToken: () => Promise<string>;
   ga4PropertyId?: string;
   ga4PropertyName?: string;

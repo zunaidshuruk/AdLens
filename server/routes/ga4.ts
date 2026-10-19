@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { requireGoogleConfigured } from '../config.js';
-import { getValidAccessToken, GoogleApiError } from '../lib/google.js';
-import { readSession } from '../lib/session.js';
+import { GoogleApiError } from '../lib/google.js';
+import { getVault, mapVaultError } from '../lib/vault.js';
 import {
   ga4AcquisitionReport,
   ga4AiTrafficReport,
@@ -107,11 +107,12 @@ function getCached<T>(cacheKey: string): T | null {
 }
 
 function handleGA4Error(res: Response, err: unknown): void {
-  if (err instanceof GoogleApiError) {
-    res.status(err.status).json({
+  const mapped = mapVaultError(err) ?? (err instanceof GoogleApiError ? err : null);
+  if (mapped) {
+    res.status(mapped.status).json({
       error: {
-        code: err.code,
-        message: err.message,
+        code: mapped.code,
+        message: mapped.message,
       },
     });
     return;
@@ -128,19 +129,18 @@ function handleGA4Error(res: Response, err: unknown): void {
 function buildReportContext(req: Request, res: Response): ReportContext {
   const propertyId = String(res.locals.ga4PropertyId);
   const propertyName = String(res.locals.ga4PropertyName || propertyId);
-  const accessToken = String(res.locals.googleAccessToken);
-  const session = res.locals.session ?? {};
+  const accessToken = res.locals.googleAccessToken as string | undefined;
 
   return {
-    session,
-    getAccessToken: async () => accessToken,
+    getAccessToken: async () =>
+      accessToken ?? getVault().getAccessToken(req.user!.uid, 'google'),
     ga4PropertyId: propertyId,
     ga4PropertyName: propertyName,
     ...(req.project ? { project: req.project } : {}),
   };
 }
 
-// Middleware: rate limit + requireUser + verifyGoogleSessionOwnership + loadProject + Google configured + connected session with selected ga4Property
+// Middleware: rate limit + requireUser + verifyGoogleSessionOwnership + loadProject + Google configured + connected vault with selected project ga4Property
 ga4Router.use(googleRateLimitMiddleware);
 ga4Router.use(requireUser);
 ga4Router.use(verifyGoogleSessionOwnership);
@@ -153,12 +153,11 @@ async function requireGA4Session(
   next: NextFunction
 ): Promise<void> {
   try {
-    const session = readSession(req);
-    const selectedId = req.project?.ga4PropertyId || session.google?.ga4Property?.id;
-    const selectedName =
-      req.project?.ga4PropertyName || session.google?.ga4Property?.name || selectedId;
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'google');
+    const selectedId = req.project?.ga4PropertyId;
+    const selectedName = req.project?.ga4PropertyName || selectedId;
 
-    if (!session.google?.refreshToken || !selectedId) {
+    if (!selectedId) {
       res.status(409).json({
         error: {
           code: 'GA4_NOT_SELECTED',
@@ -168,8 +167,6 @@ async function requireGA4Session(
       return;
     }
 
-    const accessToken = await getValidAccessToken(session, res);
-    res.locals.session = session;
     res.locals.ga4PropertyId = selectedId;
     res.locals.ga4PropertyName = selectedName;
     res.locals.googleAccessToken = accessToken;

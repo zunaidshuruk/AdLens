@@ -1,6 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
 import { verifyIdToken } from '../lib/firebaseAdmin.js';
 import { clearSession, readSession } from '../lib/session.js';
+import { ensureVaultFromCookie } from '../lib/vault.js';
+
+export { ensureVaultFromCookie };
 
 export interface AuthenticatedUser {
   uid: string;
@@ -109,14 +112,15 @@ export async function requireUser(
 /**
  * Ensures that if an encrypted adlens_session cookie has Google data, its bound uid matches req.user.uid.
  * If the cookie's uid !== req.user.uid, clears Google data from the cookie and rejects with 401 GOOGLE_SESSION_MISMATCH.
+ * Otherwise, lazily migrates any legacy cookie refresh/access tokens into the server-side vault once per request.
  */
-export function verifyGoogleSessionOwnership(
+export async function verifyGoogleSessionOwnership(
   req: Request,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const session = readSession(req);
-  const cookieUid = session.uid ?? session.google?.uid;
+  const cookieUid = session.google?.uid ?? session.uid;
 
   if (session.google && (!cookieUid || cookieUid !== req.user?.uid)) {
     clearSession(res);
@@ -130,5 +134,10 @@ export function verifyGoogleSessionOwnership(
     return;
   }
 
-  next();
+  try {
+    await ensureVaultFromCookie(req, res);
+    next();
+  } catch (err) {
+    next(err);
+  }
 }

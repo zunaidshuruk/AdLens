@@ -9,10 +9,9 @@ import { getFirestoreStore } from '../lib/firestore.js';
 import {
   fetchGA4Properties,
   fetchSearchConsoleSites,
-  getValidAccessToken,
   GoogleApiError,
 } from '../lib/google.js';
-import { readSession, writeSession } from '../lib/session.js';
+import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 
@@ -50,11 +49,12 @@ export function googleRateLimitMiddleware(req: Request, res: Response, next: Nex
 }
 
 function sendError(res: Response, err: unknown): void {
-  if (err instanceof GoogleApiError) {
-    res.status(err.status).json({
+  const mapped = mapVaultError(err) ?? (err instanceof GoogleApiError ? err : null);
+  if (mapped) {
+    res.status(mapped.status).json({
       error: {
-        code: err.code,
-        message: err.message,
+        code: mapped.code,
+        message: mapped.message,
       },
     });
     return;
@@ -68,60 +68,67 @@ function sendError(res: Response, err: unknown): void {
   });
 }
 
-// Require authenticated & verified Firebase user and matching Google session uid
+// Require authenticated & verified Firebase user and matching Google session uid / lazy migration
 connectionsRouter.use(requireUser);
 connectionsRouter.use(verifyGoogleSessionOwnership);
 connectionsRouter.use(loadProject);
 
 // GET /api/connections
-connectionsRouter.get('/', (req: Request, res: Response) => {
-  const cfg = getServerConfig();
-  const session = readSession(req);
-  const googleSession = session.google;
-  const isConnected = Boolean(cfg.googleConfigured && googleSession?.refreshToken);
-  const metaAllowed = isEmailAllowedForMetaSystemUser(req.user?.email);
+connectionsRouter.get('/', async (req: Request, res: Response) => {
+  try {
+    const cfg = getServerConfig();
+    const uid = req.user!.uid;
+    const summary = cfg.vaultReady ? await getVault().getSummary(uid, 'google') : null;
+    const isConnected = Boolean(cfg.googleConfigured && summary?.connected);
+    const needsReconnect = Boolean(summary?.needsReconnect);
+    const metaAllowed = isEmailAllowedForMetaSystemUser(req.user?.email);
 
-  const projectGa4 =
-    req.project?.ga4PropertyId
-      ? {
-          id: req.project.ga4PropertyId,
-          name: req.project.ga4PropertyName || req.project.ga4PropertyId,
-        }
-      : null;
-  const projectSc =
-    req.project?.searchConsoleSite
-      ? {
-          url: req.project.searchConsoleSite,
-        }
-      : null;
+    const projectGa4 =
+      req.project?.ga4PropertyId
+        ? {
+            id: req.project.ga4PropertyId,
+            name: req.project.ga4PropertyName || req.project.ga4PropertyId,
+          }
+        : null;
+    const projectSc =
+      req.project?.searchConsoleSite
+        ? {
+            url: req.project.searchConsoleSite,
+          }
+        : null;
 
-  const effectiveGa4 = isConnected ? projectGa4 ?? googleSession?.ga4Property ?? null : null;
-  const effectiveSc = isConnected ? projectSc ?? googleSession?.searchConsoleSite ?? null : null;
-  const effectiveMetaAccountId =
-    cfg.metaConfigured && metaAllowed
-      ? normalizeMetaAdAccountId(req.project?.metaAdAccountId || cfg.metaAdAccountId)
-      : null;
+    const effectiveGa4 = isConnected ? projectGa4 : null;
+    const effectiveSc = isConnected ? projectSc : null;
+    const effectiveMetaAccountId =
+      cfg.metaConfigured && metaAllowed
+        ? normalizeMetaAdAccountId(req.project?.metaAdAccountId || cfg.metaAdAccountId)
+        : null;
 
-  res.json({
-    google: {
-      configured: cfg.googleConfigured,
-      missing: cfg.missing,
-      connected: isConnected,
-      email: isConnected ? googleSession?.email ?? null : null,
-      ga4Property: effectiveGa4,
-      searchConsoleSite: effectiveSc,
-    },
-    meta: {
-      configured: cfg.metaConfigured,
-      missing: cfg.metaMissing,
-      connected: Boolean(cfg.metaConfigured && metaAllowed),
-      adAccountId: effectiveMetaAccountId,
-      notAvailable: !metaAllowed,
-    },
-  });
+    res.json({
+      google: {
+        configured: cfg.googleConfigured,
+        missing: cfg.missing,
+        connected: isConnected,
+        email: summary?.accountLabel ?? null,
+        needsReconnect,
+        vault: summary,
+        ga4Property: effectiveGa4,
+        searchConsoleSite: effectiveSc,
+      },
+      meta: {
+        configured: cfg.metaConfigured,
+        missing: cfg.metaMissing,
+        connected: Boolean(cfg.metaConfigured && metaAllowed),
+        adAccountId: effectiveMetaAccountId,
+        notAvailable: !metaAllowed,
+      },
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
 });
 
-// Apply rate limit, auth, session ownership, project loader, and configuration check to all /api/google/* routes
+// Apply rate limit, auth, session ownership/migration, project loader, and configuration check to all /api/google/* routes
 googleApiRouter.use(googleRateLimitMiddleware);
 googleApiRouter.use(requireUser);
 googleApiRouter.use(verifyGoogleSessionOwnership);
@@ -131,8 +138,7 @@ googleApiRouter.use(requireGoogleConfigured);
 // GET /api/google/ga4/properties
 googleApiRouter.get('/ga4/properties', async (req: Request, res: Response) => {
   try {
-    const session = readSession(req);
-    const accessToken = await getValidAccessToken(session, res);
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'google');
     const properties = await fetchGA4Properties(accessToken);
     res.json(properties);
   } catch (err) {
@@ -143,8 +149,7 @@ googleApiRouter.get('/ga4/properties', async (req: Request, res: Response) => {
 // GET /api/google/search-console/sites
 googleApiRouter.get('/search-console/sites', async (req: Request, res: Response) => {
   try {
-    const session = readSession(req);
-    const accessToken = await getValidAccessToken(session, res);
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'google');
     const sites = await fetchSearchConsoleSites(accessToken);
     res.json(sites);
   } catch (err) {
@@ -155,22 +160,28 @@ googleApiRouter.get('/search-console/sites', async (req: Request, res: Response)
 // POST /api/google/selection
 googleApiRouter.post('/selection', async (req: Request, res: Response) => {
   try {
-    const session = readSession(req);
-    const accessToken = await getValidAccessToken(session, res);
-
-    if (!session.google) {
-      throw new GoogleApiError('GOOGLE_NOT_CONNECTED', 'Google account is not connected.', 401);
-    }
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'google');
 
     const body = (req.body ?? {}) as {
       ga4PropertyId?: string | null;
       searchConsoleSiteUrl?: string | null;
     };
 
+    let selectedGa4: { id: string; name: string } | null = req.project?.ga4PropertyId
+      ? {
+          id: req.project.ga4PropertyId,
+          name: req.project.ga4PropertyName || req.project.ga4PropertyId,
+        }
+      : null;
+
+    let selectedSc: { url: string } | null = req.project?.searchConsoleSite
+      ? { url: req.project.searchConsoleSite }
+      : null;
+
     // Validate GA4 property if provided
     if (body.ga4PropertyId !== undefined) {
       if (body.ga4PropertyId === null || body.ga4PropertyId === '') {
-        delete session.google.ga4Property;
+        selectedGa4 = null;
       } else {
         const properties = await fetchGA4Properties(accessToken);
         const normalizedTarget = String(body.ga4PropertyId).replace(/^properties\//, '');
@@ -190,7 +201,7 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
           return;
         }
 
-        session.google.ga4Property = {
+        selectedGa4 = {
           id: matchedProp.propertyId,
           name: matchedProp.propertyName,
         };
@@ -200,7 +211,7 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
     // Validate Search Console site if provided
     if (body.searchConsoleSiteUrl !== undefined) {
       if (body.searchConsoleSiteUrl === null || body.searchConsoleSiteUrl === '') {
-        delete session.google.searchConsoleSite;
+        selectedSc = null;
       } else {
         const sites = await fetchSearchConsoleSites(accessToken);
         const matchedSite = sites.find((s) => s.siteUrl === body.searchConsoleSiteUrl);
@@ -215,29 +226,25 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
           return;
         }
 
-        session.google.searchConsoleSite = {
+        selectedSc = {
           url: matchedSite.siteUrl,
         };
       }
     }
 
-    session.uid = req.user?.uid ?? session.uid;
-    session.google.uid = req.user?.uid ?? session.google.uid;
-    writeSession(res, session);
-
-    // Also PATCH the active project in Firestore if X-AdLens-Project was sent
+    // Only PATCH the active project's ga4PropertyId/Name and searchConsoleSite; never write the cookie
     if (req.project) {
       const store = getFirestoreStore();
       await store.updateProject(req.project.workspaceId, req.project.id, {
         ...(body.ga4PropertyId !== undefined
           ? {
-              ga4PropertyId: session.google.ga4Property?.id ?? null,
-              ga4PropertyName: session.google.ga4Property?.name ?? null,
+              ga4PropertyId: selectedGa4?.id ?? null,
+              ga4PropertyName: selectedGa4?.name ?? null,
             }
           : {}),
         ...(body.searchConsoleSiteUrl !== undefined
           ? {
-              searchConsoleSite: session.google.searchConsoleSite?.url ?? null,
+              searchConsoleSite: selectedSc?.url ?? null,
             }
           : {}),
       });
@@ -245,8 +252,8 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
 
     res.json({
       ok: true,
-      ga4Property: session.google.ga4Property ?? null,
-      searchConsoleSite: session.google.searchConsoleSite ?? null,
+      ga4Property: selectedGa4,
+      searchConsoleSite: selectedSc,
     });
   } catch (err) {
     sendError(res, err);

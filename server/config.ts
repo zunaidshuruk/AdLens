@@ -32,6 +32,8 @@ export interface ServerConfig {
   googleClientId: string;
   googleClientSecret: string;
   tokenEncryptionKey: string;
+  tokenEncryptionKeyPrevious: string[];
+  vaultReady: boolean;
   appBaseUrl: string;
   googleConfigured: boolean;
   missing: RequiredGoogleEnvVar[];
@@ -133,11 +135,18 @@ export function getServerConfig(): ServerConfig {
     process.env.META_SYSTEM_USER_ALLOWED_EMAILS
   );
   const authProviders = parseAuthProviders(process.env.AUTH_PROVIDERS);
+  const tokenEncryptionKey = (process.env.TOKEN_ENCRYPTION_KEY || '').trim();
+  const tokenEncryptionKeyPrevious = (process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   return {
     googleClientId: (process.env.GOOGLE_CLIENT_ID || '').trim(),
     googleClientSecret: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
-    tokenEncryptionKey: (process.env.TOKEN_ENCRYPTION_KEY || '').trim(),
+    tokenEncryptionKey,
+    tokenEncryptionKeyPrevious,
+    vaultReady: tokenEncryptionKey.length >= 32,
     appBaseUrl: rawBaseUrl,
     googleConfigured: missing.length === 0,
     missing,

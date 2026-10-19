@@ -401,6 +401,7 @@ export interface HealthStatusResponse {
   metaMissing?: string[];
   firebaseConfigured?: boolean;
   firebaseMissing?: string[];
+  vaultReady?: boolean;
   timestamp?: string;
 }
 
@@ -507,12 +508,24 @@ export interface SearchConsoleSelectedSite {
   url: string;
 }
 
+export interface VaultConnectionSummary {
+  provider: 'google' | 'meta';
+  connected: boolean;
+  status: 'active' | 'expired' | 'revoked' | 'error';
+  accountLabel: string | null;
+  scopes: string[];
+  updatedAt: number;
+  needsReconnect: boolean;
+}
+
 export interface ConnectionsResponse {
   google: {
     configured: boolean;
     missing?: string[];
     connected: boolean;
     email: string | null;
+    needsReconnect?: boolean;
+    vault?: VaultConnectionSummary | null;
     ga4Property: GA4SelectedProperty | null;
     searchConsoleSite: SearchConsoleSelectedSite | null;
   };

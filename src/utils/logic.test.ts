@@ -369,13 +369,51 @@ test('GA4 mapper accurately maps overview, zero-fills missing traffic days, filt
 test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLens-Cache header, and map Google errors cleanly', async () => {
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
-  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-3';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-3-32chars!';
   process.env.APP_BASE_URL = 'http://localhost:3000';
 
   const { app } = await import('../../server/index.js');
   const { clearGA4Cache } = await import('../../server/routes/ga4.js');
-  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
   const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const { createInMemoryFirestoreStore, setTestFirestoreStore } = await import(
+    '../../server/lib/firestore.js'
+  );
+  const { createInMemoryVaultStore, setTestConnectionStore } = await import(
+    '../../server/lib/connectionStore.js'
+  );
+  const { getVault, resetVaultSingleton } = await import('../../server/lib/vault.js');
+
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+  const connStore = createInMemoryVaultStore();
+  setTestConnectionStore(connStore);
+  resetVaultSingleton();
+
+  const { workspace } = await store.bootstrapUserAndWorkspace({
+    uid: 'user-sprint3',
+    email: 'analyst@acme.com',
+    displayName: 'Analyst',
+  });
+  const wsId = workspace.id;
+  const projWithGa4 = await store.createProject(wsId, {
+    name: 'Acme Prod',
+    domain: 'acme.com',
+    ga4PropertyId: '44981234',
+    ga4PropertyName: 'Acme Production',
+    timezone: 'Asia/Dhaka',
+    currency: 'BDT',
+    createdBy: 'user-sprint3',
+  });
+
+  await getVault().saveConnection({
+    uid: 'user-sprint3',
+    provider: 'google',
+    accountLabel: 'analyst@acme.com',
+    scopes: ['openid', 'email'],
+    refreshToken: 'ref-1',
+    accessToken: 'acc-1',
+    accessTokenExpiresAt: Date.now() + 3600_000,
+  });
 
   setTestTokenVerifier(async () => ({
     uid: 'user-sprint3',
@@ -392,51 +430,25 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
   const originalFetch = globalThis.fetch;
   const authHeader = 'Bearer test-token-sprint3';
+  const projectHeaders = {
+    Authorization: authHeader,
+    'X-AdLens-Project': `${wsId}/${projWithGa4.id}`,
+  };
 
   try {
-    // 1. Session without ga4Property -> 409 GA4_NOT_SELECTED
-    const noPropCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
-      JSON.stringify({
-        uid: 'user-sprint3',
-        google: {
-          uid: 'user-sprint3',
-          refreshToken: 'ref-1',
-          accessToken: 'acc-1',
-          accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@acme.com',
-        },
-      }),
-      process.env.TOKEN_ENCRYPTION_KEY
-    )}`;
-
+    // 1. Connected user without X-AdLens-Project (no selected ga4Property) -> 409 GA4_NOT_SELECTED
     const res409 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: noPropCookie, Authorization: authHeader } }
+      { headers: { Authorization: authHeader } }
     );
     assert.equal(res409.status, 409);
     const body409 = (await res409.json()) as { error: { code: string } };
     assert.equal(body409.error.code, 'GA4_NOT_SELECTED');
 
-    // 2. Session WITH selected ga4Property
-    const validCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
-      JSON.stringify({
-        uid: 'user-sprint3',
-        google: {
-          uid: 'user-sprint3',
-          refreshToken: 'ref-1',
-          accessToken: 'acc-1',
-          accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@acme.com',
-          ga4Property: { id: '44981234', name: 'Acme Production' },
-        },
-      }),
-      process.env.TOKEN_ENCRYPTION_KEY
-    )}`;
-
-    // Invalid date range (startDate > endDate) -> 400 INVALID_DATE_RANGE
+    // 2. Invalid date range (startDate > endDate) -> 400 INVALID_DATE_RANGE
     const res400 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-10&endDate=2026-10-05`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: projectHeaders }
     );
     assert.equal(res400.status, 400);
     const body400 = (await res400.json()) as { error: { code: string } };
@@ -492,7 +504,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     // First call to /api/ga4/overview -> X-AdLens-Cache: false
     const resOverview1 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: projectHeaders }
     );
     assert.equal(resOverview1.status, 200);
     assert.equal(resOverview1.headers.get('x-adlens-cache'), 'false');
@@ -503,7 +515,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     // Second call with identical params -> X-AdLens-Cache: true (served from 10-min cache)
     const resOverview2 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: projectHeaders }
     );
     assert.equal(resOverview2.status, 200);
     assert.equal(resOverview2.headers.get('x-adlens-cache'), 'true');
@@ -511,7 +523,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     // Property info endpoint
     const resPropInfo = await originalFetch(`${baseUrl}/api/ga4/property-info`, {
-      headers: { Cookie: validCookie, Authorization: authHeader },
+      headers: projectHeaders,
     });
     assert.equal(resPropInfo.status, 200);
     const propInfo = (await resPropInfo.json()) as {
@@ -540,7 +552,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     const res403 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: projectHeaders }
     );
     assert.equal(res403.status, 403);
     const body403 = (await res403.json()) as { error: { code: string; message: string } };
@@ -564,13 +576,16 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     const res429 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: projectHeaders }
     );
     assert.equal(res429.status, 429);
     const body429 = (await res429.json()) as { error: { code: string } };
     assert.equal(body429.error.code, 'GA4_QUOTA_EXCEEDED');
   } finally {
+    setTestConnectionStore(null);
+    setTestFirestoreStore(null);
     setTestTokenVerifier(null);
+    resetVaultSingleton();
     globalThis.fetch = originalFetch;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
@@ -702,7 +717,7 @@ test('Search Console mapper computes impression-weighted position, maps alpha-3 
 test('/api/search-console routes support sc-domain: and https:// sites, parallel comparison requests, caching, error mapping, and Vercel api/index.ts export', async () => {
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
-  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-4';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-4-32chars!';
   process.env.APP_BASE_URL = 'http://localhost:3000';
 
   const vercelAppModule = await import('../../api/index.js');
@@ -710,8 +725,44 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
   assert.equal(vercelAppModule.default, app, 'api/index.ts exports the Express app as default');
 
   const { clearSearchConsoleCache } = await import('../../server/routes/searchConsole.js');
-  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
   const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const { createInMemoryFirestoreStore, setTestFirestoreStore } = await import(
+    '../../server/lib/firestore.js'
+  );
+  const { createInMemoryVaultStore, setTestConnectionStore } = await import(
+    '../../server/lib/connectionStore.js'
+  );
+  const { getVault, resetVaultSingleton } = await import('../../server/lib/vault.js');
+
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+  const connStore = createInMemoryVaultStore();
+  setTestConnectionStore(connStore);
+  resetVaultSingleton();
+
+  const { workspace } = await store.bootstrapUserAndWorkspace({
+    uid: 'user-sprint4',
+    email: 'analyst@acme.com',
+    displayName: 'Analyst',
+  });
+  const wsId = workspace.id;
+  const projSc = await store.createProject(wsId, {
+    name: 'Acme SC',
+    domain: 'acme.com',
+    timezone: 'UTC',
+    currency: 'USD',
+    createdBy: 'user-sprint4',
+  });
+
+  await getVault().saveConnection({
+    uid: 'user-sprint4',
+    provider: 'google',
+    accountLabel: 'analyst@acme.com',
+    scopes: ['openid', 'email'],
+    refreshToken: 'ref-1',
+    accessToken: 'acc-1',
+    accessTokenExpiresAt: Date.now() + 3600_000,
+  });
 
   setTestTokenVerifier(async () => ({
     uid: 'user-sprint4',
@@ -730,24 +781,10 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
   const authHeader = 'Bearer test-token-sprint4';
 
   try {
-    // 1. Session without searchConsoleSite -> 409 SC_NOT_SELECTED
-    const noSiteCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
-      JSON.stringify({
-        uid: 'user-sprint4',
-        google: {
-          uid: 'user-sprint4',
-          refreshToken: 'ref-1',
-          accessToken: 'acc-1',
-          accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@acme.com',
-        },
-      }),
-      process.env.TOKEN_ENCRYPTION_KEY
-    )}`;
-
+    // 1. Project without searchConsoleSite -> 409 SC_NOT_SELECTED
     const res409 = await originalFetch(
       `${baseUrl}/api/search-console/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: noSiteCookie, Authorization: authHeader } }
+      { headers: { Authorization: authHeader, 'X-AdLens-Project': `${wsId}/${projSc.id}` } }
     );
     assert.equal(res409.status, 409);
     const body409 = (await res409.json()) as { error: { code: string } };
@@ -756,20 +793,11 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
     // 2. Test both "sc-domain:acme.com" and "https://acme.com/" formats + comparison parallel requests
     for (const siteUrl of ['sc-domain:acme.com', 'https://acme.com/']) {
       clearSearchConsoleCache();
-      const siteCookie: string = `${SESSION_COOKIE_NAME}=${encryptPayload(
-        JSON.stringify({
-          uid: 'user-sprint4',
-          google: {
-            uid: 'user-sprint4',
-            refreshToken: 'ref-1',
-            accessToken: 'acc-1',
-            accessTokenExpiry: Date.now() + 3600_000,
-            email: 'analyst@acme.com',
-            searchConsoleSite: { url: siteUrl },
-          },
-        }),
-        process.env.TOKEN_ENCRYPTION_KEY!
-      )}`;
+      await store.updateProject(wsId, projSc.id, { searchConsoleSite: siteUrl });
+      const scHeaders = {
+        Authorization: authHeader,
+        'X-AdLens-Project': `${wsId}/${projSc.id}`,
+      };
 
       let upstreamQueries = 0;
       globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
@@ -812,7 +840,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
       const resOverview1: Response = await originalFetch(
         `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
-        { headers: { Cookie: siteCookie, Authorization: authHeader } }
+        { headers: scHeaders }
       );
       assert.equal(resOverview1.status, 200);
       assert.equal(resOverview1.headers.get('x-adlens-cache'), 'false');
@@ -828,7 +856,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
       // Cached second request
       const resOverview2: Response = await originalFetch(
         `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
-        { headers: { Cookie: siteCookie, Authorization: authHeader } }
+        { headers: scHeaders }
       );
       assert.equal(resOverview2.status, 200);
       assert.equal(resOverview2.headers.get('x-adlens-cache'), 'true');
@@ -836,7 +864,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
       // Site info endpoint
       const resSiteInfo = await originalFetch(`${baseUrl}/api/search-console/site-info`, {
-        headers: { Cookie: siteCookie, Authorization: authHeader },
+        headers: scHeaders,
       });
       assert.equal(resSiteInfo.status, 200);
       const siteInfo = (await resSiteInfo.json()) as { siteUrl: string; permissionLevel: string };
@@ -846,20 +874,11 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
     // 3. Test 403 -> SC_PERMISSION_DENIED and 429 -> SC_QUOTA_EXCEEDED
     clearSearchConsoleCache();
-    const validCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
-      JSON.stringify({
-        uid: 'user-sprint4',
-        google: {
-          uid: 'user-sprint4',
-          refreshToken: 'ref-1',
-          accessToken: 'acc-1',
-          accessTokenExpiry: Date.now() + 3600_000,
-          email: 'analyst@acme.com',
-          searchConsoleSite: { url: 'sc-domain:acme.com' },
-        },
-      }),
-      process.env.TOKEN_ENCRYPTION_KEY
-    )}`;
+    await store.updateProject(wsId, projSc.id, { searchConsoleSite: 'sc-domain:acme.com' });
+    const scHeaders = {
+      Authorization: authHeader,
+      'X-AdLens-Project': `${wsId}/${projSc.id}`,
+    };
 
     globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
       const urlStr =
@@ -872,7 +891,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
     const res403 = await originalFetch(
       `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: scHeaders }
     );
     assert.equal(res403.status, 403);
     const body403 = (await res403.json()) as { error: { code: string } };
@@ -889,7 +908,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
     const res429 = await originalFetch(
       `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14`,
-      { headers: { Cookie: validCookie, Authorization: authHeader } }
+      { headers: scHeaders }
     );
     assert.equal(res429.status, 429);
     const body429 = (await res429.json()) as { error: { code: string } };
@@ -904,7 +923,10 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
     assert.equal(healthBody.ok, true);
     assert.equal(healthBody.app, 'AdLens');
   } finally {
+    setTestConnectionStore(null);
+    setTestFirestoreStore(null);
     setTestTokenVerifier(null);
+    resetVaultSingleton();
     globalThis.fetch = originalFetch;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
@@ -1363,6 +1385,36 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
   process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-secret-key-sprint-6';
   process.env.APP_BASE_URL = 'http://localhost:3000';
 
+  const { createInMemoryFirestoreStore, setTestFirestoreStore } = await import(
+    '../../server/lib/firestore.js'
+  );
+  const { createInMemoryVaultStore, setTestConnectionStore } = await import(
+    '../../server/lib/connectionStore.js'
+  );
+  const { resetVaultSingleton } = await import('../../server/lib/vault.js');
+
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+  const connStore = createInMemoryVaultStore();
+  setTestConnectionStore(connStore);
+  resetVaultSingleton();
+
+  const { workspace } = await store.bootstrapUserAndWorkspace({
+    uid: 'user-sprint6',
+    email: 'analyst@acme.com',
+    displayName: 'Analyst',
+  });
+  const wsId = workspace.id;
+  const proj = await store.createProject(wsId, {
+    name: 'Acme S6',
+    domain: 'acme.com',
+    ga4PropertyId: '123456',
+    ga4PropertyName: 'Acme GA4',
+    timezone: 'UTC',
+    currency: 'USD',
+    createdBy: 'user-sprint6',
+  });
+
   const server = app.listen(0);
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
@@ -1371,7 +1423,7 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
   const authHeader = 'Bearer test-token-sprint6';
 
   try {
-    // 1. /api/reports without Google session -> 401 GOOGLE_NOT_CONNECTED
+    // 1. /api/reports without Google connection -> 401 GOOGLE_NOT_CONNECTED
     const resUnauth = await originalFetch(`${baseUrl}/api/reports`, {
       headers: { Authorization: authHeader },
     });
@@ -1386,13 +1438,12 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
           accessToken: 'acc-s6',
           accessTokenExpiry: Date.now() + 3600_000,
           email: 'analyst@acme.com',
-          ga4Property: { id: '123456', name: 'Acme GA4' },
         },
       }),
       process.env.TOKEN_ENCRYPTION_KEY
     )}`;
 
-    // 2. /api/reports with Google session -> 200 list of definitions
+    // 2. /api/reports with legacy Google cookie (lazy-migrated to vault) -> 200 list of definitions
     const resReports = await originalFetch(`${baseUrl}/api/reports`, {
       headers: { Cookie: cookie, Authorization: authHeader },
     });
@@ -1401,7 +1452,7 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
     assert.ok(reportsJson.length >= 10);
     assert.ok(reportsJson.some((r) => r.id === 'ga4.trafficBreakdown'));
 
-    // 3. Test /api/ga4/ai-traffic with mocked upstream GA4 runReport
+    // 3. Test /api/ga4/ai-traffic with mocked upstream GA4 runReport (using vault connection + active project)
     globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
       const urlStr =
         typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -1476,7 +1527,12 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
 
     const resAi = await originalFetch(
       `${baseUrl}/api/ga4/ai-traffic?startDate=2026-10-08&endDate=2026-10-10`,
-      { headers: { Cookie: cookie, Authorization: authHeader } }
+      {
+        headers: {
+          Authorization: authHeader,
+          'X-AdLens-Project': `${wsId}/${proj.id}`,
+        },
+      }
     );
     assert.equal(resAi.status, 200);
     assert.equal(resAi.headers.get('x-adlens-cache'), 'false');
@@ -1493,7 +1549,10 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
     assert.equal(aiBody.byDate[0].sessions, 40);
     assert.equal(aiBody.byDate[1].sessions, 0);
   } finally {
+    setTestConnectionStore(null);
+    setTestFirestoreStore(null);
     setTestTokenVerifier(null);
+    resetVaultSingleton();
     globalThis.fetch = originalFetch;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
@@ -1539,7 +1598,7 @@ test('linkToken sign, verify, tamper rejection, and 5-minute expiry', async () =
 test('requireUser middleware enforces AUTH_REQUIRED, EMAIL_NOT_VERIFIED, SSO verification, and GOOGLE_SESSION_MISMATCH', async () => {
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
-  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-7a';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-7a-32chars!';
   process.env.APP_BASE_URL = 'http://localhost:3000';
 
   const { app } = await import('../../server/index.js');
@@ -2303,4 +2362,284 @@ test('Sprint 7B-2: settings validation, plan limit transaction, isDemo rejection
     server.close();
   }
 });
+
+test('Sprint 7C-1 & 7C-2: token vault wiring, error mapping, lazy cookie migration, disconnect with revoke, and user isolation', async () => {
+  const { app } = await import('../../server/index.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const { createInMemoryFirestoreStore, setTestFirestoreStore } = await import(
+    '../../server/lib/firestore.js'
+  );
+  const { createInMemoryVaultStore, setTestConnectionStore } = await import(
+    '../../server/lib/connectionStore.js'
+  );
+  const { getVault, mapVaultError, resetVaultSingleton, setTestVault } = await import(
+    '../../server/lib/vault.js'
+  );
+  const { VaultError, buildKeyring, createTokenVault } = await import(
+    '../../server/lib/tokenVault.js'
+  );
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+  const { GOOGLE_OAUTH_SCOPES } = await import('../../server/lib/google.js');
+
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef-primary-key';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+
+  const fsStore = createInMemoryFirestoreStore();
+  setTestFirestoreStore(fsStore);
+  const vaultStore = createInMemoryVaultStore();
+  setTestConnectionStore(vaultStore);
+  resetVaultSingleton();
+
+  // 1. 7C-1 #6: In-memory VaultStore callback-style save, summary has no tokens, missing refresh_token fallback, null for different uid
+  const vault = getVault();
+  await vault.saveConnection({
+    uid: 'uid_alice',
+    provider: 'google',
+    accountLabel: 'alice@acme.com',
+    scopes: GOOGLE_OAUTH_SCOPES,
+    refreshToken: 'RT-initial-secret',
+    accessToken: 'AT-initial-secret',
+    accessTokenExpiresAt: Date.now() + 3600_000,
+  });
+
+  const aliceSummary = await vault.getSummary('uid_alice', 'google');
+  assert.ok(aliceSummary);
+  assert.equal(aliceSummary.connected, true);
+  assert.equal(aliceSummary.status, 'active');
+  assert.equal(aliceSummary.accountLabel, 'alice@acme.com');
+  assert.equal(aliceSummary.needsReconnect, false);
+  assert.ok(!JSON.stringify(aliceSummary).includes('RT-initial-secret'));
+  assert.ok(!JSON.stringify(aliceSummary).includes('AT-initial-secret'));
+
+  // Missing refresh token on re-auth falls back to stored refresh token
+  const fallbackRefreshToken = await vault.getRefreshToken('uid_alice', 'google');
+  assert.equal(fallbackRefreshToken, 'RT-initial-secret');
+  await vault.saveConnection({
+    uid: 'uid_alice',
+    provider: 'google',
+    accountLabel: 'alice@acme.com',
+    scopes: GOOGLE_OAUTH_SCOPES,
+    refreshToken: fallbackRefreshToken,
+    accessToken: 'AT-second-secret',
+    accessTokenExpiresAt: Date.now() + 3600_000,
+  });
+  assert.equal(await vault.getAccessToken('uid_alice', 'google'), 'AT-second-secret');
+
+  // Summary is null for a different uid
+  assert.equal(await vault.getSummary('uid_bob', 'google'), null);
+
+  // 2. 7C-2 #1: VaultError -> GoogleApiError mapping
+  const errNotConn = mapVaultError(new VaultError('VAULT_NOT_CONNECTED', 'not connected', 401));
+  assert.equal(errNotConn?.status, 401);
+  assert.equal(errNotConn?.code, 'GOOGLE_NOT_CONNECTED');
+
+  const errReauth = mapVaultError(new VaultError('VAULT_REAUTH_REQUIRED', 'revoked', 401));
+  assert.equal(errReauth?.status, 401);
+  assert.equal(errReauth?.code, 'GOOGLE_REAUTH_REQUIRED');
+
+  const errDecrypt = mapVaultError(new VaultError('VAULT_DECRYPT_FAILED', 'decrypt failed', 401));
+  assert.equal(errDecrypt?.status, 401);
+  assert.equal(errDecrypt?.code, 'GOOGLE_REAUTH_REQUIRED');
+
+  const errRefresh = mapVaultError(new VaultError('VAULT_REFRESH_FAILED', 'upstream down', 502));
+  assert.equal(errRefresh?.status, 502);
+  assert.equal(errRefresh?.code, 'GOOGLE_REQUEST_FAILED');
+
+  // Clear vault store before HTTP tests
+  vaultStore.map.clear();
+
+  setTestTokenVerifier(async (token: string) => {
+    if (token === 'token-alice') {
+      return {
+        uid: 'uid_alice',
+        email: 'alice@acme.com',
+        email_verified: true,
+        firebase: { identities: { 'google.com': ['ga'] }, sign_in_provider: 'google.com' },
+      } as never;
+    }
+    if (token === 'token-bob') {
+      return {
+        uid: 'uid_bob',
+        email: 'bob@acme.com',
+        email_verified: true,
+        firebase: { identities: { 'google.com': ['gb'] }, sign_in_provider: 'google.com' },
+      } as never;
+    }
+    throw new Error('Invalid token');
+  });
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 3. /api/health reports vaultReady without printing key values
+    const healthRes = await originalFetch(`${baseUrl}/api/health`);
+    const healthJson = (await healthRes.json()) as { vaultReady: boolean };
+    assert.equal(healthJson.vaultReady, true);
+    assert.ok(!JSON.stringify(healthJson).includes(process.env.TOKEN_ENCRYPTION_KEY!));
+
+    // 4. Lazy migration (cookie -> vault, owner check, clears cookie)
+    const legacyCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        uid: 'uid_alice',
+        google: {
+          uid: 'uid_alice',
+          refreshToken: 'RT-from-cookie',
+          accessToken: 'AT-from-cookie',
+          accessTokenExpiry: Date.now() + 3600_000,
+          email: 'alice-google@acme.com',
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY!
+    )}`;
+
+    const connRes = await originalFetch(`${baseUrl}/api/connections`, {
+      headers: {
+        Authorization: 'Bearer token-alice',
+        Cookie: legacyCookie,
+      },
+    });
+    assert.equal(connRes.status, 200);
+    const setCookieAfterMigration = connRes.headers.get('set-cookie') ?? '';
+    assert.ok(
+      setCookieAfterMigration.includes(`${SESSION_COOKIE_NAME}=;`),
+      'Expected legacy cookie to be cleared after migrating to vault'
+    );
+    const connJson = (await connRes.json()) as {
+      google: {
+        connected: boolean;
+        email: string | null;
+        needsReconnect: boolean;
+        vault: { connected: boolean; status: string; accountLabel: string | null; needsReconnect: boolean } | null;
+      };
+    };
+    assert.equal(connJson.google.connected, true);
+    assert.equal(connJson.google.email, 'alice-google@acme.com');
+    assert.equal(connJson.google.needsReconnect, false);
+    assert.equal(connJson.google.vault?.connected, true);
+    assert.equal(connJson.google.vault?.accountLabel, 'alice-google@acme.com');
+    assert.equal(await vault.getAccessToken('uid_alice', 'google'), 'AT-from-cookie');
+
+    // 5. User without a connection (uid_bob) gets 401 GOOGLE_NOT_CONNECTED even though uid_alice has one
+    const bobPropsRes = await originalFetch(`${baseUrl}/api/google/ga4/properties`, {
+      headers: { Authorization: 'Bearer token-bob' },
+    });
+    assert.equal(bobPropsRes.status, 401);
+    const bobPropsErr = (await bobPropsRes.json()) as { error: { code: string } };
+    assert.equal(bobPropsErr.error.code, 'GOOGLE_NOT_CONNECTED');
+
+    const bobReportsRes = await originalFetch(`${baseUrl}/api/reports`, {
+      headers: { Authorization: 'Bearer token-bob' },
+    });
+    assert.equal(bobReportsRes.status, 401);
+    const bobReportsErr = (await bobReportsRes.json()) as { error: { code: string } };
+    assert.equal(bobReportsErr.error.code, 'GOOGLE_NOT_CONNECTED');
+
+    // 6. Error mapping on routes when vault refresh fails temporarily (502 GOOGLE_REQUEST_FAILED) or permanently (401 GOOGLE_REAUTH_REQUIRED)
+    let shouldRejectPermanently = false;
+    const customVault = createTokenVault({
+      store: vaultStore,
+      keyring: buildKeyring(process.env.TOKEN_ENCRYPTION_KEY!),
+      refreshers: {
+        google: async () => {
+          if (shouldRejectPermanently) {
+            throw new Error('invalid_grant');
+          }
+          throw new Error('ECONNRESET');
+        },
+      },
+    });
+    setTestVault(customVault);
+    await customVault.saveConnection({
+      uid: 'uid_alice',
+      provider: 'google',
+      accountLabel: 'alice-google@acme.com',
+      scopes: GOOGLE_OAUTH_SCOPES,
+      refreshToken: 'RT-expired-access',
+      // No accessToken -> forces refresh
+    });
+
+    const tempFailRes = await originalFetch(`${baseUrl}/api/google/ga4/properties`, {
+      headers: { Authorization: 'Bearer token-alice' },
+    });
+    assert.equal(tempFailRes.status, 502);
+    const tempFailErr = (await tempFailRes.json()) as { error: { code: string } };
+    assert.equal(tempFailErr.error.code, 'GOOGLE_REQUEST_FAILED');
+
+    shouldRejectPermanently = true;
+    const permFailRes = await originalFetch(`${baseUrl}/api/google/ga4/properties`, {
+      headers: { Authorization: 'Bearer token-alice' },
+    });
+    assert.equal(permFailRes.status, 401);
+    const permFailErr = (await permFailRes.json()) as { error: { code: string } };
+    assert.equal(permFailErr.error.code, 'GOOGLE_REAUTH_REQUIRED');
+
+    // Now /api/connections shows connected=false, needsReconnect=true
+    const connAfterRevoke = await (
+      await originalFetch(`${baseUrl}/api/connections`, {
+        headers: { Authorization: 'Bearer token-alice' },
+      })
+    ).json() as { google: { connected: boolean; needsReconnect: boolean; email: string | null } };
+    assert.equal(connAfterRevoke.google.connected, false);
+    assert.equal(connAfterRevoke.google.needsReconnect, true);
+    assert.equal(connAfterRevoke.google.email, 'alice-google@acme.com');
+
+    setTestVault(null);
+
+    // 7. Re-save active connection and verify disconnect revokes token and removes vault doc
+    await vault.saveConnection({
+      uid: 'uid_alice',
+      provider: 'google',
+      accountLabel: 'alice-google@acme.com',
+      scopes: GOOGLE_OAUTH_SCOPES,
+      refreshToken: 'RT-to-revoke-999',
+      accessToken: 'AT-active-999',
+      accessTokenExpiresAt: Date.now() + 3600_000,
+    });
+
+    const revokedTokens: string[] = [];
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const urlStr =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (urlStr.startsWith(baseUrl)) {
+        return originalFetch(input, init);
+      }
+      if (urlStr === 'https://oauth2.googleapis.com/revoke') {
+        const params = new URLSearchParams(String(init?.body ?? ''));
+        revokedTokens.push(params.get('token') ?? '');
+        return new Response('', { status: 200 });
+      }
+      return new Response('Not Found', { status: 404 });
+    };
+
+    const discRes = await originalFetch(`${baseUrl}/api/auth/google/disconnect`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-alice' },
+    });
+    assert.equal(discRes.status, 200);
+    const discBody = (await discRes.json()) as { ok: boolean };
+    assert.equal(discBody.ok, true);
+    assert.deepEqual(revokedTokens, ['RT-to-revoke-999']);
+    assert.equal(await vault.getSummary('uid_alice', 'google'), null);
+    assert.equal(vaultStore.map.has('uid_alice_google'), false);
+  } finally {
+    setTestVault(null);
+    setTestConnectionStore(null);
+    setTestFirestoreStore(null);
+    setTestTokenVerifier(null);
+    resetVaultSingleton();
+    globalThis.fetch = originalFetch;
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    server.close();
+  }
+});
+
 

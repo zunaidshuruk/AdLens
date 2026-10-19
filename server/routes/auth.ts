@@ -9,10 +9,10 @@ import {
   getSessionCookieOptions,
   OAUTH_STATE_COOKIE_NAME,
   OAUTH_STATE_MAX_AGE_MS,
-  readSession,
-  writeSession,
 } from '../lib/session.js';
-import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
+import { VaultError } from '../lib/tokenVault.js';
+import { getVault } from '../lib/vault.js';
+import { requireUser } from '../middleware/requireUser.js';
 
 export const authRouter = Router();
 
@@ -165,12 +165,19 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
     const client = createOAuthClient();
     const { tokens } = await client.getToken(code);
 
-    const existingSession = readSession(req);
-    const sameOwner =
-      existingSession.uid === decodedState.uid ||
-      existingSession.google?.uid === decodedState.uid;
-    const refreshToken =
-      tokens.refresh_token || (sameOwner ? existingSession.google?.refreshToken : undefined);
+    const vault = getVault();
+    let refreshToken = tokens.refresh_token ?? undefined;
+    if (!refreshToken) {
+      try {
+        refreshToken = await vault.getRefreshToken(decodedState.uid, 'google');
+      } catch (err) {
+        if (err instanceof VaultError && err.code === 'VAULT_NOT_CONNECTED') {
+          res.redirect('/connections?error=no_refresh_token');
+          return;
+        }
+        throw err;
+      }
+    }
 
     if (!refreshToken) {
       res.redirect('/connections?error=no_refresh_token');
@@ -194,21 +201,22 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
         // fallback already attempted via JWT payload decode
       }
     }
+    if (!email) {
+      const existingSummary = await vault.getSummary(decodedState.uid, 'google');
+      email = existingSummary?.accountLabel ?? null;
+    }
 
-    const updatedSession = {
+    await vault.saveConnection({
       uid: decodedState.uid,
-      google: {
-        uid: decodedState.uid,
-        refreshToken,
-        accessToken: tokens.access_token,
-        accessTokenExpiry: tokens.expiry_date ?? Date.now() + 3600 * 1000,
-        email: email ?? (sameOwner ? existingSession.google?.email : null) ?? null,
-        ga4Property: sameOwner ? existingSession.google?.ga4Property : undefined,
-        searchConsoleSite: sameOwner ? existingSession.google?.searchConsoleSite : undefined,
-      },
-    };
+      provider: 'google',
+      accountLabel: email,
+      scopes: GOOGLE_OAUTH_SCOPES,
+      refreshToken,
+      accessToken: tokens.access_token,
+      accessTokenExpiresAt: tokens.expiry_date ?? undefined,
+    });
 
-    writeSession(res, updatedSession);
+    clearSession(res);
     res.redirect('/connections?connected=google');
   } catch {
     res.redirect('/connections?error=token_exchange_failed');
@@ -218,14 +226,22 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
 authRouter.post(
   '/google/disconnect',
   requireUser,
-  verifyGoogleSessionOwnership,
   async (req: Request, res: Response) => {
-    const session = readSession(req);
-    const tokenToRevoke = session.google?.refreshToken || session.google?.accessToken;
+    const uid = req.user!.uid;
+    const vault = getVault();
+    let refreshToken: string | undefined;
 
-    if (tokenToRevoke) {
+    try {
+      refreshToken = await vault.getRefreshToken(uid, 'google');
+    } catch (err) {
+      if (!(err instanceof VaultError && err.code === 'VAULT_NOT_CONNECTED')) {
+        // Proceed with deleting the vault document even if decryption failed
+      }
+    }
+
+    if (refreshToken) {
       try {
-        const body = new URLSearchParams({ token: tokenToRevoke });
+        const body = new URLSearchParams({ token: refreshToken });
         await fetch('https://oauth2.googleapis.com/revoke', {
           method: 'POST',
           headers: {
@@ -234,11 +250,11 @@ authRouter.post(
           body: body.toString(),
         });
       } catch {
-        // Ignore network/revoke errors and proceed with local session cleanup
+        // Ignore network/revoke errors and proceed with vault cleanup
       }
     }
 
-    delete session.google;
+    await vault.deleteConnection(uid, 'google');
     clearSession(res);
     res.json({ ok: true });
   }

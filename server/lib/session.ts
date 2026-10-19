@@ -10,17 +10,6 @@ export const MAX_COOKIE_BYTES = 4000; // Keep under 4 KB
 
 export interface GoogleSessionData {
   uid?: string;
-  refreshToken: string;
-  accessToken: string;
-  accessTokenExpiry: number; // epoch ms
-  email: string | null;
-  ga4Property?: {
-    id: string;
-    name: string;
-  };
-  searchConsoleSite?: {
-    url: string;
-  };
 }
 
 export interface SessionData {

@@ -259,7 +259,11 @@ export const ConnectionsPage: React.FC = () => {
                 </div>
               ) : (
                 <span className="text-xs font-medium text-amber-700 dark:text-amber-400 shrink-0">
-                  {googleConfigured ? 'Not connected · Mock data active' : 'Setup required · Mock data active'}
+                  {connections?.google.needsReconnect
+                    ? 'Reconnect required · Mock data active'
+                    : googleConfigured
+                      ? 'Not connected · Mock data active'
+                      : 'Setup required · Mock data active'}
                 </span>
               )}
             </div>
@@ -441,12 +445,21 @@ export const ConnectionsPage: React.FC = () => {
             )}
           </div>
 
-          {/* When Not Connected: Connect Google CTA */}
+          {/* When Not Connected: Connect / Reconnect Google CTA */}
           {!googleConnected && (
             <div className="pt-4 border-t border-slate-200/70 dark:border-slate-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                Scopes requested: <code className="font-mono">analytics.readonly</code>,{' '}
-                <code className="font-mono">webmasters.readonly</code>
+                {connections?.google.needsReconnect ? (
+                  <span className="text-amber-700 dark:text-amber-400 font-medium">
+                    Google access expired or was revoked
+                    {connections.google.email ? ` (${connections.google.email})` : ''}. Please reconnect your account.
+                  </span>
+                ) : (
+                  <>
+                    Scopes requested: <code className="font-mono">analytics.readonly</code>,{' '}
+                    <code className="font-mono">webmasters.readonly</code>
+                  </>
+                )}
               </div>
 
               <button
@@ -456,7 +469,7 @@ export const ConnectionsPage: React.FC = () => {
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Connect Google</span>
+                <span>{connections?.google.needsReconnect ? 'Reconnect Google' : 'Connect Google'}</span>
               </button>
             </div>
           )}
