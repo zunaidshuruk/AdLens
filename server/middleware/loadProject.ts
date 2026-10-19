@@ -69,8 +69,8 @@ export async function loadProject(
     const workspace = await store.getWorkspace(parsed.wsId);
     if (
       !workspace ||
-      (!workspace.memberIds.includes(uid) &&
-        !Object.prototype.hasOwnProperty.call(workspace.members, uid))
+      !workspace.members ||
+      !Object.prototype.hasOwnProperty.call(workspace.members, uid)
     ) {
       res.status(404).json({
         error: {

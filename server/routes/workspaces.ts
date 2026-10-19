@@ -9,6 +9,7 @@ import {
 } from '../lib/firestore.js';
 import { normalizeDomain } from '../lib/sourceMatcher.js';
 import { requireUser } from '../middleware/requireUser.js';
+import { validateAsset } from '../../src/utils/imageAssets.js';
 
 export const meRouter = Router();
 export const workspacesRouter = Router();
@@ -58,7 +59,6 @@ export const createProjectSchema = z
     domain: domainInputSchema.optional().default(''),
     timezone: timezoneSchema.optional().default('UTC'),
     currency: currencySchema.optional().default('USD'),
-    isDemo: z.boolean().optional().default(false),
   })
   .strict();
 
@@ -123,14 +123,6 @@ const userSettingsSchema = z
 export const patchUserSchema = z
   .object({
     displayName: z.string().trim().min(1).max(100).optional(),
-    photoURL: z
-      .string()
-      .trim()
-      .max(2048)
-      .regex(/^https:\/\/firebasestorage\.googleapis\.com\/.*/, 'Photo URL must be a Firebase Storage URL.')
-      .nullable()
-      .optional(),
-    photoPath: z.string().trim().max(200).nullable().optional(),
     settings: userSettingsSchema.optional(),
   })
   .strict();
@@ -138,14 +130,6 @@ export const patchUserSchema = z
 export const patchWorkspaceSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
-    logoURL: z
-      .string()
-      .trim()
-      .max(2048)
-      .regex(/^https:\/\/firebasestorage\.googleapis\.com\/.*/, 'Logo URL must be a Firebase Storage URL.')
-      .nullable()
-      .optional(),
-    logoPath: z.string().trim().max(200).nullable().optional(),
     defaults: z
       .object({
         currency: currencySchema,
@@ -168,13 +152,21 @@ function deriveDisplayName(name: string | null | undefined, email: string | null
 }
 
 function getMemberRole(ws: WorkspaceDoc, uid: string): WorkspaceRole | null {
-  if (!ws.memberIds.includes(uid) && !Object.prototype.hasOwnProperty.call(ws.members, uid)) {
+  if (!ws.members || typeof ws.members !== 'object') {
     return null;
   }
-  return ws.members[uid] ?? 'member';
+  if (!Object.prototype.hasOwnProperty.call(ws.members, uid)) {
+    return null;
+  }
+  return ws.members[uid] ?? null;
 }
 
-async function buildMePayload(uid: string, fallbackEmail: string | null, fallbackName: string | null) {
+async function buildMePayload(
+  uid: string,
+  fallbackEmail: string | null,
+  fallbackName: string | null,
+  fallbackPhotoURL?: string | null
+) {
   const store = getFirestoreStore();
   let userDoc = await store.getUser(uid);
   let workspaces = await store.listWorkspacesForUser(uid);
@@ -184,6 +176,7 @@ async function buildMePayload(uid: string, fallbackEmail: string | null, fallbac
       uid,
       email: fallbackEmail,
       displayName: deriveDisplayName(fallbackName, fallbackEmail),
+      photoURL: fallbackPhotoURL ?? null,
     });
     userDoc = bootstrapped.user;
     workspaces = await store.listWorkspacesForUser(uid);
@@ -204,8 +197,9 @@ async function buildMePayload(uid: string, fallbackEmail: string | null, fallbac
       role: getMemberRole(ws, uid) ?? 'member',
       plan: ws.plan,
       limits: getPlanLimits(ws.plan),
-      logoURL: ws.logoURL,
-      logoPath: ws.logoPath,
+      logoURL: ws.logoURL ?? null,
+      logoPath: ws.logoPath ?? null,
+      hasLogo: Boolean(ws.hasLogo),
       defaults: ws.defaults,
       members: ws.members,
       memberIds: ws.memberIds,
@@ -227,15 +221,17 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
         ? req.body.displayName.trim()
         : req.user!.name ?? null;
     const displayName = deriveDisplayName(bodyName, email);
+    const photoURL = req.user!.picture ?? null;
 
     const store = getFirestoreStore();
     await store.bootstrapUserAndWorkspace({
       uid,
       email,
       displayName,
+      photoURL,
     });
 
-    const payload = await buildMePayload(uid, email, displayName);
+    const payload = await buildMePayload(uid, email, displayName, photoURL);
     res.json(payload);
   } catch (err) {
     res.status(500).json({
@@ -251,7 +247,12 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
 meRouter.get('/', async (req: Request, res: Response) => {
   try {
     const uid = req.user!.uid;
-    const payload = await buildMePayload(uid, req.user!.email, req.user!.name ?? null);
+    const payload = await buildMePayload(
+      uid,
+      req.user!.email,
+      req.user!.name ?? null,
+      req.user!.picture ?? null
+    );
     res.json(payload);
   } catch (err) {
     res.status(500).json({
@@ -277,19 +278,6 @@ meRouter.patch('/', async (req: Request, res: Response) => {
     return;
   }
 
-  if (
-    parsed.data.photoPath !== undefined &&
-    parsed.data.photoPath !== null &&
-    !new RegExp(`^users/${uid}/avatar/[^/]{1,100}$`).test(parsed.data.photoPath)
-  ) {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'photoPath must match users/<uid>/avatar/<filename>.',
-      },
-    });
-    return;
-  }
 
   try {
     const store = getFirestoreStore();
@@ -300,6 +288,79 @@ meRouter.patch('/', async (req: Request, res: Response) => {
       error: {
         code: 'USER_UPDATE_FAILED',
         message: err instanceof Error ? err.message : 'Failed to update user settings.',
+      },
+    });
+  }
+});
+
+// GET /api/me/avatar/:uid -> fetch custom avatar asset for any verified user
+meRouter.get('/avatar/:uid', async (req: Request, res: Response) => {
+  const targetUid = String(req.params.uid || '').trim();
+  if (!targetUid) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'User ID is required.' },
+    });
+    return;
+  }
+  try {
+    const store = getFirestoreStore();
+    const avatar = await store.getUserAvatar(targetUid);
+    res.json({ avatar });
+  } catch (err) {
+    res.status(500).json({
+      error: {
+        code: 'AVATAR_FETCH_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to load avatar.',
+      },
+    });
+  }
+});
+
+// PUT /api/me/avatar -> store custom avatar asset in users/{uid}/assets/avatar
+meRouter.put('/avatar', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+  const body = req.body ?? {};
+  const asset = {
+    dataUrl: typeof body.dataUrl === 'string' ? body.dataUrl : '',
+    mimeType: body.mimeType as 'image/png' | 'image/jpeg' | 'image/webp',
+    width: typeof body.width === 'number' ? body.width : 0,
+    height: typeof body.height === 'number' ? body.height : 0,
+  };
+
+  const errCode = validateAsset(asset, 'avatar');
+  if (errCode) {
+    res.status(400).json({
+      error: { code: errCode, message: `Invalid avatar image asset (${errCode}).` },
+    });
+    return;
+  }
+
+  try {
+    const store = getFirestoreStore();
+    const saved = await store.setUserAvatar(uid, asset);
+    res.json({ avatar: saved });
+  } catch (err) {
+    res.status(500).json({
+      error: {
+        code: 'AVATAR_SAVE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to save avatar.',
+      },
+    });
+  }
+});
+
+// DELETE /api/me/avatar -> delete custom avatar asset and reset hasCustomAvatar
+meRouter.delete('/avatar', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+  try {
+    const store = getFirestoreStore();
+    await store.deleteUserAvatar(uid);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({
+      error: {
+        code: 'AVATAR_DELETE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to remove avatar.',
       },
     });
   }
@@ -345,19 +406,6 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
       return;
     }
 
-    if (
-      parsed.data.logoPath !== undefined &&
-      parsed.data.logoPath !== null &&
-      !new RegExp(`^workspaces/${wsId}/logo/[^/]{1,100}$`).test(parsed.data.logoPath)
-    ) {
-      res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'logoPath must match workspaces/<wsId>/logo/<filename>.',
-        },
-      });
-      return;
-    }
 
     const updated = await store.updateWorkspace(wsId, parsed.data);
     res.json({
@@ -372,6 +420,123 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
       error: {
         code: 'WORKSPACE_UPDATE_FAILED',
         message: err instanceof Error ? err.message : 'Failed to update workspace.',
+      },
+    });
+  }
+});
+
+// GET /api/workspaces/:wsId/logo -> members fetch workspace logo asset
+workspacesRouter.get('/:wsId/logo', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+  const wsId = String(req.params.wsId || '').trim();
+  const store = getFirestoreStore();
+
+  try {
+    const ws = await store.getWorkspace(wsId);
+    const role = ws ? getMemberRole(ws, uid) : null;
+    if (!ws || !role) {
+      res.status(404).json({
+        error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found.' },
+      });
+      return;
+    }
+    const logo = await store.getWorkspaceLogo(wsId);
+    res.json({ logo });
+  } catch (err) {
+    res.status(500).json({
+      error: {
+        code: 'LOGO_FETCH_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to load workspace logo.',
+      },
+    });
+  }
+});
+
+// PUT /api/workspaces/:wsId/logo -> owners/admins store workspace logo asset
+workspacesRouter.put('/:wsId/logo', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+  const wsId = String(req.params.wsId || '').trim();
+  const store = getFirestoreStore();
+
+  try {
+    const ws = await store.getWorkspace(wsId);
+    const role = ws ? getMemberRole(ws, uid) : null;
+    if (!ws || !role) {
+      res.status(404).json({
+        error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found.' },
+      });
+      return;
+    }
+    if (role !== 'owner' && role !== 'admin') {
+      res.status(403).json({
+        error: {
+          code: 'NOT_ALLOWED',
+          message: 'Only workspace owners and admins can update the workspace logo.',
+        },
+      });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const asset = {
+      dataUrl: typeof body.dataUrl === 'string' ? body.dataUrl : '',
+      mimeType: body.mimeType as 'image/png' | 'image/jpeg' | 'image/webp',
+      width: typeof body.width === 'number' ? body.width : 0,
+      height: typeof body.height === 'number' ? body.height : 0,
+    };
+
+    const errCode = validateAsset(asset, 'logo');
+    if (errCode) {
+      res.status(400).json({
+        error: { code: errCode, message: `Invalid workspace logo asset (${errCode}).` },
+      });
+      return;
+    }
+
+    const saved = await store.setWorkspaceLogo(wsId, asset);
+    res.json({ logo: saved });
+  } catch (err) {
+    res.status(500).json({
+      error: {
+        code: 'LOGO_SAVE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to save workspace logo.',
+      },
+    });
+  }
+});
+
+// DELETE /api/workspaces/:wsId/logo -> owners/admins delete workspace logo asset
+workspacesRouter.delete('/:wsId/logo', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+  const wsId = String(req.params.wsId || '').trim();
+  const store = getFirestoreStore();
+
+  try {
+    const ws = await store.getWorkspace(wsId);
+    const role = ws ? getMemberRole(ws, uid) : null;
+    if (!ws || !role) {
+      res.status(404).json({
+        error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found.' },
+      });
+      return;
+    }
+    if (role !== 'owner' && role !== 'admin') {
+      res.status(403).json({
+        error: {
+          code: 'NOT_ALLOWED',
+          message: 'Only workspace owners and admins can remove the workspace logo.',
+        },
+      });
+      return;
+    }
+
+    await store.deleteWorkspaceLogo(wsId);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({
+      error: {
+        code: 'LOGO_DELETE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to remove workspace logo.',
       },
     });
   }
@@ -396,6 +561,16 @@ workspacesRouter.post('/:wsId/projects', async (req: Request, res: Response) => 
       return;
     }
 
+    if (req.body && typeof req.body === 'object' && 'isDemo' in req.body) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'isDemo is server-only and cannot be specified by the client.',
+        },
+      });
+      return;
+    }
+
     const parsed = createProjectSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({
@@ -407,28 +582,38 @@ workspacesRouter.post('/:wsId/projects', async (req: Request, res: Response) => 
       return;
     }
 
-    const existingProjects = await store.listProjects(wsId);
     const limits = getPlanLimits(ws.plan);
-    if (existingProjects.length >= limits.maxProjects) {
-      res.status(403).json({
-        error: {
-          code: 'PLAN_LIMIT_REACHED',
-          message: `Your ${ws.plan} plan allows up to ${limits.maxProjects} projects.`,
+
+    try {
+      const project = await store.createProject(
+        wsId,
+        {
+          name: parsed.data.name,
+          domain: parsed.data.domain || '',
+          timezone: parsed.data.timezone || ws.defaults?.timezone || 'UTC',
+          currency: parsed.data.currency || ws.defaults?.currency || 'USD',
+          isDemo: false,
+          createdBy: uid,
         },
-      });
-      return;
+        { maxProjects: limits.maxProjects }
+      );
+
+      res.status(201).json({ project });
+    } catch (createErr) {
+      if (
+        (createErr as { code?: string })?.code === 'PLAN_LIMIT_REACHED' ||
+        (createErr as Error)?.message === 'PLAN_LIMIT_REACHED'
+      ) {
+        res.status(403).json({
+          error: {
+            code: 'PLAN_LIMIT_REACHED',
+            message: `Your ${ws.plan} plan allows up to ${limits.maxProjects} projects.`,
+          },
+        });
+        return;
+      }
+      throw createErr;
     }
-
-    const project = await store.createProject(wsId, {
-      name: parsed.data.name,
-      domain: parsed.data.domain || (parsed.data.isDemo ? 'demo-store.example' : ''),
-      timezone: parsed.data.timezone || ws.defaults?.timezone || 'UTC',
-      currency: parsed.data.currency || ws.defaults?.currency || 'USD',
-      isDemo: parsed.data.isDemo,
-      createdBy: uid,
-    });
-
-    res.status(201).json({ project });
   } catch (err) {
     res.status(500).json({
       error: {
@@ -454,6 +639,16 @@ workspacesRouter.patch('/:wsId/projects/:id', async (req: Request, res: Response
         error: {
           code: 'NOT_ALLOWED',
           message: 'You are not a member of this workspace.',
+        },
+      });
+      return;
+    }
+
+    if (req.body && typeof req.body === 'object' && 'isDemo' in req.body) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'isDemo is server-only and cannot be specified by the client.',
         },
       });
       return;

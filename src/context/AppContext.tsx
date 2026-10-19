@@ -1,3 +1,7 @@
+import {
+  doc,
+  onSnapshot,
+} from 'firebase/firestore';
 import React, {
   createContext,
   useCallback,
@@ -7,20 +11,34 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { apiClient, setActiveProjectHeader } from '../api/client';
-import { DEMO_PROJECT } from '../config/app';
+import { apiClient, setActiveProjectHeader } from '../api/client.js';
+import { DEMO_PROJECT } from '../config/app.js';
+import { db, firestoreDirectAvailable, markFirestoreDirectUnavailable } from '../lib/firebase.js';
+import {
+  removeAvatarDirect,
+  removeWorkspaceLogoDirect,
+  saveDisplayNameDirect,
+  saveUserSettingsDirect,
+  saveWorkspaceSettingsDirect,
+  uploadAvatarDirect,
+  uploadWorkspaceLogoDirect,
+  VALID_DATE_RANGES,
+  VALID_NUMBER_FORMATS,
+  VALID_THEMES,
+} from '../lib/firestoreClient.js';
 import type {
   ComputedDateRange,
   CurrencyCode,
   DatePreset,
+  NumberFormatLocale,
   ProjectConfig,
   ThemeMode,
   UserProfile,
   UserSettings,
   WorkspaceSummary,
-} from '../types';
-import { computeDateRange } from '../utils/dateUtils';
-import { useAuth } from './AuthContext';
+} from '../types/index.js';
+import { computeDateRange } from '../utils/dateUtils.js';
+import { useAuth } from './AuthContext.js';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -43,13 +61,15 @@ interface AppContextValue {
   setCurrency: (currency: CurrencyCode) => void;
   timezone: string;
   setTimezone: (tz: string) => void;
+  numberFormat: NumberFormatLocale;
+  setNumberFormat: (format: NumberFormatLocale) => void;
   theme: ThemeMode;
   setTheme: (theme: ThemeMode) => void;
   themePreference: ThemePreference;
   setThemePreference: (pref: ThemePreference) => void;
   toggleTheme: () => void;
 
-  // Sprint 7B: Firestore user, workspace & project state
+  // Firestore user, workspace & project state
   userProfile: UserProfile | null;
   workspaces: WorkspaceSummary[];
   activeWorkspace: WorkspaceSummary | null;
@@ -90,12 +110,23 @@ interface AppContextValue {
     photoPath?: string | null;
     settings?: UserSettings;
   }) => Promise<UserProfile>;
+  savePreferences: (patch: Partial<UserSettings>) => Promise<UserSettings>;
+  updateUserDisplayName: (name: string) => Promise<string>;
   updateWorkspaceSettings: (patch: {
     name?: string;
     logoURL?: string | null;
     logoPath?: string | null;
     defaults?: { currency: string; timezone: string };
   }) => Promise<WorkspaceSummary>;
+  updateWorkspaceDefaults: (
+    wsId: string,
+    name: string,
+    defaults: { currency: string; timezone: string }
+  ) => Promise<void>;
+  uploadAvatar: (file: File) => Promise<string>;
+  removeAvatar: () => Promise<void>;
+  uploadWorkspaceLogo: (wsId: string, file: File) => Promise<string>;
+  removeWorkspaceLogo: (wsId: string) => Promise<void>;
   isNewProjectModalOpen: boolean;
   openNewProjectModal: () => void;
   closeNewProjectModal: () => void;
@@ -109,6 +140,7 @@ const STORAGE_KEYS = {
   CURRENCY: 'adlens_currency',
   TIMEZONE: 'adlens_timezone',
   THEME: 'adlens_theme',
+  NUMBER_FORMAT: 'adlens_number_format',
 };
 
 function readStorage<T extends string>(key: string, fallback: T): T {
@@ -120,65 +152,60 @@ function readStorage<T extends string>(key: string, fallback: T): T {
   }
 }
 
-function getBrowserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || DEMO_PROJECT.defaultTimezone;
-  } catch {
-    return DEMO_PROJECT.defaultTimezone;
-  }
-}
-
-function resolveThemeMode(pref: ThemePreference): ThemeMode {
-  if (pref === 'dark' || pref === 'light') return pref;
-  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
-}
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, emailVerified, loading: authLoading } = useAuth();
 
   const [preset, setPresetState] = useState<DatePreset>(() =>
     readStorage<DatePreset>(STORAGE_KEYS.PRESET, 'Last 28 days')
   );
-
+  const [customDates, setCustomDates] = useState<CustomDateRange>({
+    startDate: '',
+    endDate: '',
+  });
   const [compareEnabled, setCompareEnabledState] = useState<boolean>(() => {
     try {
-      const val = localStorage.getItem(STORAGE_KEYS.COMPARE);
-      return val === null ? true : val === 'true';
+      const stored = localStorage.getItem(STORAGE_KEYS.COMPARE);
+      return stored !== null ? stored === 'true' : true;
     } catch {
       return true;
     }
   });
 
   const [currency, setCurrencyState] = useState<CurrencyCode>(() =>
-    readStorage<CurrencyCode>(STORAGE_KEYS.CURRENCY, DEMO_PROJECT.defaultCurrency)
+    readStorage<CurrencyCode>(STORAGE_KEYS.CURRENCY, 'USD')
   );
-
   const [timezone, setTimezoneState] = useState<string>(() =>
-    readStorage<string>(STORAGE_KEYS.TIMEZONE, getBrowserTimezone())
+    readStorage(STORAGE_KEYS.TIMEZONE, 'UTC')
+  );
+  const [numberFormat, setNumberFormatState] = useState<NumberFormatLocale>(() =>
+    readStorage<NumberFormatLocale>(STORAGE_KEYS.NUMBER_FORMAT, 'en-US')
   );
 
-  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => {
-    const saved = readStorage<string>(STORAGE_KEYS.THEME, 'light');
-    if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
-    return 'light';
-  });
-
-  const theme = useMemo<ThemeMode>(() => resolveThemeMode(themePreference), [themePreference]);
-
-  const initialComputed = useMemo(
-    () => computeDateRange('Last 28 days', timezone),
-    [timezone]
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() =>
+    readStorage<ThemePreference>(STORAGE_KEYS.THEME, 'system')
   );
 
-  const [customDates, setCustomDates] = useState<CustomDateRange>({
-    startDate: initialComputed.startDate,
-    endDate: initialComputed.endDate,
+  const [systemDark, setSystemDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  // Sprint 7B state
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const theme: ThemeMode = useMemo(() => {
+    if (themePreference === 'system') {
+      return systemDark ? 'dark' : 'light';
+    }
+    return themePreference;
+  }, [themePreference, systemDark]);
+
+  // Firestore user, workspace & project state
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [projects, setProjects] = useState<ProjectConfig[]>([]);
@@ -195,33 +222,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       root.classList.remove('dark');
     }
-    try {
-      localStorage.setItem(STORAGE_KEYS.THEME, themePreference);
-    } catch {
-      // ignore storage errors
+    // Only write to localStorage when not signed in
+    if (!user) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.THEME, themePreference);
+      } catch {
+        // ignore
+      }
     }
-  }, [theme, themePreference]);
+  }, [theme, themePreference, user]);
 
   const applyMeResponse = useCallback(
-    (uid: string, me: { user: UserProfile; workspaces: WorkspaceSummary[]; projects: ProjectConfig[] }) => {
+    (
+      uid: string,
+      me: { user: UserProfile; workspaces: WorkspaceSummary[]; projects: ProjectConfig[] }
+    ) => {
       setUserProfile(me.user);
       setWorkspaces(me.workspaces);
       setProjects(me.projects);
 
-      // Apply user settings from Firestore on first load for this user
       if (settingsAppliedForUid.current !== uid && me.user?.settings) {
         settingsAppliedForUid.current = uid;
         const s = me.user.settings;
-        if (s.theme) {
+        if (s.theme && VALID_THEMES.includes(s.theme)) {
           setThemePreferenceState(s.theme);
+        } else {
+          try {
+            const oldTheme = localStorage.getItem('adlens_theme');
+            if (oldTheme && ['light', 'dark', 'system'].includes(oldTheme)) {
+              localStorage.removeItem('adlens_theme');
+              setThemePreferenceState(oldTheme as ThemePreference);
+              void saveUserSettingsDirect(uid, s, {
+                theme: oldTheme as ThemePreference,
+              }).catch(() => {});
+            }
+          } catch {
+            // ignore
+          }
         }
-        if (s.displayCurrency === 'BDT' || s.displayCurrency === 'USD') {
-          setCurrencyState(s.displayCurrency);
+        if (s.displayCurrency && (s.displayCurrency === 'BDT' || s.displayCurrency === 'USD')) {
+          setCurrencyState(s.displayCurrency as CurrencyCode);
         }
         if (s.timezone) {
           setTimezoneState(s.timezone);
         }
-        if (s.defaultDateRange) {
+        if (s.numberFormat && VALID_NUMBER_FORMATS.includes(s.numberFormat)) {
+          setNumberFormatState(s.numberFormat);
+        }
+        if (s.defaultDateRange && VALID_DATE_RANGES.includes(s.defaultDateRange as (typeof VALID_DATE_RANGES)[number])) {
           setPresetState(s.defaultDateRange);
         }
         if (typeof s.compareByDefault === 'boolean') {
@@ -242,8 +290,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (savedHeader) {
         const [, savedProjId] = savedHeader.split('/');
         chosenProject =
-          me.projects.find((p) => `${p.workspaceId}/${p.id}` === savedHeader || p.id === savedProjId) ??
-          null;
+          me.projects.find(
+            (p) => `${p.workspaceId}/${p.id}` === savedHeader || p.id === savedProjId
+          ) ?? null;
       }
 
       if (!chosenProject && me.projects.length > 0) {
@@ -268,7 +317,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     []
   );
 
-  // Part B.1: After sign-in, call /api/me/bootstrap, then /api/me
+  // Subscribe to real-time updates on users/{uid} with onSnapshot after bootstrap completes
+  useEffect(() => {
+    if (workspaceLoading || !userProfile?.uid || !user || !emailVerified || !db || !firestoreDirectAvailable) {
+      return;
+    }
+
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(
+      userRef,
+      (docSnap) => {
+        if (!docSnap.exists()) return;
+        const data = docSnap.data();
+        const settings = (data.settings as UserSettings) || {};
+
+        setUserProfile((prev) => ({
+          uid: user.uid,
+          email: typeof data.email === 'string' ? data.email : user.email || '',
+          displayName:
+            typeof data.displayName === 'string' ? data.displayName : prev?.displayName || 'AdLens User',
+          photoURL: typeof data.photoURL === 'string' ? data.photoURL : prev?.photoURL ?? null,
+          photoPath: typeof data.photoPath === 'string' ? data.photoPath : null,
+          hasCustomAvatar: Boolean(data.hasCustomAvatar),
+          settings,
+          createdAt:
+            data.createdAt && typeof data.createdAt === 'object' && 'toDate' in data.createdAt
+              ? (data.createdAt as { toDate: () => Date }).toDate().toISOString()
+              : prev?.createdAt || new Date().toISOString(),
+          updatedAt:
+            data.updatedAt && typeof data.updatedAt === 'object' && 'toDate' in data.updatedAt
+              ? (data.updatedAt as { toDate: () => Date }).toDate().toISOString()
+              : prev?.updatedAt || new Date().toISOString(),
+        }));
+
+        if (settings.theme && VALID_THEMES.includes(settings.theme)) {
+          setThemePreferenceState(settings.theme);
+        }
+        if (
+          settings.defaultDateRange &&
+          VALID_DATE_RANGES.includes(settings.defaultDateRange as (typeof VALID_DATE_RANGES)[number])
+        ) {
+          setPresetState(settings.defaultDateRange);
+        }
+        if (typeof settings.compareByDefault === 'boolean') {
+          setCompareEnabledState(settings.compareByDefault);
+        }
+        if (
+          settings.displayCurrency &&
+          (settings.displayCurrency === 'USD' || settings.displayCurrency === 'BDT')
+        ) {
+          setCurrencyState(settings.displayCurrency as CurrencyCode);
+        }
+        if (settings.timezone) {
+          setTimezoneState(settings.timezone);
+        }
+        if (settings.numberFormat && VALID_NUMBER_FORMATS.includes(settings.numberFormat)) {
+          setNumberFormatState(settings.numberFormat);
+        }
+
+        // Migrate old localStorage theme if needed
+        try {
+          const oldTheme = localStorage.getItem('adlens_theme');
+          if (oldTheme && !settings.theme && ['light', 'dark', 'system'].includes(oldTheme)) {
+            localStorage.removeItem('adlens_theme');
+            void saveUserSettingsDirect(user.uid, settings, {
+              theme: oldTheme as ThemePreference,
+            }).catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
+      },
+      () => {
+        markFirestoreDirectUnavailable();
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user, emailVerified, workspaceLoading, userProfile?.uid]);
+
+  // After sign-in, call /api/me/bootstrap, then /api/me
   useEffect(() => {
     if (authLoading) return;
     if (!user || !emailVerified) {
@@ -340,41 +470,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch {
         // ignore
       }
-    } else {
-      setActiveProjectHeader(null);
     }
   }, [activeProject, user]);
 
   const selectProject = useCallback(
     (projectId: string) => {
-      const found = projects.find((p) => p.id === projectId);
-      if (!found) return;
-      setActiveProjectId(found.id);
-      setIsDemoMode(Boolean(found.isDemo));
-      const headerVal = `${found.workspaceId}/${found.id}`;
-      setActiveProjectHeader(headerVal);
-      if (user) {
-        try {
-          localStorage.setItem(`adlens_active_project_${user.uid}`, headerVal);
-        } catch {
-          // ignore
+      const proj = projects.find((p) => p.id === projectId);
+      if (proj) {
+        setActiveProjectId(proj.id);
+        const headerVal = `${proj.workspaceId}/${proj.id}`;
+        setActiveProjectHeader(headerVal);
+        if (user) {
+          try {
+            localStorage.setItem(`adlens_active_project_${user.uid}`, headerVal);
+          } catch {
+            // ignore
+          }
         }
-      }
-      if (found.timezone) {
-        setTimezoneState(found.timezone);
-      }
-      if (found.currency === 'BDT' || found.currency === 'USD') {
-        setCurrencyState(found.currency);
+        setIsDemoMode(Boolean(proj.isDemo));
       }
     },
     [projects, user]
   );
 
   const refreshMe = useCallback(async () => {
-    if (!user) return;
-    const me = await apiClient.getMe();
-    applyMeResponse(user.uid, me);
-  }, [user, applyMeResponse]);
+    if (!user || !emailVerified) return;
+    try {
+      const me = await apiClient.getMe();
+      applyMeResponse(user.uid, me);
+    } catch {
+      // ignore
+    }
+  }, [user, emailVerified, applyMeResponse]);
 
   const createProject = useCallback(
     async (input: {
@@ -386,21 +513,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }): Promise<ProjectConfig> => {
       const wsId = activeWorkspace?.id || workspaces[0]?.id;
       if (!wsId) {
-        throw new Error('No active workspace found.');
+        throw new Error('No active workspace available to create project.');
       }
       const { project } = await apiClient.createProject(wsId, input);
       setProjects((prev) => [...prev, project]);
       setActiveProjectId(project.id);
-      setIsDemoMode(Boolean(project.isDemo));
-      const headerVal = `${project.workspaceId}/${project.id}`;
-      setActiveProjectHeader(headerVal);
+      setActiveProjectHeader(`${wsId}/${project.id}`);
       if (user) {
         try {
-          localStorage.setItem(`adlens_active_project_${user.uid}`, headerVal);
+          localStorage.setItem(`adlens_active_project_${user.uid}`, `${wsId}/${project.id}`);
         } catch {
           // ignore
         }
       }
+      setIsDemoMode(Boolean(project.isDemo));
       return project;
     },
     [activeWorkspace, workspaces, user]
@@ -423,16 +549,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         metaAdAccountName: string | null;
       }>
     ): Promise<ProjectConfig> => {
-      const target = projects.find((p) => p.id === projectId) ?? activeProject;
+      const target = projects.find((p) => p.id === projectId);
       const wsId = target?.workspaceId || activeWorkspace?.id;
       if (!wsId) {
-        throw new Error('No active workspace found.');
+        throw new Error('Project not found.');
       }
-      const { project } = await apiClient.updateProject(wsId, projectId, patch);
-      setProjects((prev) => prev.map((p) => (p.id === project.id ? project : p)));
-      return project;
+      const { project: updated } = await apiClient.updateProject(wsId, projectId, patch);
+      setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      return updated;
     },
-    [projects, activeProject, activeWorkspace]
+    [projects, activeWorkspace]
   );
 
   const deleteProject = useCallback(
@@ -440,7 +566,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const target = projects.find((p) => p.id === projectId);
       const wsId = target?.workspaceId || activeWorkspace?.id;
       if (!wsId) {
-        throw new Error('No active workspace found.');
+        throw new Error('Project not found.');
       }
       await apiClient.deleteProject(wsId, projectId);
       setProjects((prev) => {
@@ -456,6 +582,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [projects, activeWorkspace, activeProjectId]
   );
 
+  const savePreferences = useCallback(
+    async (patch: Partial<UserSettings>): Promise<UserSettings> => {
+      const current = userProfile?.settings || {};
+
+      // Optimistic update
+      if (patch.theme && VALID_THEMES.includes(patch.theme)) {
+        setThemePreferenceState(patch.theme);
+      }
+      if (
+        patch.defaultDateRange &&
+        VALID_DATE_RANGES.includes(patch.defaultDateRange as (typeof VALID_DATE_RANGES)[number])
+      ) {
+        setPresetState(patch.defaultDateRange);
+      }
+      if (typeof patch.compareByDefault === 'boolean') {
+        setCompareEnabledState(patch.compareByDefault);
+      }
+      if (
+        patch.displayCurrency &&
+        (patch.displayCurrency === 'USD' || patch.displayCurrency === 'BDT')
+      ) {
+        setCurrencyState(patch.displayCurrency as CurrencyCode);
+      }
+      if (patch.timezone) {
+        setTimezoneState(patch.timezone);
+      }
+      if (patch.numberFormat && VALID_NUMBER_FORMATS.includes(patch.numberFormat)) {
+        setNumberFormatState(patch.numberFormat);
+      }
+
+      if (user?.uid && emailVerified) {
+        try {
+          const merged = await saveUserSettingsDirect(user.uid, current, patch);
+          setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+          return merged;
+        } catch (err) {
+          // Revert optimistic updates
+          if (current.theme) setThemePreferenceState(current.theme);
+          if (current.defaultDateRange) setPresetState(current.defaultDateRange);
+          if (typeof current.compareByDefault === 'boolean') setCompareEnabledState(current.compareByDefault);
+          if (current.displayCurrency) setCurrencyState(current.displayCurrency as CurrencyCode);
+          if (current.timezone) setTimezoneState(current.timezone);
+          if (current.numberFormat) setNumberFormatState(current.numberFormat);
+          throw err;
+        }
+      } else {
+        // Fallback to server API if not signed in via Firebase Auth
+        const { user: updated } = await apiClient.updateMe({ settings: patch });
+        setUserProfile(updated);
+        return updated.settings;
+      }
+    },
+    [user, emailVerified, userProfile]
+  );
+
   const updateUserProfile = useCallback(
     async (patch: {
       displayName?: string;
@@ -463,18 +644,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       photoPath?: string | null;
       settings?: UserSettings;
     }): Promise<UserProfile> => {
-      const { user: updated } = await apiClient.updateMe(patch);
+      if (patch.settings) {
+        await savePreferences(patch.settings);
+      }
+      if (patch.displayName && user?.uid && emailVerified) {
+        await saveDisplayNameDirect(user.uid, patch.displayName);
+      }
+      const { user: updated } = await apiClient.updateMe({
+        ...(patch.displayName !== undefined ? { displayName: patch.displayName } : {}),
+        ...(patch.settings !== undefined ? { settings: patch.settings } : {}),
+      });
       setUserProfile(updated);
-      if (patch.settings?.theme) {
-        setThemePreferenceState(patch.settings.theme);
-      }
-      if (patch.settings?.displayCurrency === 'BDT' || patch.settings?.displayCurrency === 'USD') {
-        setCurrencyState(patch.settings.displayCurrency);
-      }
-      if (patch.settings?.timezone) {
-        setTimezoneState(patch.settings.timezone);
-      }
       return updated;
+    },
+    [savePreferences, user, emailVerified]
+  );
+
+  const updateUserDisplayName = useCallback(
+    async (name: string): Promise<string> => {
+      if (!user?.uid) throw new Error('Not signed in');
+      const saved = await saveDisplayNameDirect(user.uid, name);
+      setUserProfile((prev) => (prev ? { ...prev, displayName: saved } : null));
+      return saved;
+    },
+    [user]
+  );
+
+  const updateWorkspaceDefaults = useCallback(
+    async (
+      wsId: string,
+      name: string,
+      defaults: { currency: string; timezone: string }
+    ): Promise<void> => {
+      await saveWorkspaceSettingsDirect(wsId, name, defaults);
+      setWorkspaces((prev) =>
+        prev.map((w) =>
+          w.id === wsId
+            ? { ...w, name, defaults: { currency: defaults.currency, timezone: defaults.timezone } }
+            : w
+        )
+      );
     },
     []
   );
@@ -490,28 +699,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!wsId) {
         throw new Error('No active workspace found.');
       }
-      const { workspace } = await apiClient.updateWorkspace(wsId, patch);
+      if (patch.name && patch.defaults) {
+        await saveWorkspaceSettingsDirect(wsId, patch.name, patch.defaults);
+      }
+      const { workspace } = await apiClient.updateWorkspace(wsId, {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.defaults !== undefined ? { defaults: patch.defaults } : {}),
+      });
       setWorkspaces((prev) => prev.map((w) => (w.id === workspace.id ? workspace : w)));
       return workspace;
     },
     [activeWorkspace, workspaces]
   );
 
+  const uploadAvatar = useCallback(
+    async (file: File): Promise<string> => {
+      if (!user?.uid) throw new Error('Not signed in');
+      const dataUrl = await uploadAvatarDirect(user.uid, file);
+      const nowIso = new Date().toISOString();
+      setUserProfile((prev) =>
+        prev ? { ...prev, hasCustomAvatar: true, updatedAt: nowIso } : null
+      );
+      return dataUrl;
+    },
+    [user]
+  );
+
+  const removeAvatar = useCallback(async (): Promise<void> => {
+    if (!user?.uid) throw new Error('Not signed in');
+    await removeAvatarDirect(user.uid);
+    const nowIso = new Date().toISOString();
+    setUserProfile((prev) =>
+      prev ? { ...prev, hasCustomAvatar: false, updatedAt: nowIso } : null
+    );
+  }, [user]);
+
+  const uploadWorkspaceLogo = useCallback(
+    async (wsId: string, file: File): Promise<string> => {
+      const dataUrl = await uploadWorkspaceLogoDirect(wsId, file);
+      const nowIso = new Date().toISOString();
+      setWorkspaces((prev) =>
+        prev.map((w) => (w.id === wsId ? { ...w, hasLogo: true, updatedAt: nowIso } : w))
+      );
+      return dataUrl;
+    },
+    []
+  );
+
+  const removeWorkspaceLogo = useCallback(async (wsId: string): Promise<void> => {
+    await removeWorkspaceLogoDirect(wsId);
+    const nowIso = new Date().toISOString();
+    setWorkspaces((prev) =>
+      prev.map((w) => (w.id === wsId ? { ...w, hasLogo: false, updatedAt: nowIso } : w))
+    );
+  }, []);
+
   const setPreset = (next: DatePreset) => {
     setPresetState(next);
-    try {
-      localStorage.setItem(STORAGE_KEYS.PRESET, next);
-    } catch {
-      // ignore
+    if (user?.uid && emailVerified) {
+      if (next !== 'Custom') {
+        void saveUserSettingsDirect(user.uid, userProfile?.settings || {}, {
+          defaultDateRange: next,
+        })
+          .then((merged) => {
+            setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+          })
+          .catch(() => {});
+      }
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.PRESET, next);
+      } catch {
+        // ignore
+      }
     }
   };
 
   const setCompareEnabled = (enabled: boolean) => {
     setCompareEnabledState(enabled);
-    try {
-      localStorage.setItem(STORAGE_KEYS.COMPARE, String(enabled));
-    } catch {
-      // ignore
+    if (user?.uid && emailVerified) {
+      void saveUserSettingsDirect(user.uid, userProfile?.settings || {}, {
+        compareByDefault: enabled,
+      })
+        .then((merged) => {
+          setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+        })
+        .catch(() => {});
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.COMPARE, String(enabled));
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -521,37 +800,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setCurrency = (next: CurrencyCode) => {
     setCurrencyState(next);
-    try {
-      localStorage.setItem(STORAGE_KEYS.CURRENCY, next);
-    } catch {
-      // ignore
-    }
-    if (user) {
-      void apiClient.updateMe({ settings: { displayCurrency: next } }).catch(() => {});
+    if (user?.uid && emailVerified) {
+      void saveUserSettingsDirect(user.uid, userProfile?.settings || {}, {
+        displayCurrency: next,
+      })
+        .then((merged) => {
+          setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+        })
+        .catch(() => {});
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.CURRENCY, next);
+      } catch {
+        // ignore
+      }
     }
   };
 
   const setTimezone = (tz: string) => {
     setTimezoneState(tz);
-    try {
-      localStorage.setItem(STORAGE_KEYS.TIMEZONE, tz);
-    } catch {
-      // ignore
+    if (user?.uid && emailVerified) {
+      void saveUserSettingsDirect(user.uid, userProfile?.settings || {}, {
+        timezone: tz,
+      })
+        .then((merged) => {
+          setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+        })
+        .catch(() => {});
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.TIMEZONE, tz);
+      } catch {
+        // ignore
+      }
     }
-    if (user) {
-      void apiClient.updateMe({ settings: { timezone: tz } }).catch(() => {});
+  };
+
+  const setNumberFormat = (fmt: NumberFormatLocale) => {
+    setNumberFormatState(fmt);
+    if (user?.uid && emailVerified) {
+      void saveUserSettingsDirect(user.uid, userProfile?.settings || {}, {
+        numberFormat: fmt,
+      })
+        .then((merged) => {
+          setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+        })
+        .catch(() => {});
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.NUMBER_FORMAT, fmt);
+      } catch {
+        // ignore
+      }
     }
   };
 
   const setThemePreference = (pref: ThemePreference) => {
     setThemePreferenceState(pref);
-    try {
-      localStorage.setItem(STORAGE_KEYS.THEME, pref);
-    } catch {
-      // ignore
-    }
-    if (user) {
-      void apiClient.updateMe({ settings: { theme: pref } }).catch(() => {});
+    if (user?.uid && emailVerified) {
+      void saveUserSettingsDirect(user.uid, userProfile?.settings || {}, {
+        theme: pref,
+      })
+        .then((merged) => {
+          setUserProfile((prev) => (prev ? { ...prev, settings: merged } : null));
+        })
+        .catch(() => {});
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.THEME, pref);
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -585,6 +904,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrency,
     timezone,
     setTimezone,
+    numberFormat,
+    setNumberFormat,
     theme,
     setTheme,
     themePreference,
@@ -604,7 +925,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateProject,
     deleteProject,
     updateUserProfile,
+    savePreferences,
+    updateUserDisplayName,
     updateWorkspaceSettings,
+    updateWorkspaceDefaults,
+    uploadAvatar,
+    removeAvatar,
+    uploadWorkspaceLogo,
+    removeWorkspaceLogo,
     isNewProjectModalOpen,
     openNewProjectModal,
     closeNewProjectModal,

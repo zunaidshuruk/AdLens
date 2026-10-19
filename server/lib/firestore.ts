@@ -29,7 +29,8 @@ export interface UserDoc {
   email: string;
   displayName: string;
   photoURL: string | null;
-  photoPath: string | null;
+  photoPath?: string | null;
+  hasCustomAvatar?: boolean;
   settings: UserSettings;
   createdAt: string;
   updatedAt: string;
@@ -47,8 +48,9 @@ export interface WorkspaceDoc {
   plan: string;
   members: Record<string, WorkspaceRole>;
   memberIds: string[];
-  logoURL: string | null;
-  logoPath: string | null;
+  logoURL?: string | null;
+  logoPath?: string | null;
+  hasLogo?: boolean;
   defaults: WorkspaceDefaults;
   createdAt: string;
   updatedAt: string;
@@ -80,11 +82,20 @@ export interface UsageDoc {
   apiCalls: number;
 }
 
+export interface ImageAssetDoc {
+  dataUrl: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  width: number;
+  height: number;
+  updatedAt: string;
+}
+
 export interface FirestoreStoreAdapter {
   bootstrapUserAndWorkspace(params: {
     uid: string;
     email: string | null;
     displayName: string;
+    photoURL?: string | null;
   }): Promise<{
     user: UserDoc;
     workspace: WorkspaceDoc;
@@ -100,6 +111,17 @@ export interface FirestoreStoreAdapter {
       settings?: UserSettings;
     }
   ): Promise<UserDoc>;
+  getUserAvatar(uid: string): Promise<ImageAssetDoc | null>;
+  setUserAvatar(
+    uid: string,
+    asset: {
+      dataUrl: string;
+      mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+      width: number;
+      height: number;
+    }
+  ): Promise<ImageAssetDoc>;
+  deleteUserAvatar(uid: string): Promise<void>;
   listWorkspacesForUser(uid: string): Promise<WorkspaceDoc[]>;
   getWorkspace(wsId: string): Promise<WorkspaceDoc | null>;
   updateWorkspace(
@@ -111,6 +133,17 @@ export interface FirestoreStoreAdapter {
       defaults?: WorkspaceDefaults;
     }
   ): Promise<WorkspaceDoc>;
+  getWorkspaceLogo(wsId: string): Promise<ImageAssetDoc | null>;
+  setWorkspaceLogo(
+    wsId: string,
+    asset: {
+      dataUrl: string;
+      mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+      width: number;
+      height: number;
+    }
+  ): Promise<ImageAssetDoc>;
+  deleteWorkspaceLogo(wsId: string): Promise<void>;
   listProjects(wsId: string): Promise<ProjectDoc[]>;
   getProject(wsId: string, projectId: string): Promise<ProjectDoc | null>;
   createProject(
@@ -129,6 +162,9 @@ export interface FirestoreStoreAdapter {
       metaAdAccountName?: string | null;
       brandTerms?: string[];
       hostnameFilters?: string[];
+    },
+    options?: {
+      maxProjects?: number;
     }
   ): Promise<ProjectDoc>;
   updateProject(
@@ -188,6 +224,7 @@ function mapRawUser(raw: Record<string, unknown>, fallbackEmail: string = ''): U
     displayName: typeof raw.displayName === 'string' ? raw.displayName : 'AdLens User',
     photoURL: typeof raw.photoURL === 'string' ? raw.photoURL : null,
     photoPath: typeof raw.photoPath === 'string' ? raw.photoPath : null,
+    hasCustomAvatar: Boolean(raw.hasCustomAvatar),
     settings: settingsRaw,
     createdAt: serializeTimestamp(raw.createdAt, nowIso),
     updatedAt: serializeTimestamp(raw.updatedAt, nowIso),
@@ -217,6 +254,7 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     memberIds: memberIdsRaw,
     logoURL: typeof raw.logoURL === 'string' ? raw.logoURL : null,
     logoPath: typeof raw.logoPath === 'string' ? raw.logoPath : null,
+    hasLogo: Boolean(raw.hasLogo),
     defaults: {
       currency: typeof defaultsRaw.currency === 'string' ? defaultsRaw.currency : 'USD',
       timezone: typeof defaultsRaw.timezone === 'string' ? defaultsRaw.timezone : 'UTC',
@@ -254,7 +292,7 @@ function mapRawProject(wsId: string, id: string, raw: Record<string, unknown>): 
 }
 
 const adminFirestoreStore: FirestoreStoreAdapter = {
-  async bootstrapUserAndWorkspace({ uid, email, displayName }) {
+  async bootstrapUserAndWorkspace({ uid, email, displayName, photoURL }) {
     const db = getAdminFirestore();
     const userRef = db.collection('users').doc(uid);
     const defaultWsId = `ws_${uid}`;
@@ -275,8 +313,8 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
         const newUserPayload = {
           email: email ?? '',
           displayName,
-          photoURL: null,
-          photoPath: null,
+          photoURL: photoURL ?? null,
+          hasCustomAvatar: false,
           settings: {},
           createdAt: now,
           updatedAt: now,
@@ -285,14 +323,28 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
         userDoc = {
           email: email ?? '',
           displayName,
-          photoURL: null,
+          photoURL: photoURL ?? null,
           photoPath: null,
+          hasCustomAvatar: false,
           settings: {},
           createdAt: nowIso,
           updatedAt: nowIso,
         };
       } else {
-        userDoc = mapRawUser(userSnap.data() ?? {}, email ?? '');
+        const rawUser = userSnap.data() ?? {};
+        userDoc = mapRawUser(rawUser, email ?? '');
+        const userPatch: Record<string, unknown> = {};
+        if (typeof rawUser.hasCustomAvatar !== 'boolean') {
+          userPatch.hasCustomAvatar = false;
+        }
+        if (photoURL && !rawUser.photoURL) {
+          userPatch.photoURL = photoURL;
+          userDoc.photoURL = photoURL;
+        }
+        if (Object.keys(userPatch).length > 0) {
+          userPatch.updatedAt = now;
+          tx.update(userRef, userPatch);
+        }
       }
 
       let workspaceDoc: WorkspaceDoc;
@@ -307,8 +359,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
           plan: 'beta',
           members,
           memberIds,
-          logoURL: null,
-          logoPath: null,
+          hasLogo: false,
           defaults,
           createdAt: now,
           updatedAt: now,
@@ -323,13 +374,18 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
           memberIds,
           logoURL: null,
           logoPath: null,
+          hasLogo: false,
           defaults,
           createdAt: nowIso,
           updatedAt: nowIso,
         };
       } else {
         const firstDoc = existingWsSnap.docs[0];
-        workspaceDoc = mapRawWorkspace(firstDoc.id, firstDoc.data());
+        const rawWs = firstDoc.data();
+        workspaceDoc = mapRawWorkspace(firstDoc.id, rawWs);
+        if (typeof rawWs.hasLogo !== 'boolean') {
+          tx.update(firstDoc.ref, { hasLogo: false, updatedAt: now });
+        }
       }
 
       return { user: userDoc, workspace: workspaceDoc, created };
@@ -380,6 +436,60 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     return mapRawUser(updatedSnap.data() ?? {});
   },
 
+  async getUserAvatar(uid: string): Promise<ImageAssetDoc | null> {
+    const db = getAdminFirestore();
+    const snap = await db.collection('users').doc(uid).collection('assets').doc('avatar').get();
+    if (!snap.exists) return null;
+    const d = snap.data() ?? {};
+    if (typeof d.dataUrl !== 'string') return null;
+    return {
+      dataUrl: d.dataUrl,
+      mimeType: (d.mimeType as ImageAssetDoc['mimeType']) || 'image/webp',
+      width: typeof d.width === 'number' ? d.width : 256,
+      height: typeof d.height === 'number' ? d.height : 256,
+      updatedAt: serializeTimestamp(d.updatedAt, new Date().toISOString()),
+    };
+  },
+
+  async setUserAvatar(uid, asset): Promise<ImageAssetDoc> {
+    const db = getAdminFirestore();
+    const avatarRef = db.collection('users').doc(uid).collection('assets').doc('avatar');
+    const userRef = db.collection('users').doc(uid);
+    const now = FieldValue.serverTimestamp();
+    await avatarRef.set({
+      dataUrl: asset.dataUrl,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      updatedAt: now,
+    });
+    await userRef.set(
+      {
+        hasCustomAvatar: true,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    return {
+      ...asset,
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  async deleteUserAvatar(uid: string): Promise<void> {
+    const db = getAdminFirestore();
+    const avatarRef = db.collection('users').doc(uid).collection('assets').doc('avatar');
+    const userRef = db.collection('users').doc(uid);
+    await avatarRef.delete();
+    await userRef.set(
+      {
+        hasCustomAvatar: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  },
+
   async listWorkspacesForUser(uid: string): Promise<WorkspaceDoc[]> {
     const db = getAdminFirestore();
     const snap = await db
@@ -412,6 +522,60 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     return mapRawWorkspace(updated.id, updated.data() ?? {});
   },
 
+  async getWorkspaceLogo(wsId: string): Promise<ImageAssetDoc | null> {
+    const db = getAdminFirestore();
+    const snap = await db.collection('workspaces').doc(wsId).collection('assets').doc('logo').get();
+    if (!snap.exists) return null;
+    const d = snap.data() ?? {};
+    if (typeof d.dataUrl !== 'string') return null;
+    return {
+      dataUrl: d.dataUrl,
+      mimeType: (d.mimeType as ImageAssetDoc['mimeType']) || 'image/webp',
+      width: typeof d.width === 'number' ? d.width : 512,
+      height: typeof d.height === 'number' ? d.height : 512,
+      updatedAt: serializeTimestamp(d.updatedAt, new Date().toISOString()),
+    };
+  },
+
+  async setWorkspaceLogo(wsId, asset): Promise<ImageAssetDoc> {
+    const db = getAdminFirestore();
+    const logoRef = db.collection('workspaces').doc(wsId).collection('assets').doc('logo');
+    const wsRef = db.collection('workspaces').doc(wsId);
+    const now = FieldValue.serverTimestamp();
+    await logoRef.set({
+      dataUrl: asset.dataUrl,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      updatedAt: now,
+    });
+    await wsRef.set(
+      {
+        hasLogo: true,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    return {
+      ...asset,
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  async deleteWorkspaceLogo(wsId: string): Promise<void> {
+    const db = getAdminFirestore();
+    const logoRef = db.collection('workspaces').doc(wsId).collection('assets').doc('logo');
+    const wsRef = db.collection('workspaces').doc(wsId);
+    await logoRef.delete();
+    await wsRef.set(
+      {
+        hasLogo: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  },
+
   async listProjects(wsId: string): Promise<ProjectDoc[]> {
     const db = getAdminFirestore();
     const snap = await db
@@ -436,9 +600,10 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     return mapRawProject(wsId, snap.id, snap.data() ?? {});
   },
 
-  async createProject(wsId, input): Promise<ProjectDoc> {
+  async createProject(wsId, input, options): Promise<ProjectDoc> {
     const db = getAdminFirestore();
-    const colRef = db.collection('workspaces').doc(wsId).collection('projects');
+    const wsRef = db.collection('workspaces').doc(wsId);
+    const colRef = wsRef.collection('projects');
     const docRef = colRef.doc();
     const now = FieldValue.serverTimestamp();
     const nowIso = new Date().toISOString();
@@ -461,7 +626,23 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
       updatedAt: now,
     };
 
-    await docRef.set(payload);
+    await db.runTransaction(async (tx) => {
+      const wsSnap = await tx.get(wsRef);
+      if (!wsSnap.exists) {
+        const err = new Error('WORKSPACE_NOT_FOUND');
+        (err as { code?: string }).code = 'WORKSPACE_NOT_FOUND';
+        throw err;
+      }
+      if (options?.maxProjects !== undefined) {
+        const existingSnap = await tx.get(colRef);
+        if (existingSnap.size >= options.maxProjects) {
+          const err = new Error('PLAN_LIMIT_REACHED');
+          (err as { code?: string }).code = 'PLAN_LIMIT_REACHED';
+          throw err;
+        }
+      }
+      tx.set(docRef, payload);
+    });
 
     return {
       id: docRef.id,
@@ -539,12 +720,14 @@ export function getFirestoreStore(): FirestoreStoreAdapter {
  */
 export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
   const users = new Map<string, UserDoc>();
+  const userAvatars = new Map<string, ImageAssetDoc>();
   const workspaces = new Map<string, WorkspaceDoc>();
+  const workspaceLogos = new Map<string, ImageAssetDoc>();
   const projectsByWs = new Map<string, Map<string, ProjectDoc>>();
   let seq = 1;
 
   return {
-    async bootstrapUserAndWorkspace({ uid, email, displayName }) {
+    async bootstrapUserAndWorkspace({ uid, email, displayName, photoURL }) {
       const nowIso = new Date().toISOString();
       let created = false;
       let user = users.get(uid);
@@ -553,8 +736,9 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         user = {
           email: email ?? '',
           displayName,
-          photoURL: null,
+          photoURL: photoURL ?? null,
           photoPath: null,
+          hasCustomAvatar: false,
           settings: {},
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -562,7 +746,9 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         users.set(uid, user);
       }
 
-      let workspace = Array.from(workspaces.values()).find((w) => w.memberIds.includes(uid));
+      let workspace = Array.from(workspaces.values()).find((w) =>
+        Object.prototype.hasOwnProperty.call(w.members, uid)
+      );
       if (!workspace) {
         created = true;
         const wsId = `ws_${uid}`;
@@ -575,6 +761,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
           memberIds: [uid],
           logoURL: null,
           logoPath: null,
+          hasLogo: false,
           defaults: { currency: 'USD', timezone: 'UTC' },
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -597,6 +784,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         displayName: 'AdLens User',
         photoURL: null,
         photoPath: null,
+        hasCustomAvatar: false,
         settings: {},
         createdAt: nowIso,
         updatedAt: nowIso,
@@ -627,9 +815,35 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       return structuredClone(updated);
     },
 
+    async getUserAvatar(uid) {
+      const a = userAvatars.get(uid);
+      return a ? structuredClone(a) : null;
+    },
+
+    async setUserAvatar(uid, asset) {
+      const nowIso = new Date().toISOString();
+      const doc: ImageAssetDoc = { ...asset, updatedAt: nowIso };
+      userAvatars.set(uid, doc);
+      const u = users.get(uid);
+      if (u) {
+        u.hasCustomAvatar = true;
+        u.updatedAt = nowIso;
+      }
+      return structuredClone(doc);
+    },
+
+    async deleteUserAvatar(uid) {
+      userAvatars.delete(uid);
+      const u = users.get(uid);
+      if (u) {
+        u.hasCustomAvatar = false;
+        u.updatedAt = new Date().toISOString();
+      }
+    },
+
     async listWorkspacesForUser(uid) {
       return Array.from(workspaces.values())
-        .filter((w) => w.memberIds.includes(uid))
+        .filter((w) => Object.prototype.hasOwnProperty.call(w.members, uid))
         .map((w) => structuredClone(w));
     },
 
@@ -655,6 +869,32 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       return structuredClone(updated);
     },
 
+    async getWorkspaceLogo(wsId) {
+      const l = workspaceLogos.get(wsId);
+      return l ? structuredClone(l) : null;
+    },
+
+    async setWorkspaceLogo(wsId, asset) {
+      const nowIso = new Date().toISOString();
+      const doc: ImageAssetDoc = { ...asset, updatedAt: nowIso };
+      workspaceLogos.set(wsId, doc);
+      const ws = workspaces.get(wsId);
+      if (ws) {
+        ws.hasLogo = true;
+        ws.updatedAt = nowIso;
+      }
+      return structuredClone(doc);
+    },
+
+    async deleteWorkspaceLogo(wsId) {
+      workspaceLogos.delete(wsId);
+      const ws = workspaces.get(wsId);
+      if (ws) {
+        ws.hasLogo = false;
+        ws.updatedAt = new Date().toISOString();
+      }
+    },
+
     async listProjects(wsId) {
       const map = projectsByWs.get(wsId);
       if (!map) return [];
@@ -666,13 +906,18 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       return p ? structuredClone(p) : null;
     },
 
-    async createProject(wsId, input) {
-      const nowIso = new Date().toISOString();
+    async createProject(wsId, input, options) {
       let map = projectsByWs.get(wsId);
       if (!map) {
         map = new Map();
         projectsByWs.set(wsId, map);
       }
+      if (options?.maxProjects !== undefined && map.size >= options.maxProjects) {
+        const err = new Error('PLAN_LIMIT_REACHED');
+        (err as { code?: string }).code = 'PLAN_LIMIT_REACHED';
+        throw err;
+      }
+      const nowIso = new Date().toISOString();
       const id = `proj_${seq++}`;
       const project: ProjectDoc = {
         id,

@@ -18,6 +18,7 @@ import { NavLink } from 'react-router-dom';
 import { APP_NAME, APP_TAGLINE, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAdapterStatus } from '../hooks/useReport';
+import { useWorkspaceLogo } from '../hooks/useWorkspaceLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -53,6 +54,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     openNewProjectModal,
   } = useAppContext();
 
+  const { logoUrl } = useWorkspaceLogo(activeWorkspace);
+
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement | null>(null);
 
@@ -77,6 +80,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const currentProjectName = activeProject?.name || DEMO_PROJECT.name;
   const currentProjectDomain = activeProject?.domain || DEMO_PROJECT.domain;
   const isCurrentDemo = Boolean(activeProject?.isDemo || isDemoMode || !activeProject);
+
+  const getWorkspaceInitials = (name?: string | null): string => {
+    const clean = (name || 'My workspace').trim();
+    const words = clean.split(/[\s._-]+/).filter(Boolean);
+    if (words.length >= 2) {
+      return `${words[0][0]}${words[1][0]}`.toUpperCase();
+    }
+    return clean.slice(0, 2).toUpperCase();
+  };
 
   const getStatusDotClass = (to: string): string | null => {
     if (to === '/ga4' || to === '/ai-traffic') {
@@ -150,29 +162,47 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setSwitcherOpen((prev) => !prev)}
-            data-testid="sidebar-project-switcher"
-            aria-expanded={switcherOpen}
-            aria-label="Switch active project"
-            className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 text-left transition-colors cursor-pointer"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                <span className="truncate">{currentProjectName}</span>
+          <div className="flex items-center gap-2">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={activeWorkspace?.name || 'Workspace logo'}
+                data-testid="sidebar-workspace-logo"
+                className="w-9 h-9 rounded-lg object-contain bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-0.5 shrink-0"
+              />
+            ) : (
+              <span
+                data-testid="sidebar-workspace-initials"
+                className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center justify-center shrink-0"
+              >
+                {getWorkspaceInitials(activeWorkspace?.name)}
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSwitcherOpen((prev) => !prev)}
+              data-testid="sidebar-project-switcher"
+              aria-expanded={switcherOpen}
+              aria-label="Switch active project"
+              className="min-w-0 flex-1 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70 text-left transition-colors cursor-pointer"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                  <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span className="truncate">{currentProjectName}</span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {currentProjectDomain}
+                </div>
               </div>
-              <div className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                {currentProjectDomain}
-              </div>
-            </div>
-            <ChevronDown
-              className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${
-                switcherOpen ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${
+                  switcherOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+          </div>
 
           {switcherOpen && (
             <div

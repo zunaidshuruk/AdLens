@@ -2133,3 +2133,174 @@ test('Sprint 7B: /api/me/bootstrap, /api/me, projects CRUD, plan limits, and X-A
   }
 });
 
+test('Sprint 7B-2: settings validation, plan limit transaction, isDemo rejection, member map truth, and image cache invalidation', async () => {
+  const { app } = await import('../../server/index.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const { createInMemoryFirestoreStore, setTestFirestoreStore } = await import(
+    '../../server/lib/firestore.js'
+  );
+  const { sanitizeUserSettings } = await import('../lib/firestoreClient.js');
+  const { invalidateAvatarCache } = await import('../hooks/useAvatar.js');
+  const { invalidateLogoCache } = await import('../hooks/useWorkspaceLogo.js');
+  const { validateAsset } = await import('./imageAssets.js');
+
+  // 1. Client settings sanitization
+  const sanitized = sanitizeUserSettings({
+    theme: 'dark',
+    defaultDateRange: 'Last 7 days',
+    compareByDefault: false,
+    displayCurrency: 'USD',
+    timezone: 'Asia/Dhaka',
+    numberFormat: 'bn-BD',
+    emailNotifications: { weeklyReport: true, alerts: false, productUpdates: true },
+    extraDisallowedField: 'hack',
+  } as never);
+  assert.equal(sanitized.theme, 'dark');
+  assert.equal(sanitized.defaultDateRange, 'Last 7 days');
+  assert.equal(sanitized.compareByDefault, false);
+  assert.equal(sanitized.displayCurrency, 'USD');
+  assert.equal(sanitized.timezone, 'Asia/Dhaka');
+  assert.equal(sanitized.numberFormat, 'bn-BD');
+  assert.deepEqual(sanitized.emailNotifications, {
+    weeklyReport: true,
+    alerts: false,
+    productUpdates: true,
+  });
+  assert.equal((sanitized as Record<string, unknown>).extraDisallowedField, undefined);
+
+  // Reject invalid theme/currency/timezone
+  const invalidSanitized = sanitizeUserSettings({
+    theme: 'neon' as never,
+    displayCurrency: 'invalid',
+    timezone: 'bad;injection',
+  });
+  assert.equal(invalidSanitized.theme, undefined);
+  assert.equal(invalidSanitized.displayCurrency, undefined);
+  assert.equal(invalidSanitized.timezone, undefined);
+
+  // 2. Image asset validation limits
+  const validAvatarDataUrl = 'data:image/webp;base64,' + 'A'.repeat(500);
+  assert.equal(
+    validateAsset(
+      { dataUrl: validAvatarDataUrl, mimeType: 'image/webp', width: 256, height: 256 },
+      'avatar'
+    ),
+    null
+  );
+
+  // Avatar over 100,000 characters is rejected
+  const oversizedAvatar = 'data:image/webp;base64,' + 'A'.repeat(100005);
+  assert.equal(
+    validateAsset(
+      { dataUrl: oversizedAvatar, mimeType: 'image/webp', width: 256, height: 256 },
+      'avatar'
+    ),
+    'IMAGE_TOO_LARGE'
+  );
+
+  // 3. Cache invalidators execute cleanly
+  invalidateAvatarCache('test-uid');
+  invalidateLogoCache('test-ws');
+
+  // 4. Server routes test
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+
+  setTestTokenVerifier(async (token: string) => {
+    if (token === 'token-alice') {
+      return {
+        uid: 'uid_alice',
+        email: 'alice@example.com',
+        name: 'Alice',
+        picture: 'https://lh3.googleusercontent.com/alice.jpg',
+        email_verified: true,
+        firebase: { identities: { 'google.com': ['g1'] }, sign_in_provider: 'google.com' },
+      } as never;
+    }
+    throw new Error('Invalid token');
+  });
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // Bootstrap sets photoURL from Google token and hasCustomAvatar: false, does not write photoPath
+    const boot = await originalFetch(`${baseUrl}/api/me/bootstrap`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+    });
+    assert.equal(boot.status, 200);
+    const bootData = (await boot.json()) as {
+      user: { photoURL: string; hasCustomAvatar: boolean; photoPath?: unknown };
+      workspaces: { id: string; hasLogo: boolean; logoURL?: unknown; logoPath?: unknown }[];
+    };
+    assert.equal(bootData.user.photoURL, 'https://lh3.googleusercontent.com/alice.jpg');
+    assert.equal(bootData.user.hasCustomAvatar, false);
+    assert.equal(bootData.user.photoPath, null);
+    assert.equal(bootData.workspaces[0].hasLogo, false);
+    assert.equal(bootData.workspaces[0].logoURL, null);
+    assert.equal(bootData.workspaces[0].logoPath, null);
+
+    const wsId = bootData.workspaces[0].id;
+
+    // Reject isDemo from browser on project creation
+    const demoCreate = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Demo Attempt',
+        isDemo: true,
+      }),
+    });
+    assert.equal(demoCreate.status, 400);
+
+    // Rapid concurrent project creation up to plan limit (3 max for beta)
+    const creates = await Promise.all([
+      originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Project A', domain: 'a.com' }),
+      }),
+      originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Project B', domain: 'b.com' }),
+      }),
+      originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Project C', domain: 'c.com' }),
+      }),
+      originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Project D (exceeds)', domain: 'd.com' }),
+      }),
+    ]);
+
+    const statuses = creates.map((r) => r.status).sort();
+    // Exactly 3 successes (201) and 1 plan limit reached (403)
+    assert.deepEqual(statuses, [201, 201, 201, 403]);
+
+    // Membership uses members map: user not in members is denied
+    const nonMemberWorkspace = await store.getWorkspace(wsId);
+    if (nonMemberWorkspace) {
+      delete nonMemberWorkspace.members['uid_alice'];
+      const deniedReq = await originalFetch(`${baseUrl}/api/workspaces/${wsId}/projects`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token-alice', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Should Fail' }),
+      });
+      assert.equal(deniedReq.status, 403);
+    }
+  } finally {
+    setTestFirestoreStore(null);
+    setTestTokenVerifier(null);
+    globalThis.fetch = originalFetch;
+    server.close();
+  }
+});
+

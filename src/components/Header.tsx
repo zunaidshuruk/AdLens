@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Settings, Sun, X } from 
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useAvatar } from '../hooks/useAvatar';
 import { useConnections } from '../hooks/useConnections';
 import { useAdapterStatus } from '../hooks/useReport';
 import { DateRangePicker } from './DateRangePicker';
@@ -28,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const { theme, toggleTheme, currency, setCurrency, activeProject, userProfile, isDemoMode } =
     useAppContext();
   const { user, signOut, accountLinkNotice, dismissAccountLinkNotice } = useAuth();
+  const { avatarUrl } = useAvatar(userProfile);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -47,7 +49,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const displayName =
     userProfile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'AdLens User';
   const email = user?.email || '';
-  const photoURL = userProfile?.photoURL || user?.photoURL || null;
   const initials = getInitials(displayName, user?.email);
 
   const projectName = activeProject?.name || DEMO_PROJECT.name;
@@ -185,9 +186,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                 data-testid="header-user-menu-button"
                 className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               >
-                {photoURL ? (
+                {avatarUrl ? (
                   <img
-                    src={photoURL}
+                    src={avatarUrl}
                     alt={displayName}
                     referrerPolicy="no-referrer"
                     className="w-6 h-6 rounded-full object-cover"

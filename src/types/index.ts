@@ -445,7 +445,8 @@ export interface UserProfile {
   email: string;
   displayName: string;
   photoURL: string | null;
-  photoPath: string | null;
+  photoPath?: string | null;
+  hasCustomAvatar?: boolean;
   settings: UserSettings;
   createdAt: string;
   updatedAt: string;
@@ -460,8 +461,9 @@ export interface WorkspaceSummary {
   limits: {
     maxProjects: number;
   };
-  logoURL: string | null;
-  logoPath: string | null;
+  logoURL?: string | null;
+  logoPath?: string | null;
+  hasLogo?: boolean;
   defaults: {
     currency: string;
     timezone: string;

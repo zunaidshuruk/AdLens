@@ -1,4 +1,4 @@
-import { getCurrentIdToken } from '../lib/firebase';
+import { getCurrentIdToken } from '../lib/firebase.js';
 import type {
   ComputedDateRange,
   ConnectionsResponse,
@@ -38,7 +38,7 @@ import type {
   UserProfile,
   UserSettings,
   WorkspaceSummary,
-} from '../types';
+} from '../types/index.js';
 
 export class ApiClientError extends Error {
   status: number;
@@ -222,6 +222,30 @@ export const apiClient = {
     });
   },
 
+  getUserAvatar(uid: string): Promise<{ avatar: { dataUrl: string; updatedAt: string } | null }> {
+    return apiRequest<{ avatar: { dataUrl: string; updatedAt: string } | null }>(
+      `/api/me/avatar/${encodeURIComponent(uid)}`
+    );
+  },
+
+  setUserAvatar(asset: {
+    dataUrl: string;
+    mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+    width: number;
+    height: number;
+  }): Promise<{ avatar: { dataUrl: string; updatedAt: string } }> {
+    return apiRequest<{ avatar: { dataUrl: string; updatedAt: string } }>('/api/me/avatar', {
+      method: 'PUT',
+      body: JSON.stringify(asset),
+    });
+  },
+
+  deleteUserAvatar(): Promise<{ deleted: boolean }> {
+    return apiRequest<{ deleted: boolean }>('/api/me/avatar', {
+      method: 'DELETE',
+    });
+  },
+
   updateWorkspace(
     wsId: string,
     patch: {
@@ -236,6 +260,39 @@ export const apiClient = {
       {
         method: 'PATCH',
         body: JSON.stringify(patch),
+      }
+    );
+  },
+
+  getWorkspaceLogo(wsId: string): Promise<{ logo: { dataUrl: string; updatedAt: string } | null }> {
+    return apiRequest<{ logo: { dataUrl: string; updatedAt: string } | null }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}/logo`
+    );
+  },
+
+  setWorkspaceLogo(
+    wsId: string,
+    asset: {
+      dataUrl: string;
+      mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+      width: number;
+      height: number;
+    }
+  ): Promise<{ logo: { dataUrl: string; updatedAt: string } }> {
+    return apiRequest<{ logo: { dataUrl: string; updatedAt: string } }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}/logo`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(asset),
+      }
+    );
+  },
+
+  deleteWorkspaceLogo(wsId: string): Promise<{ deleted: boolean }> {
+    return apiRequest<{ deleted: boolean }>(
+      `/api/workspaces/${encodeURIComponent(wsId)}/logo`,
+      {
+        method: 'DELETE',
       }
     );
   },

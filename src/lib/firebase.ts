@@ -1,5 +1,11 @@
 import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
+import {
+  getFirestore,
+  initializeFirestore,
+  setLogLevel,
+  type Firestore,
+} from 'firebase/firestore';
 import type { PublicConfigResponse } from '../types/index.js';
 
 export type FirebaseInitErrorReason = 'config_missing' | 'network' | 'sdk_error';
@@ -10,8 +16,18 @@ export interface FirebaseInitError {
 }
 
 export let auth: Auth | null = null;
+export let db: Firestore | null = null;
+export let firestoreDirectAvailable: boolean = true;
 export let lastInitError: FirebaseInitError | null = null;
 export let configuredAuthProviders: string[] = ['password', 'google'];
+
+export function getFirestoreDb(): Firestore | null {
+  return db;
+}
+
+export function markFirestoreDirectUnavailable(): void {
+  firestoreDirectAvailable = false;
+}
 
 let firebaseApp: FirebaseApp | null = null;
 let initPromise: Promise<Auth | null> | null = null;
@@ -39,6 +55,8 @@ export async function getCurrentIdToken(forceRefresh: boolean = false): Promise<
 
 export function resetFirebaseInitForTest(): void {
   auth = null;
+  db = null;
+  firestoreDirectAvailable = true;
   firebaseApp = null;
   initPromise = null;
   lastInitError = null;
@@ -95,6 +113,12 @@ export async function initFirebase(): Promise<Auth | null> {
     }
 
     try {
+      try {
+        setLogLevel('silent');
+      } catch {
+        // ignore if unsupported in test environment
+      }
+
       const existing = getApps()[0];
       firebaseApp =
         existing ??
@@ -106,6 +130,14 @@ export async function initFirebase(): Promise<Auth | null> {
         });
 
       auth = getAuth(firebaseApp);
+      try {
+        db = initializeFirestore(firebaseApp, {
+          experimentalAutoDetectLongPolling: true,
+        });
+      } catch {
+        db = getFirestore(firebaseApp);
+      }
+      firestoreDirectAvailable = true;
       lastInitError = null;
       return auth;
     } catch (err) {
@@ -119,4 +151,5 @@ export async function initFirebase(): Promise<Auth | null> {
 
   return initPromise;
 }
+
 
