@@ -12,6 +12,7 @@ import {
   mapSearchConsoleTopQueriesResponse,
 } from '../lib/searchConsoleMapper.js';
 import { readSession } from '../lib/session.js';
+import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
 export const searchConsoleRouter = Router();
@@ -213,8 +214,10 @@ function handleSearchConsoleError(res: Response, err: unknown): void {
   });
 }
 
-// Middleware: rate limiter + Google configured + connected session with selected searchConsoleSite
+// Middleware: rate limiter + requireUser + verifyGoogleSessionOwnership + Google configured + connected session with selected searchConsoleSite
 searchConsoleRouter.use(googleRateLimitMiddleware);
+searchConsoleRouter.use(requireUser);
+searchConsoleRouter.use(verifyGoogleSessionOwnership);
 searchConsoleRouter.use(requireGoogleConfigured);
 
 async function requireSearchConsoleSession(

@@ -9,6 +9,7 @@ export const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 export const MAX_COOKIE_BYTES = 4000; // Keep under 4 KB
 
 export interface GoogleSessionData {
+  uid?: string;
   refreshToken: string;
   accessToken: string;
   accessTokenExpiry: number; // epoch ms
@@ -23,6 +24,7 @@ export interface GoogleSessionData {
 }
 
 export interface SessionData {
+  uid?: string;
   google?: GoogleSessionData;
 }
 
@@ -72,7 +74,16 @@ export function writeSession(res: Response, session: SessionData): void {
     return;
   }
 
-  const plaintext = JSON.stringify(session);
+  const normalizedSession: SessionData = {
+    ...session,
+    uid: session.uid ?? session.google.uid,
+    google: {
+      ...session.google,
+      uid: session.uid ?? session.google.uid,
+    },
+  };
+
+  const plaintext = JSON.stringify(normalizedSession);
   const encrypted = encryptPayload(plaintext, tokenEncryptionKey);
 
   if (Buffer.byteLength(encrypted, 'utf8') > MAX_COOKIE_BYTES) {

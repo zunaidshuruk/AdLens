@@ -26,10 +26,11 @@ function applyConnectionLiveModes(
     'search_console',
     Boolean(conn?.google.connected && conn?.google.searchConsoleSite?.url)
   );
-  setSourceLiveMode(
-    'meta_ads',
-    Boolean(health?.metaConfigured ?? conn?.meta.configured ?? conn?.meta.connected)
-  );
+  const metaAllowedAndConnected =
+    conn?.meta.notAvailable === true
+      ? false
+      : Boolean(conn?.meta.connected ?? health?.metaConfigured ?? conn?.meta.configured);
+  setSourceLiveMode('meta_ads', metaAllowedAndConnected);
 }
 
 export interface UseConnectionsResult {
@@ -38,6 +39,7 @@ export interface UseConnectionsResult {
   googleConfigured: boolean;
   googleConnected: boolean;
   metaConfigured: boolean;
+  metaNotAvailable: boolean;
   metaMissingSecrets: string[];
   metaAccountInfo: MetaAccountInfo | null;
   metaAccountError: string | null;
@@ -49,7 +51,7 @@ export interface UseConnectionsResult {
   disconnecting: boolean;
   error: string | null;
   optionsError: string | null;
-  connectGoogle: () => void;
+  connectGoogle: () => Promise<void>;
   disconnectGoogle: () => Promise<boolean>;
   saveSelection: (selection: {
     ga4PropertyId?: string | null;
@@ -62,6 +64,7 @@ export function useConnections(): UseConnectionsResult {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [missingSecrets, setMissingSecrets] = useState<string[]>([]);
   const [metaConfigured, setMetaConfigured] = useState<boolean>(false);
+  const [metaNotAvailable, setMetaNotAvailable] = useState<boolean>(false);
   const [metaMissingSecrets, setMetaMissingSecrets] = useState<string[]>([]);
   const [metaAccountInfo, setMetaAccountInfo] = useState<MetaAccountInfo | null>(null);
   const [metaAccountError, setMetaAccountError] = useState<string | null>(null);
@@ -92,15 +95,21 @@ export function useConnections(): UseConnectionsResult {
       const isMetaCfg = Boolean(
         healthRes?.metaConfigured ?? connRes.meta.configured ?? connRes.meta.connected
       );
+      const isMetaBlocked = Boolean(connRes.meta.notAvailable);
       const mMissing =
         healthRes?.metaMissing ??
         connRes.meta.missing ??
         (isMetaCfg ? [] : ['META_ACCESS_TOKEN', 'META_APP_SECRET', 'META_AD_ACCOUNT_ID']);
 
       setMetaConfigured(isMetaCfg);
+      setMetaNotAvailable(isMetaBlocked);
       setMetaMissingSecrets(mMissing);
 
-      if (isMetaCfg) {
+      if (isMetaBlocked) {
+        setMetaAccountInfo(null);
+        setMetaAccountError('Connecting your own Facebook account is coming soon');
+        setSourceLiveMode('meta_ads', false);
+      } else if (isMetaCfg) {
         setMetaAccountError(null);
         apiClient
           .getMetaAccount()
@@ -109,6 +118,10 @@ export function useConnections(): UseConnectionsResult {
           })
           .catch((err) => {
             setMetaAccountInfo(null);
+            if (err instanceof ApiClientError && err.code === 'META_NOT_AVAILABLE') {
+              setMetaNotAvailable(true);
+              setSourceLiveMode('meta_ads', false);
+            }
             setMetaAccountError(
               err instanceof Error ? err.message : 'Unable to fetch Meta ad account details.'
             );
@@ -163,8 +176,16 @@ export function useConnections(): UseConnectionsResult {
     };
   }, [loadData]);
 
-  const connectGoogle = useCallback(() => {
-    window.location.assign('/api/auth/google/start');
+  const connectGoogle = useCallback(async () => {
+    setError(null);
+    try {
+      const { linkToken } = await apiClient.createGoogleLinkToken();
+      window.location.assign(`/api/auth/google/start?lt=${encodeURIComponent(linkToken)}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Unable to start Google connection flow.'
+      );
+    }
   }, []);
 
   const disconnectGoogle = useCallback(async (): Promise<boolean> => {
@@ -230,6 +251,7 @@ export function useConnections(): UseConnectionsResult {
     googleConfigured: connections?.google.configured ?? false,
     googleConnected: connections?.google.connected ?? false,
     metaConfigured,
+    metaNotAvailable,
     metaMissingSecrets,
     metaAccountInfo,
     metaAccountError,
@@ -247,4 +269,3 @@ export function useConnections(): UseConnectionsResult {
     refresh: loadData,
   };
 }
-

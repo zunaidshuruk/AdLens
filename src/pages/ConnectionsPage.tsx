@@ -36,6 +36,7 @@ export const ConnectionsPage: React.FC = () => {
     googleConfigured,
     googleConnected,
     metaConfigured,
+    metaNotAvailable,
     metaMissingSecrets,
     metaAccountInfo,
     metaAccountError,
@@ -470,16 +471,20 @@ export const ConnectionsPage: React.FC = () => {
                   <div
                     data-testid="meta-connection-status"
                     className={`text-xs font-medium mt-0.5 ${
-                      metaConfigured
+                      metaConfigured && !metaNotAvailable
                         ? 'text-emerald-700 dark:text-emerald-400'
                         : 'text-amber-700 dark:text-amber-400'
                     }`}
                   >
-                    {metaConfigured ? 'Connected via system user' : 'Mock data'}
+                    {metaNotAvailable
+                      ? 'Connecting your own Facebook account is coming soon'
+                      : metaConfigured
+                        ? 'Connected via system user'
+                        : 'Mock data'}
                   </div>
                 </div>
               </div>
-              {metaConfigured && (
+              {metaConfigured && !metaNotAvailable && (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-1" />
               )}
             </div>

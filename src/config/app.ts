@@ -1,6 +1,6 @@
 export const APP_NAME = "AdLens";
 export const APP_TAGLINE = "Marketing Intelligence Console";
-export const APP_VERSION = "1.0 (Sprint 6)";
+export const APP_VERSION = "1.0 (Sprint 7A)";
 export const TRACKED_SITE = {
   name: "Convay",
   domain: "convay.com",

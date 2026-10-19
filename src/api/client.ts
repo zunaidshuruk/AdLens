@@ -1,3 +1,4 @@
+import { getCurrentIdToken } from '../lib/firebase';
 import type {
   ComputedDateRange,
   ConnectionsResponse,
@@ -22,6 +23,7 @@ import type {
   MetaAdsOverview,
   MetaCampaignRow,
   MetaSpendPoint,
+  PublicConfigResponse,
   SearchConsoleCountryRow,
   SearchConsoleDeviceRow,
   SearchConsoleOverview,
@@ -45,35 +47,113 @@ export class ApiClientError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
+const PUBLIC_AUTH_ROUTES = new Set([
+  '/sign-in',
+  '/sign-up',
+  '/forgot-password',
+  '/auth/action',
+  '/terms',
+  '/privacy',
+]);
+
+function navigateToAuthRoute(targetPath: '/sign-in' | '/verify-email'): void {
+  if (typeof window === 'undefined') return;
+  const currentPath = window.location.pathname;
+  if (currentPath === targetPath || PUBLIC_AUTH_ROUTES.has(currentPath)) {
+    return;
+  }
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  const url =
+    targetPath === '/sign-in' && returnTo && returnTo !== '/'
+      ? `/sign-in?redirect=${encodeURIComponent(returnTo)}`
+      : targetPath;
+  window.history.pushState({}, '', url);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+async function performFetch(
+  path: string,
+  init: RequestInit | undefined,
+  forceRefreshToken: boolean
+): Promise<Response> {
+  const isPublicEndpoint = path === '/api/public-config' || path === '/api/health';
+  const idToken = isPublicEndpoint ? null : await getCurrentIdToken(forceRefreshToken);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+
+  if (idToken) {
+    headers.Authorization = `Bearer ${idToken}`;
+  }
+
+  return fetch(path, {
     ...init,
+    credentials: 'include',
+    headers,
   });
+}
+
+async function parseErrorResponse(response: Response): Promise<{ code: string; message: string }> {
+  let errorCode = 'API_ERROR';
+  let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+
+  try {
+    const errBody = (await response.json()) as {
+      error?: { code?: string; message?: string };
+    };
+    if (errBody?.error?.code) {
+      errorCode = errBody.error.code;
+    }
+    if (errBody?.error?.message) {
+      errorMessage = errBody.error.message;
+    }
+  } catch {
+    // fallback to status text
+  }
+
+  return { code: errorCode, message: errorMessage };
+}
+
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  let response = await performFetch(path, init, false);
 
   if (!response.ok) {
-    let errorCode = 'API_ERROR';
-    let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+    let parsedErr = await parseErrorResponse(response);
 
-    try {
-      const errBody = (await response.json()) as {
-        error?: { code?: string; message?: string };
-      };
-      if (errBody?.error?.code) {
-        errorCode = errBody.error.code;
+    // On 401 AUTH_REQUIRED retry once with getIdToken(true), then go to /sign-in
+    if (response.status === 401 && parsedErr.code === 'AUTH_REQUIRED') {
+      const refreshedToken = await getCurrentIdToken(true);
+      if (refreshedToken) {
+        response = await performFetch(path, init, true);
+        if (response.ok) {
+          return (await response.json()) as T;
+        }
+        parsedErr = await parseErrorResponse(response);
       }
-      if (errBody?.error?.message) {
-        errorMessage = errBody.error.message;
+
+      if (response.status === 401 && parsedErr.code === 'AUTH_REQUIRED') {
+        navigateToAuthRoute('/sign-in');
       }
-    } catch {
-      // fallback to status text
+      throw new ApiClientError(parsedErr.message, response.status, parsedErr.code);
     }
 
-    throw new ApiClientError(errorMessage, response.status, errorCode);
+    // On 401 GOOGLE_SESSION_MISMATCH, the server cleared the stale Google cookie; retry once cleanly
+    if (response.status === 401 && parsedErr.code === 'GOOGLE_SESSION_MISMATCH') {
+      response = await performFetch(path, init, false);
+      if (response.ok) {
+        return (await response.json()) as T;
+      }
+      parsedErr = await parseErrorResponse(response);
+    }
+
+    // On 403 EMAIL_NOT_VERIFIED go to /verify-email
+    if (response.status === 403 && parsedErr.code === 'EMAIL_NOT_VERIFIED') {
+      navigateToAuthRoute('/verify-email');
+    }
+
+    throw new ApiClientError(parsedErr.message, response.status, parsedErr.code);
   }
 
   return (await response.json()) as T;
@@ -96,8 +176,27 @@ export const apiClient = {
     return apiRequest<HealthStatusResponse>('/api/health');
   },
 
+  getPublicConfig(): Promise<PublicConfigResponse> {
+    return apiRequest<PublicConfigResponse>('/api/public-config');
+  },
+
   getConnections(): Promise<ConnectionsResponse> {
     return apiRequest<ConnectionsResponse>('/api/connections');
+  },
+
+  createGoogleLinkToken(): Promise<{ linkToken: string; expiresInSec: number }> {
+    return apiRequest<{ linkToken: string; expiresInSec: number }>(
+      '/api/auth/google/link-token',
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  clearGoogleSession(): Promise<{ ok: boolean }> {
+    return apiRequest<{ ok: boolean }>('/api/session/clear', {
+      method: 'POST',
+    });
   },
 
   getGA4Properties(): Promise<GA4PropertyOption[]> {

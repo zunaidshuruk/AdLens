@@ -7,8 +7,10 @@ import { connectionsRouter, googleApiRouter } from './routes/connections.js';
 import { ga4Router } from './routes/ga4.js';
 import { healthRouter } from './routes/health.js';
 import { metaRouter } from './routes/meta.js';
+import { publicConfigRouter } from './routes/publicConfig.js';
 import { reportsRouter } from './routes/reports.js';
 import { searchConsoleRouter } from './routes/searchConsole.js';
+import { sessionRouter } from './routes/session.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +44,9 @@ app.use((req, _res, next) => {
 
 // Mount API routes
 app.use('/api/health', healthRouter);
+app.use('/api/public-config', publicConfigRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/session', sessionRouter);
 app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
 app.use('/api/ga4', ga4Router);

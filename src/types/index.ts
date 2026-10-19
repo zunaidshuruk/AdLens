@@ -399,7 +399,18 @@ export interface HealthStatusResponse {
   missing?: string[];
   metaConfigured?: boolean;
   metaMissing?: string[];
+  firebaseConfigured?: boolean;
+  firebaseMissing?: string[];
   timestamp?: string;
+}
+
+export interface PublicConfigResponse {
+  firebase: {
+    apiKey: string;
+    authDomain: string;
+    projectId: string;
+    appId: string;
+  };
 }
 
 export interface GA4SelectedProperty {
@@ -425,6 +436,7 @@ export interface ConnectionsResponse {
     missing?: string[];
     connected: boolean;
     adAccountId?: string | null;
+    notAvailable?: boolean;
     availableIn?: string;
   };
 }

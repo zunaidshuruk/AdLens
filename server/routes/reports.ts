@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { requireGoogleConfigured } from '../config.js';
 import { readSession } from '../lib/session.js';
+import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import '../reports/ga4Reports.js';
 import { reportRegistry } from '../reports/registry.js';
 import { googleRateLimitMiddleware } from './connections.js';
@@ -8,6 +9,8 @@ import { googleRateLimitMiddleware } from './connections.js';
 export const reportsRouter = Router();
 
 reportsRouter.use(googleRateLimitMiddleware);
+reportsRouter.use(requireUser);
+reportsRouter.use(verifyGoogleSessionOwnership);
 reportsRouter.use(requireGoogleConfigured);
 
 // GET /api/reports -> registry.list() (requires a Google session; no data, just definitions)

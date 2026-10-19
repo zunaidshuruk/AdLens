@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { getServerConfig, requireGoogleConfigured } from '../config.js';
+import { decryptPayload, encryptPayload } from '../lib/crypto.js';
 import { createOAuthClient, GOOGLE_OAUTH_SCOPES } from '../lib/google.js';
+import { signLinkToken, verifyLinkToken } from '../lib/linkToken.js';
 import {
   clearSession,
   getSessionCookieOptions,
@@ -10,6 +12,7 @@ import {
   readSession,
   writeSession,
 } from '../lib/session.js';
+import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 
 export const authRouter = Router();
 
@@ -26,11 +29,90 @@ function decodeEmailFromIdToken(idToken?: string | null): string | null {
   }
 }
 
-authRouter.get('/google/start', requireGoogleConfigured, (_req: Request, res: Response) => {
-  const cfg = getServerConfig();
-  const state = crypto.randomBytes(24).toString('base64url');
+interface StoredOAuthState {
+  state: string;
+  uid: string;
+}
 
-  res.cookie(OAUTH_STATE_COOKIE_NAME, state, getSessionCookieOptions(OAUTH_STATE_MAX_AGE_MS));
+function encodeOAuthStateCookie(state: string, uid: string, secret: string): string {
+  return encryptPayload(JSON.stringify({ state, uid } satisfies StoredOAuthState), secret);
+}
+
+function decodeOAuthStateCookie(rawCookie: string | undefined, secret: string): StoredOAuthState | null {
+  if (!rawCookie || typeof rawCookie !== 'string' || !secret) return null;
+  try {
+    const json = decryptPayload(rawCookie, secret);
+    const parsed = JSON.parse(json) as Partial<StoredOAuthState>;
+    if (
+      parsed &&
+      typeof parsed.state === 'string' &&
+      parsed.state.length > 0 &&
+      typeof parsed.uid === 'string' &&
+      parsed.uid.length > 0
+    ) {
+      return { state: parsed.state, uid: parsed.uid };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// POST /api/auth/google/link-token (requireUser) -> 5-minute signed link token containing uid
+authRouter.post(
+  '/google/link-token',
+  requireUser,
+  requireGoogleConfigured,
+  (req: Request, res: Response) => {
+    const cfg = getServerConfig();
+    const uid = req.user?.uid;
+    if (!uid) {
+      res.status(401).json({
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'Authentication required.',
+        },
+      });
+      return;
+    }
+
+    const linkToken = signLinkToken(uid, cfg.tokenEncryptionKey);
+    res.json({
+      linkToken,
+      expiresInSec: 300,
+    });
+  }
+);
+
+// GET /api/auth/google/start?lt=<token>
+authRouter.get('/google/start', requireGoogleConfigured, (req: Request, res: Response) => {
+  const cfg = getServerConfig();
+  const lt = typeof req.query.lt === 'string' ? req.query.lt.trim() : '';
+
+  let verifiedLink: { uid: string };
+  try {
+    verifiedLink = verifyLinkToken(lt, cfg.tokenEncryptionKey);
+  } catch (err) {
+    res.status(401).json({
+      error: {
+        code: 'INVALID_LINK_TOKEN',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'A valid, non-expired Google link token is required.',
+      },
+    });
+    return;
+  }
+
+  const state = crypto.randomBytes(24).toString('base64url');
+  const encryptedState = encodeOAuthStateCookie(state, verifiedLink.uid, cfg.tokenEncryptionKey);
+
+  res.cookie(
+    OAUTH_STATE_COOKIE_NAME,
+    encryptedState,
+    getSessionCookieOptions(OAUTH_STATE_MAX_AGE_MS)
+  );
 
   const redirectUri = `${cfg.appBaseUrl}/api/auth/google/callback`;
   const params = new URLSearchParams({
@@ -48,12 +130,12 @@ authRouter.get('/google/start', requireGoogleConfigured, (_req: Request, res: Re
 });
 
 authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request, res: Response) => {
-  const { isProduction } = getServerConfig();
-  const storedState = req.cookies?.[OAUTH_STATE_COOKIE_NAME];
+  const cfg = getServerConfig();
+  const rawStoredState = req.cookies?.[OAUTH_STATE_COOKIE_NAME];
 
   res.clearCookie(OAUTH_STATE_COOKIE_NAME, {
     httpOnly: true,
-    secure: isProduction,
+    secure: cfg.isProduction,
     sameSite: 'lax',
     path: '/',
   });
@@ -66,7 +148,9 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
   }
 
   const queryState = typeof req.query.state === 'string' ? req.query.state : '';
-  if (!queryState || !storedState || queryState !== storedState) {
+  const decodedState = decodeOAuthStateCookie(rawStoredState, cfg.tokenEncryptionKey);
+
+  if (!queryState || !decodedState || queryState !== decodedState.state) {
     res.redirect('/connections?error=invalid_state');
     return;
   }
@@ -82,7 +166,11 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
     const { tokens } = await client.getToken(code);
 
     const existingSession = readSession(req);
-    const refreshToken = tokens.refresh_token || existingSession.google?.refreshToken;
+    const sameOwner =
+      existingSession.uid === decodedState.uid ||
+      existingSession.google?.uid === decodedState.uid;
+    const refreshToken =
+      tokens.refresh_token || (sameOwner ? existingSession.google?.refreshToken : undefined);
 
     if (!refreshToken) {
       res.redirect('/connections?error=no_refresh_token');
@@ -99,7 +187,7 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
       try {
         const ticket = await client.verifyIdToken({
           idToken: tokens.id_token,
-          audience: getServerConfig().googleClientId,
+          audience: cfg.googleClientId,
         });
         email = ticket.getPayload()?.email ?? null;
       } catch {
@@ -108,14 +196,15 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
     }
 
     const updatedSession = {
-      ...existingSession,
+      uid: decodedState.uid,
       google: {
+        uid: decodedState.uid,
         refreshToken,
         accessToken: tokens.access_token,
         accessTokenExpiry: tokens.expiry_date ?? Date.now() + 3600 * 1000,
-        email: email ?? existingSession.google?.email ?? null,
-        ga4Property: existingSession.google?.ga4Property,
-        searchConsoleSite: existingSession.google?.searchConsoleSite,
+        email: email ?? (sameOwner ? existingSession.google?.email : null) ?? null,
+        ga4Property: sameOwner ? existingSession.google?.ga4Property : undefined,
+        searchConsoleSite: sameOwner ? existingSession.google?.searchConsoleSite : undefined,
       },
     };
 
@@ -126,26 +215,31 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
   }
 });
 
-authRouter.post('/google/disconnect', async (req: Request, res: Response) => {
-  const session = readSession(req);
-  const tokenToRevoke = session.google?.refreshToken || session.google?.accessToken;
+authRouter.post(
+  '/google/disconnect',
+  requireUser,
+  verifyGoogleSessionOwnership,
+  async (req: Request, res: Response) => {
+    const session = readSession(req);
+    const tokenToRevoke = session.google?.refreshToken || session.google?.accessToken;
 
-  if (tokenToRevoke) {
-    try {
-      const body = new URLSearchParams({ token: tokenToRevoke });
-      await fetch('https://oauth2.googleapis.com/revoke', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-    } catch {
-      // Ignore network/revoke errors and proceed with local session cleanup
+    if (tokenToRevoke) {
+      try {
+        const body = new URLSearchParams({ token: tokenToRevoke });
+        await fetch('https://oauth2.googleapis.com/revoke', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+      } catch {
+        // Ignore network/revoke errors and proceed with local session cleanup
+      }
     }
-  }
 
-  delete session.google;
-  clearSession(res);
-  res.json({ ok: true });
-});
+    delete session.google;
+    clearSession(res);
+    res.json({ ok: true });
+  }
+);

@@ -1,5 +1,9 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import { getServerConfig, requireGoogleConfigured } from '../config.js';
+import {
+  getServerConfig,
+  isEmailAllowedForMetaSystemUser,
+  requireGoogleConfigured,
+} from '../config.js';
 import {
   fetchGA4Properties,
   fetchSearchConsoleSites,
@@ -7,6 +11,7 @@ import {
   GoogleApiError,
 } from '../lib/google.js';
 import { readSession, writeSession } from '../lib/session.js';
+import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 
 export const connectionsRouter = Router();
 export const googleApiRouter = Router();
@@ -60,12 +65,17 @@ function sendError(res: Response, err: unknown): void {
   });
 }
 
+// Require authenticated & verified Firebase user and matching Google session uid
+connectionsRouter.use(requireUser);
+connectionsRouter.use(verifyGoogleSessionOwnership);
+
 // GET /api/connections
 connectionsRouter.get('/', (req: Request, res: Response) => {
   const cfg = getServerConfig();
   const session = readSession(req);
   const googleSession = session.google;
   const isConnected = Boolean(cfg.googleConfigured && googleSession?.refreshToken);
+  const metaAllowed = isEmailAllowedForMetaSystemUser(req.user?.email);
 
   res.json({
     google: {
@@ -79,14 +89,17 @@ connectionsRouter.get('/', (req: Request, res: Response) => {
     meta: {
       configured: cfg.metaConfigured,
       missing: cfg.metaMissing,
-      connected: cfg.metaConfigured,
-      adAccountId: cfg.metaConfigured ? cfg.metaAdAccountId : null,
+      connected: Boolean(cfg.metaConfigured && metaAllowed),
+      adAccountId: cfg.metaConfigured && metaAllowed ? cfg.metaAdAccountId : null,
+      notAvailable: !metaAllowed,
     },
   });
 });
 
-// Apply rate limit and configuration check to all /api/google/* routes
+// Apply rate limit, auth, session ownership, and configuration check to all /api/google/* routes
 googleApiRouter.use(googleRateLimitMiddleware);
+googleApiRouter.use(requireUser);
+googleApiRouter.use(verifyGoogleSessionOwnership);
 googleApiRouter.use(requireGoogleConfigured);
 
 // GET /api/google/ga4/properties
@@ -136,7 +149,9 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
         const properties = await fetchGA4Properties(accessToken);
         const normalizedTarget = String(body.ga4PropertyId).replace(/^properties\//, '');
         const matchedProp = properties.find(
-          (p) => p.propertyId === normalizedTarget || `properties/${p.propertyId}` === body.ga4PropertyId
+          (p) =>
+            p.propertyId === normalizedTarget ||
+            `properties/${p.propertyId}` === body.ga4PropertyId
         );
 
         if (!matchedProp) {
@@ -180,6 +195,8 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
       }
     }
 
+    session.uid = req.user?.uid ?? session.uid;
+    session.google.uid = req.user?.uid ?? session.google.uid;
     writeSession(res, session);
 
     res.json({

@@ -21,6 +21,7 @@ import {
   trafficBreakdownInputSchema,
 } from '../reports/schemas.js';
 import type { ReportContext } from '../reports/types.js';
+import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
 export const ga4Router = Router();
@@ -137,8 +138,10 @@ function buildReportContext(res: Response): ReportContext {
   };
 }
 
-// Middleware: rate limit + Google configured + connected session with selected ga4Property
+// Middleware: rate limit + requireUser + verifyGoogleSessionOwnership + Google configured + connected session with selected ga4Property
 ga4Router.use(googleRateLimitMiddleware);
+ga4Router.use(requireUser);
+ga4Router.use(verifyGoogleSessionOwnership);
 ga4Router.use(requireGoogleConfigured);
 
 async function requireGA4Session(

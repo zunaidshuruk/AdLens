@@ -16,8 +16,17 @@ export const REQUIRED_META_ENV_VARS = [
   'META_AD_ACCOUNT_ID',
 ] as const;
 
+export const REQUIRED_FIREBASE_ENV_VARS = [
+  'FIREBASE_API_KEY',
+  'FIREBASE_AUTH_DOMAIN',
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_APP_ID',
+  'FIREBASE_SERVICE_ACCOUNT_JSON',
+] as const;
+
 export type RequiredGoogleEnvVar = (typeof REQUIRED_GOOGLE_ENV_VARS)[number];
 export type RequiredMetaEnvVar = (typeof REQUIRED_META_ENV_VARS)[number];
+export type RequiredFirebaseEnvVar = (typeof REQUIRED_FIREBASE_ENV_VARS)[number];
 
 export interface ServerConfig {
   googleClientId: string;
@@ -31,6 +40,14 @@ export interface ServerConfig {
   metaAdAccountId: string;
   metaConfigured: boolean;
   metaMissing: RequiredMetaEnvVar[];
+  metaSystemUserAllowedEmails: string[];
+  firebaseApiKey: string;
+  firebaseAuthDomain: string;
+  firebaseProjectId: string;
+  firebaseAppId: string;
+  firebaseServiceAccountJson: string;
+  firebaseConfigured: boolean;
+  firebaseMissing: RequiredFirebaseEnvVar[];
   isProduction: boolean;
 }
 
@@ -38,6 +55,25 @@ export function normalizeMetaAdAccountId(raw: string | undefined): string {
   if (!raw) return '';
   const stripped = raw.trim().replace(/^act_/i, '').trim();
   return /^\d+$/.test(stripped) ? stripped : '';
+}
+
+export function parseAllowedEmails(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isEmailAllowedForMetaSystemUser(
+  email: string | null | undefined,
+  allowedEmails?: string[]
+): boolean {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
+  const list = allowedEmails ?? getServerConfig().metaSystemUserAllowedEmails;
+  return list.includes(normalized);
 }
 
 export function getServerConfig(): ServerConfig {
@@ -59,7 +95,24 @@ export function getServerConfig(): ServerConfig {
   if (!metaAppSecret) metaMissing.push('META_APP_SECRET');
   if (!metaAdAccountId) metaMissing.push('META_AD_ACCOUNT_ID');
 
+  const firebaseApiKey = (process.env.FIREBASE_API_KEY || '').trim();
+  const firebaseAuthDomain = (process.env.FIREBASE_AUTH_DOMAIN || '').trim();
+  const firebaseProjectId = (process.env.FIREBASE_PROJECT_ID || '').trim();
+  const firebaseAppId = (process.env.FIREBASE_APP_ID || '').trim();
+  const firebaseServiceAccountJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+
+  const firebaseMissing: RequiredFirebaseEnvVar[] = [];
+  for (const key of REQUIRED_FIREBASE_ENV_VARS) {
+    const val = process.env[key];
+    if (!val || val.trim() === '') {
+      firebaseMissing.push(key);
+    }
+  }
+
   const rawBaseUrl = (process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  const metaSystemUserAllowedEmails = parseAllowedEmails(
+    process.env.META_SYSTEM_USER_ALLOWED_EMAILS
+  );
 
   return {
     googleClientId: (process.env.GOOGLE_CLIENT_ID || '').trim(),
@@ -73,6 +126,14 @@ export function getServerConfig(): ServerConfig {
     metaAdAccountId,
     metaConfigured: metaMissing.length === 0,
     metaMissing,
+    metaSystemUserAllowedEmails,
+    firebaseApiKey,
+    firebaseAuthDomain,
+    firebaseProjectId,
+    firebaseAppId,
+    firebaseServiceAccountJson,
+    firebaseConfigured: firebaseMissing.length === 0,
+    firebaseMissing,
     isProduction: process.env.NODE_ENV === 'production',
   };
 }
@@ -104,4 +165,3 @@ export function requireMetaConfigured(_req: Request, res: Response, next: NextFu
   }
   next();
 }
-

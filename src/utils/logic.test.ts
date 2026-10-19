@@ -374,6 +374,14 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
   const { app } = await import('../../server/index.js');
   const { clearGA4Cache } = await import('../../server/routes/ga4.js');
   const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+
+  setTestTokenVerifier(async () => ({
+    uid: 'user-sprint3',
+    email: 'analyst@convay.com',
+    email_verified: true,
+    firebase: { identities: { 'google.com': ['g-1'] }, sign_in_provider: 'google.com' },
+  }) as never);
 
   clearGA4Cache();
   const server = app.listen(0);
@@ -382,12 +390,15 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
   const baseUrl = `http://127.0.0.1:${port}`;
 
   const originalFetch = globalThis.fetch;
+  const authHeader = 'Bearer test-token-sprint3';
 
   try {
     // 1. Session without ga4Property -> 409 GA4_NOT_SELECTED
     const noPropCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
       JSON.stringify({
+        uid: 'user-sprint3',
         google: {
+          uid: 'user-sprint3',
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
@@ -399,7 +410,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     const res409 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: noPropCookie } }
+      { headers: { Cookie: noPropCookie, Authorization: authHeader } }
     );
     assert.equal(res409.status, 409);
     const body409 = (await res409.json()) as { error: { code: string } };
@@ -408,7 +419,9 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     // 2. Session WITH selected ga4Property
     const validCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
       JSON.stringify({
+        uid: 'user-sprint3',
         google: {
+          uid: 'user-sprint3',
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
@@ -422,7 +435,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     // Invalid date range (startDate > endDate) -> 400 INVALID_DATE_RANGE
     const res400 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-10&endDate=2026-10-05`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(res400.status, 400);
     const body400 = (await res400.json()) as { error: { code: string } };
@@ -478,7 +491,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     // First call to /api/ga4/overview -> X-AdLens-Cache: false
     const resOverview1 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(resOverview1.status, 200);
     assert.equal(resOverview1.headers.get('x-adlens-cache'), 'false');
@@ -489,7 +502,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
     // Second call with identical params -> X-AdLens-Cache: true (served from 10-min cache)
     const resOverview2 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(resOverview2.status, 200);
     assert.equal(resOverview2.headers.get('x-adlens-cache'), 'true');
@@ -497,7 +510,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     // Property info endpoint
     const resPropInfo = await originalFetch(`${baseUrl}/api/ga4/property-info`, {
-      headers: { Cookie: validCookie },
+      headers: { Cookie: validCookie, Authorization: authHeader },
     });
     assert.equal(resPropInfo.status, 200);
     const propInfo = (await resPropInfo.json()) as {
@@ -526,7 +539,7 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     const res403 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(res403.status, 403);
     const body403 = (await res403.json()) as { error: { code: string; message: string } };
@@ -550,12 +563,13 @@ test('/api/ga4 routes enforce GA4_NOT_SELECTED, validate date ranges, set X-AdLe
 
     const res429 = await originalFetch(
       `${baseUrl}/api/ga4/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(res429.status, 429);
     const body429 = (await res429.json()) as { error: { code: string } };
     assert.equal(body429.error.code, 'GA4_QUOTA_EXCEEDED');
   } finally {
+    setTestTokenVerifier(null);
     globalThis.fetch = originalFetch;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
@@ -696,6 +710,14 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
   const { clearSearchConsoleCache } = await import('../../server/routes/searchConsole.js');
   const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+
+  setTestTokenVerifier(async () => ({
+    uid: 'user-sprint4',
+    email: 'analyst@convay.com',
+    email_verified: true,
+    firebase: { identities: { 'google.com': ['g-4'] }, sign_in_provider: 'google.com' },
+  }) as never);
 
   clearSearchConsoleCache();
   const server = app.listen(0);
@@ -704,12 +726,15 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
   const baseUrl = `http://127.0.0.1:${port}`;
 
   const originalFetch = globalThis.fetch;
+  const authHeader = 'Bearer test-token-sprint4';
 
   try {
     // 1. Session without searchConsoleSite -> 409 SC_NOT_SELECTED
     const noSiteCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
       JSON.stringify({
+        uid: 'user-sprint4',
         google: {
+          uid: 'user-sprint4',
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
@@ -721,7 +746,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
     const res409 = await originalFetch(
       `${baseUrl}/api/search-console/overview?startDate=2026-10-01&endDate=2026-10-07`,
-      { headers: { Cookie: noSiteCookie } }
+      { headers: { Cookie: noSiteCookie, Authorization: authHeader } }
     );
     assert.equal(res409.status, 409);
     const body409 = (await res409.json()) as { error: { code: string } };
@@ -732,7 +757,9 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
       clearSearchConsoleCache();
       const siteCookie: string = `${SESSION_COOKIE_NAME}=${encryptPayload(
         JSON.stringify({
+          uid: 'user-sprint4',
           google: {
+            uid: 'user-sprint4',
             refreshToken: 'ref-1',
             accessToken: 'acc-1',
             accessTokenExpiry: Date.now() + 3600_000,
@@ -784,7 +811,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
       const resOverview1: Response = await originalFetch(
         `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
-        { headers: { Cookie: siteCookie } }
+        { headers: { Cookie: siteCookie, Authorization: authHeader } }
       );
       assert.equal(resOverview1.status, 200);
       assert.equal(resOverview1.headers.get('x-adlens-cache'), 'false');
@@ -800,7 +827,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
       // Cached second request
       const resOverview2: Response = await originalFetch(
         `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
-        { headers: { Cookie: siteCookie } }
+        { headers: { Cookie: siteCookie, Authorization: authHeader } }
       );
       assert.equal(resOverview2.status, 200);
       assert.equal(resOverview2.headers.get('x-adlens-cache'), 'true');
@@ -808,7 +835,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
       // Site info endpoint
       const resSiteInfo = await originalFetch(`${baseUrl}/api/search-console/site-info`, {
-        headers: { Cookie: siteCookie },
+        headers: { Cookie: siteCookie, Authorization: authHeader },
       });
       assert.equal(resSiteInfo.status, 200);
       const siteInfo = (await resSiteInfo.json()) as { siteUrl: string; permissionLevel: string };
@@ -820,7 +847,9 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
     clearSearchConsoleCache();
     const validCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
       JSON.stringify({
+        uid: 'user-sprint4',
         google: {
+          uid: 'user-sprint4',
           refreshToken: 'ref-1',
           accessToken: 'acc-1',
           accessTokenExpiry: Date.now() + 3600_000,
@@ -842,7 +871,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
     const res403 = await originalFetch(
       `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(res403.status, 403);
     const body403 = (await res403.json()) as { error: { code: string } };
@@ -859,7 +888,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
 
     const res429 = await originalFetch(
       `${baseUrl}/api/search-console/overview?startDate=2026-10-08&endDate=2026-10-14`,
-      { headers: { Cookie: validCookie } }
+      { headers: { Cookie: validCookie, Authorization: authHeader } }
     );
     assert.equal(res429.status, 429);
     const body429 = (await res429.json()) as { error: { code: string } };
@@ -874,6 +903,7 @@ test('/api/search-console routes support sc-domain: and https:// sites, parallel
     assert.equal(healthBody.ok, true);
     assert.equal(healthBody.app, 'AdLens');
   } finally {
+    setTestTokenVerifier(null);
     globalThis.fetch = originalFetch;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
@@ -889,6 +919,14 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
   const { computeAppSecretProof, GRAPH_API_VERSION } = await import('../../server/lib/meta.js');
   const { normalizeMetaAdAccountId } = await import('../../server/config.js');
   const { setMetaAdsLiveMode } = await import('../adapters/index.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+
+  setTestTokenVerifier(async () => ({
+    uid: 'user-sprint5',
+    email: 'zunaid@synesisit.com.bd',
+    email_verified: true,
+    firebase: { identities: { password: ['zunaid@synesisit.com.bd'] }, sign_in_provider: 'password' },
+  }) as never);
 
   assert.equal(GRAPH_API_VERSION, 'v26.0');
   assert.equal(normalizeMetaAdAccountId('act_123456789'), '123456789');
@@ -904,12 +942,14 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
   delete process.env.META_ACCESS_TOKEN;
   delete process.env.META_APP_SECRET;
   delete process.env.META_AD_ACCOUNT_ID;
+  process.env.META_SYSTEM_USER_ALLOWED_EMAILS = 'zunaid@synesisit.com.bd';
 
   const server = app.listen(0);
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
   const baseUrl = `http://127.0.0.1:${port}`;
   const originalFetch = globalThis.fetch;
+  const authHeaders = { Authorization: 'Bearer test-token-sprint5' };
 
   try {
     // 1. Missing Meta secrets -> 503 META_NOT_CONFIGURED, while /api/health reports metaConfigured: false
@@ -926,7 +966,8 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
     ]);
 
     const resUnconfig = await originalFetch(
-      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14`
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14`,
+      { headers: authHeaders }
     );
     assert.equal(resUnconfig.status, 503);
     const unconfigBody = (await resUnconfig.json()) as { error: { code: string } };
@@ -989,7 +1030,7 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
       );
     };
 
-    const resAccount = await originalFetch(`${baseUrl}/api/meta/account`);
+    const resAccount = await originalFetch(`${baseUrl}/api/meta/account`, { headers: authHeaders });
     assert.equal(resAccount.status, 200);
     const accountJson = (await resAccount.json()) as {
       accountId: string;
@@ -1004,7 +1045,8 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
     assert.equal(accountJson.status, 'Active');
 
     const resOv1 = await originalFetch(
-      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
+      { headers: authHeaders }
     );
     assert.equal(resOv1.status, 200);
     assert.equal(resOv1.headers.get('x-adlens-cache'), 'false');
@@ -1021,7 +1063,8 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
     // Second overview request hits 10-minute cache
     const callsBeforeCached = graphCalls;
     const resOv2 = await originalFetch(
-      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14&compareStartDate=2026-10-01&compareEndDate=2026-10-07`,
+      { headers: authHeaders }
     );
     assert.equal(resOv2.status, 200);
     assert.equal(resOv2.headers.get('x-adlens-cache'), 'true');
@@ -1045,17 +1088,20 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
     };
 
     const res190 = await originalFetch(
-      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14`
+      `${baseUrl}/api/meta/overview?startDate=2026-10-08&endDate=2026-10-14`,
+      { headers: authHeaders }
     );
     assert.equal(res190.status, 401);
     const body190 = (await res190.json()) as { error: { code: string; message: string } };
     assert.equal(body190.error.code, 'META_TOKEN_INVALID');
     assert.ok(!body190.error.message.includes('meta-sys-token-xyz'));
   } finally {
+    setTestTokenVerifier(null);
     globalThis.fetch = originalFetch;
     delete process.env.META_ACCESS_TOKEN;
     delete process.env.META_APP_SECRET;
     delete process.env.META_AD_ACCOUNT_ID;
+    delete process.env.META_SYSTEM_USER_ALLOWED_EMAILS;
     server.close();
   }
 });
@@ -1279,6 +1325,14 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
   const { app } = await import('../../server/index.js');
   const { clearGA4Cache } = await import('../../server/routes/ga4.js');
   const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+
+  setTestTokenVerifier(async () => ({
+    uid: 'user-sprint6',
+    email: 'analyst@convay.com',
+    email_verified: true,
+    firebase: { identities: { 'google.com': ['g-6'] }, sign_in_provider: 'google.com' },
+  }) as never);
 
   const listed = reportRegistry.list();
   const ids = listed.map((r) => r.id);
@@ -1313,15 +1367,20 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
   const port = typeof address === 'object' && address ? address.port : 0;
   const baseUrl = `http://127.0.0.1:${port}`;
   const originalFetch = globalThis.fetch;
+  const authHeader = 'Bearer test-token-sprint6';
 
   try {
-    // 1. /api/reports without session -> 401 GOOGLE_NOT_CONNECTED
-    const resUnauth = await originalFetch(`${baseUrl}/api/reports`);
+    // 1. /api/reports without Google session -> 401 GOOGLE_NOT_CONNECTED
+    const resUnauth = await originalFetch(`${baseUrl}/api/reports`, {
+      headers: { Authorization: authHeader },
+    });
     assert.equal(resUnauth.status, 401);
 
     const cookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
       JSON.stringify({
+        uid: 'user-sprint6',
         google: {
+          uid: 'user-sprint6',
           refreshToken: 'ref-s6',
           accessToken: 'acc-s6',
           accessTokenExpiry: Date.now() + 3600_000,
@@ -1334,7 +1393,7 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
 
     // 2. /api/reports with Google session -> 200 list of definitions
     const resReports = await originalFetch(`${baseUrl}/api/reports`, {
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, Authorization: authHeader },
     });
     assert.equal(resReports.status, 200);
     const reportsJson = (await resReports.json()) as { id: string; input: { type: string } }[];
@@ -1416,7 +1475,7 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
 
     const resAi = await originalFetch(
       `${baseUrl}/api/ga4/ai-traffic?startDate=2026-10-08&endDate=2026-10-10`,
-      { headers: { Cookie: cookie } }
+      { headers: { Cookie: cookie, Authorization: authHeader } }
     );
     assert.equal(resAi.status, 200);
     assert.equal(resAi.headers.get('x-adlens-cache'), 'false');
@@ -1433,11 +1492,330 @@ test('reportRegistry lists all 10 GA4 report functions with JSON Schema inputs a
     assert.equal(aiBody.byDate[0].sessions, 40);
     assert.equal(aiBody.byDate[1].sessions, 0);
   } finally {
+    setTestTokenVerifier(null);
     globalThis.fetch = originalFetch;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
     delete process.env.TOKEN_ENCRYPTION_KEY;
     delete process.env.APP_BASE_URL;
+    server.close();
+  }
+});
+
+test('linkToken sign, verify, tamper rejection, and 5-minute expiry', async () => {
+  const { signLinkToken, verifyLinkToken, LINK_TOKEN_TTL_MS, LinkTokenError } = await import(
+    '../../server/lib/linkToken.js'
+  );
+  const secret = 'test-link-token-hmac-secret-key';
+  const now = 1_760_000_000_000;
+
+  const token = signLinkToken('uid-abc-123', secret, now);
+  const verified = verifyLinkToken(token, secret, now + 60_000);
+  assert.equal(verified.uid, 'uid-abc-123');
+  assert.equal(verified.exp, now + LINK_TOKEN_TTL_MS);
+
+  // Expired token (> 5 minutes)
+  assert.throws(
+    () => verifyLinkToken(token, secret, now + LINK_TOKEN_TTL_MS + 1),
+    (err: unknown) => err instanceof LinkTokenError && err.code === 'LINK_TOKEN_EXPIRED'
+  );
+
+  // Tampered signature
+  const [payloadPart] = token.split('.');
+  const tamperedToken = `${payloadPart}.deadbeef`;
+  assert.throws(
+    () => verifyLinkToken(tamperedToken, secret, now),
+    (err: unknown) => err instanceof LinkTokenError && err.code === 'LINK_TOKEN_INVALID'
+  );
+
+  // Wrong secret
+  assert.throws(
+    () => verifyLinkToken(token, 'wrong-secret', now),
+    (err: unknown) => err instanceof LinkTokenError && err.code === 'LINK_TOKEN_INVALID'
+  );
+});
+
+test('requireUser middleware enforces AUTH_REQUIRED, EMAIL_NOT_VERIFIED, SSO verification, and GOOGLE_SESSION_MISMATCH', async () => {
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-7a';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+
+  const { app } = await import('../../server/index.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const { SESSION_COOKIE_NAME } = await import('../../server/lib/session.js');
+
+  setTestTokenVerifier(async (token: string) => {
+    if (token === 'unverified-password-token') {
+      return {
+        uid: 'uid-unverified',
+        email: 'newuser@convay.com',
+        email_verified: false,
+        firebase: { identities: { password: ['newuser@convay.com'] }, sign_in_provider: 'password' },
+      } as never;
+    }
+    if (token === 'microsoft-sso-token') {
+      return {
+        uid: 'uid-ms',
+        email: 'sso@convay.com',
+        email_verified: false, // Microsoft SSO counts as verified even when email_verified is false
+        firebase: { identities: { 'microsoft.com': ['ms-1'] }, sign_in_provider: 'microsoft.com' },
+      } as never;
+    }
+    if (token === 'valid-user-a') {
+      return {
+        uid: 'uid-user-a',
+        email: 'usera@convay.com',
+        email_verified: true,
+        firebase: { identities: { password: ['usera@convay.com'] }, sign_in_provider: 'password' },
+      } as never;
+    }
+    throw new Error('Invalid token');
+  });
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    // 1. Missing Authorization header -> 401 AUTH_REQUIRED
+    const resMissing = await fetch(`${baseUrl}/api/connections`);
+    assert.equal(resMissing.status, 401);
+    const bodyMissing = (await resMissing.json()) as { error: { code: string } };
+    assert.equal(bodyMissing.error.code, 'AUTH_REQUIRED');
+
+    // 2. Invalid token -> 401 AUTH_REQUIRED
+    const resInvalid = await fetch(`${baseUrl}/api/connections`, {
+      headers: { Authorization: 'Bearer bad-token' },
+    });
+    assert.equal(resInvalid.status, 401);
+    const bodyInvalid = (await resInvalid.json()) as { error: { code: string } };
+    assert.equal(bodyInvalid.error.code, 'AUTH_REQUIRED');
+
+    // 3. Unverified password user -> 403 EMAIL_NOT_VERIFIED
+    const resUnverified = await fetch(`${baseUrl}/api/connections`, {
+      headers: { Authorization: 'Bearer unverified-password-token' },
+    });
+    assert.equal(resUnverified.status, 403);
+    const bodyUnverified = (await resUnverified.json()) as { error: { code: string } };
+    assert.equal(bodyUnverified.error.code, 'EMAIL_NOT_VERIFIED');
+
+    // 4. Microsoft SSO account counts as verified even when email_verified is false -> 200
+    const resMsSso = await fetch(`${baseUrl}/api/connections`, {
+      headers: { Authorization: 'Bearer microsoft-sso-token' },
+    });
+    assert.equal(resMsSso.status, 200);
+
+    // 5. Cookie belonging to uid-user-b accessed by uid-user-a -> 401 GOOGLE_SESSION_MISMATCH & clears cookie
+    const mismatchedCookie = `${SESSION_COOKIE_NAME}=${encryptPayload(
+      JSON.stringify({
+        uid: 'uid-user-b',
+        google: {
+          uid: 'uid-user-b',
+          refreshToken: 'ref-b',
+          email: 'userb@convay.com',
+        },
+      }),
+      process.env.TOKEN_ENCRYPTION_KEY
+    )}`;
+
+    const resMismatch = await fetch(`${baseUrl}/api/connections`, {
+      headers: {
+        Authorization: 'Bearer valid-user-a',
+        Cookie: mismatchedCookie,
+      },
+    });
+    assert.equal(resMismatch.status, 401);
+    const bodyMismatch = (await resMismatch.json()) as { error: { code: string } };
+    assert.equal(bodyMismatch.error.code, 'GOOGLE_SESSION_MISMATCH');
+    const setCookieHeader = resMismatch.headers.get('set-cookie') ?? '';
+    assert.ok(setCookieHeader.includes(`${SESSION_COOKIE_NAME}=`), 'Expected session cookie to be cleared');
+
+    // 6. POST /api/auth/google/link-token returns a valid signed token that /api/auth/google/start accepts
+    const resLinkToken = await fetch(`${baseUrl}/api/auth/google/link-token`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid-user-a' },
+    });
+    assert.equal(resLinkToken.status, 200);
+    const linkTokenBody = (await resLinkToken.json()) as { linkToken: string; expiresInSec: number };
+    assert.ok(linkTokenBody.linkToken.includes('.'));
+    assert.equal(linkTokenBody.expiresInSec, 300);
+
+    const resStartWithoutLt = await fetch(`${baseUrl}/api/auth/google/start`, {
+      redirect: 'manual',
+    });
+    assert.equal(resStartWithoutLt.status, 401);
+
+    const resStartWithLt = await fetch(
+      `${baseUrl}/api/auth/google/start?lt=${encodeURIComponent(linkTokenBody.linkToken)}`,
+      { redirect: 'manual' }
+    );
+    assert.equal(resStartWithLt.status, 302);
+    assert.ok(
+      (resStartWithLt.headers.get('location') ?? '').includes('accounts.google.com'),
+      'Expected redirect to Google OAuth consent screen'
+    );
+  } finally {
+    setTestTokenVerifier(null);
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    server.close();
+  }
+});
+
+test('Meta System User allowlist restricts /api/meta/* and /api/connections to allowed emails only', async () => {
+  process.env.META_ACCESS_TOKEN = 'meta-token';
+  process.env.META_APP_SECRET = 'meta-secret';
+  process.env.META_AD_ACCOUNT_ID = 'act_11223344';
+  process.env.META_SYSTEM_USER_ALLOWED_EMAILS = 'zunaid@synesisit.com.bd, admin@convay.com';
+
+  const { app } = await import('../../server/index.js');
+  const { isEmailAllowedForMetaSystemUser } = await import('../../server/config.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+
+  assert.equal(isEmailAllowedForMetaSystemUser('Zunaid@SynesisIT.com.bd'), true);
+  assert.equal(isEmailAllowedForMetaSystemUser('admin@convay.com'), true);
+  assert.equal(isEmailAllowedForMetaSystemUser('other@example.com'), false);
+  assert.equal(isEmailAllowedForMetaSystemUser(null), false);
+
+  setTestTokenVerifier(async (token: string) => {
+    if (token === 'allowed-token') {
+      return {
+        uid: 'uid-allowed',
+        email: 'zunaid@synesisit.com.bd',
+        email_verified: true,
+        firebase: { identities: { 'google.com': ['g-1'] }, sign_in_provider: 'google.com' },
+      } as never;
+    }
+    return {
+      uid: 'uid-disallowed',
+      email: 'visitor@external.com',
+      email_verified: true,
+      firebase: { identities: { 'google.com': ['g-2'] }, sign_in_provider: 'google.com' },
+    } as never;
+  });
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    // Disallowed user calling /api/connections sees meta.connected=false, meta.notAvailable=true, adAccountId=null
+    const resConnDisallowed = await fetch(`${baseUrl}/api/connections`, {
+      headers: { Authorization: 'Bearer disallowed-token' },
+    });
+    assert.equal(resConnDisallowed.status, 200);
+    const connDisallowed = (await resConnDisallowed.json()) as {
+      meta: {
+        configured: boolean;
+        connected: boolean;
+        notAvailable?: boolean;
+        adAccountId?: string | null;
+      };
+    };
+    assert.equal(connDisallowed.meta.configured, true);
+    assert.equal(connDisallowed.meta.connected, false);
+    assert.equal(connDisallowed.meta.notAvailable, true);
+    assert.equal(connDisallowed.meta.adAccountId, null);
+
+    // Disallowed user calling /api/meta/account gets 403 META_NOT_AVAILABLE
+    const resMetaDisallowed = await fetch(`${baseUrl}/api/meta/account`, {
+      headers: { Authorization: 'Bearer disallowed-token' },
+    });
+    assert.equal(resMetaDisallowed.status, 403);
+    const metaErr = (await resMetaDisallowed.json()) as { error: { code: string } };
+    assert.equal(metaErr.error.code, 'META_NOT_AVAILABLE');
+
+    // Allowed user calling /api/connections sees meta.connected=true and adAccountId
+    const resConnAllowed = await fetch(`${baseUrl}/api/connections`, {
+      headers: { Authorization: 'Bearer allowed-token' },
+    });
+    assert.equal(resConnAllowed.status, 200);
+    const connAllowed = (await resConnAllowed.json()) as {
+      meta: {
+        configured: boolean;
+        connected: boolean;
+        notAvailable?: boolean;
+        adAccountId?: string | null;
+      };
+    };
+    assert.equal(connAllowed.meta.configured, true);
+    assert.equal(connAllowed.meta.connected, true);
+    assert.equal(connAllowed.meta.notAvailable, false);
+    assert.equal(connAllowed.meta.adAccountId, '11223344');
+  } finally {
+    setTestTokenVerifier(null);
+    delete process.env.META_ACCESS_TOKEN;
+    delete process.env.META_APP_SECRET;
+    delete process.env.META_AD_ACCOUNT_ID;
+    delete process.env.META_SYSTEM_USER_ALLOWED_EMAILS;
+    server.close();
+  }
+});
+
+test('Firebase error-code message mapper, password checklist rules, and /api/public-config work cleanly', async () => {
+  const { mapFirebaseErrorMessage, evaluatePasswordRules, extractFirebaseErrorCode } = await import(
+    '../utils/firebaseErrors.js'
+  );
+  const { app } = await import('../../server/index.js');
+
+  assert.equal(
+    extractFirebaseErrorCode({ code: 'auth/invalid-credential' }),
+    'auth/invalid-credential'
+  );
+  assert.equal(
+    mapFirebaseErrorMessage({ code: 'auth/invalid-credential' }),
+    'Email or password is incorrect'
+  );
+  assert.equal(
+    mapFirebaseErrorMessage({ code: 'auth/email-already-in-use' }),
+    'An account with this email already exists — sign in instead'
+  );
+  assert.equal(
+    mapFirebaseErrorMessage({ code: 'auth/account-exists-with-different-credential' }),
+    'You already have an AdLens account with this email. Sign in with your existing method to link Google/Microsoft.'
+  );
+  assert.equal(
+    mapFirebaseErrorMessage({ code: 'auth/too-many-requests' }),
+    'Too many attempts. Please wait a few minutes and try again.'
+  );
+
+  const weakRules = evaluatePasswordRules('short');
+  assert.equal(weakRules.allValid, false);
+  const strongRules = evaluatePasswordRules('Convay2026');
+  assert.equal(strongRules.minLength, true);
+  assert.equal(strongRules.hasUpper, true);
+  assert.equal(strongRules.hasLower, true);
+  assert.equal(strongRules.hasNumber, true);
+  assert.equal(strongRules.allValid, true);
+
+  process.env.FIREBASE_API_KEY = 'AIzaSyTestKey';
+  process.env.FIREBASE_AUTH_DOMAIN = 'adlens-test.firebaseapp.com';
+  process.env.FIREBASE_PROJECT_ID = 'adlens-test';
+  process.env.FIREBASE_APP_ID = '1:12345:web:abcdef';
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const resPub = await fetch(`${baseUrl}/api/public-config`);
+    assert.equal(resPub.status, 200);
+    const pubJson = (await resPub.json()) as {
+      firebase: { apiKey: string; authDomain: string; projectId: string; appId: string };
+    };
+    assert.equal(pubJson.firebase.apiKey, 'AIzaSyTestKey');
+    assert.equal(pubJson.firebase.projectId, 'adlens-test');
+  } finally {
+    delete process.env.FIREBASE_API_KEY;
+    delete process.env.FIREBASE_AUTH_DOMAIN;
+    delete process.env.FIREBASE_PROJECT_ID;
+    delete process.env.FIREBASE_APP_ID;
     server.close();
   }
 });

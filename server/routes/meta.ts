@@ -1,6 +1,10 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { MetaAccountInfo } from '../../src/types/index.js';
-import { getServerConfig, requireMetaConfigured } from '../config.js';
+import {
+  getServerConfig,
+  isEmailAllowedForMetaSystemUser,
+  requireMetaConfigured,
+} from '../config.js';
 import { MetaApiError, metaGet } from '../lib/meta.js';
 import {
   type MetaAdObject,
@@ -13,6 +17,7 @@ import {
   mapMetaOverview,
   mapMetaSpendOverTime,
 } from '../lib/metaAdsMapper.js';
+import { requireUser } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
 export const metaRouter = Router();
@@ -192,8 +197,27 @@ function buildInsightsParams(
   };
 }
 
-// Apply rate limiter and Meta configuration check to all /api/meta/* routes
+function requireMetaSystemUserAllowlist(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  if (!isEmailAllowedForMetaSystemUser(req.user?.email)) {
+    res.status(403).json({
+      error: {
+        code: 'META_NOT_AVAILABLE',
+        message: 'Connecting your own Facebook account is coming soon',
+      },
+    });
+    return;
+  }
+  next();
+}
+
+// Apply rate limiter, requireUser, Meta allowlist safeguard, and Meta configuration check to all /api/meta/* routes
 metaRouter.use(googleRateLimitMiddleware);
+metaRouter.use(requireUser);
+metaRouter.use(requireMetaSystemUserAllowlist);
 metaRouter.use(requireMetaConfigured);
 
 // GET /api/meta/account -> MetaAccountInfo
