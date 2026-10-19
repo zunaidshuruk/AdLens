@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Settings, Sun, X } from 'lucide-react';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
+import { AdLensLogo } from './AdLensLogo';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useAvatar } from '../hooks/useAvatar';
@@ -98,8 +99,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
             </button>
 
             <div className="flex items-center gap-2 text-xs">
-              <span className="font-semibold text-slate-900 dark:text-slate-100 md:hidden">
-                {APP_NAME}
+              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100 md:hidden">
+                <AdLensLogo className="w-5 h-5 shrink-0" />
+                <span>{APP_NAME}</span>
               </span>
               <span className="hidden md:inline font-semibold text-slate-900 dark:text-slate-100">
                 {projectName}

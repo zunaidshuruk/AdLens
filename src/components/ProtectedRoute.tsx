@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { APP_NAME, APP_TAGLINE } from '../config/app';
 import { useAuth } from '../context/AuthContext';
+import { AdLensLogo } from './AdLensLogo';
 
 export const ProtectedRoute: React.FC = () => {
   const { user, loading, emailVerified } = useAuth();
@@ -11,9 +12,7 @@ export const ProtectedRoute: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-6">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm animate-pulse">
-            {APP_NAME.slice(0, 2).toUpperCase()}
-          </div>
+          <AdLensLogo className="w-12 h-12 animate-pulse" />
           <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
             {APP_NAME} — {APP_TAGLINE}
           </div>

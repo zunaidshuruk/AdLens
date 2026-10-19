@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="adlens-arc-blue" x1="80" y1="380" x2="396" y2="106" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3378FF" />
+      <stop offset="50%" stop-color="#5168F4" />
+      <stop offset="100%" stop-color="#2E90FA" />
+    </linearGradient>
+    <linearGradient id="adlens-arc-teal" x1="445" y1="198" x2="201" y2="453" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00B6A7" />
+      <stop offset="100%" stop-color="#14B37B" />
+    </linearGradient>
+  </defs>
+  <!-- Top-left blue arc -->
+  <path
+    d="M 156 435 A 205 205 0 1 1 396 106"
+    stroke="url(#adlens-arc-blue)"
+    stroke-width="52"
+    stroke-linecap="round"
+  />
+  <!-- Bottom-right teal-green arc -->
+  <path
+    d="M 451 193 A 205 205 0 0 1 201 453"
+    stroke="url(#adlens-arc-teal)"
+    stroke-width="52"
+    stroke-linecap="round"
+  />
+  <!-- Central 'A' chevron -->
+  <path
+    d="M 177 326 L 256 162 L 335 326"
+    stroke="#34B3E7"
+    stroke-width="56"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Orange lens dot -->
+  <circle cx="256" cy="282" r="40" fill="#F79307" />
+</svg>

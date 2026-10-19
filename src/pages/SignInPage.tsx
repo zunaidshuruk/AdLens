@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Lock, Mail } from 'lucide-react';
 import { APP_NAME, APP_TAGLINE } from '../config/app';
+import { AdLensLogo } from '../components/AdLensLogo';
 import { useAuth } from '../context/AuthContext';
 
 export const SignInPage: React.FC = () => {
@@ -92,9 +93,7 @@ export const SignInPage: React.FC = () => {
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg tracking-tight shadow-xs">
-            {APP_NAME.slice(0, 2).toUpperCase()}
-          </div>
+          <AdLensLogo className="w-12 h-12" />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Sign in to {APP_NAME}
           </h1>

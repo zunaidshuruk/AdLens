@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { APP_NAME, APP_TAGLINE } from '../config/app';
+import { AdLensLogo } from '../components/AdLensLogo';
 
 interface LegalPlaceholderPageProps {
   title: string;
@@ -12,9 +13,7 @@ export const LegalPlaceholderPage: React.FC<LegalPlaceholderPageProps> = ({ titl
     <div className="min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-lg space-y-6">
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg tracking-tight shadow-xs">
-            {APP_NAME.slice(0, 2).toUpperCase()}
-          </div>
+          <AdLensLogo className="w-12 h-12" />
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             {title}
           </h1>

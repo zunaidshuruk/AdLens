@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   Check,
   ChevronDown,
   Globe,
@@ -19,6 +18,7 @@ import { APP_NAME, APP_TAGLINE, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAdapterStatus } from '../hooks/useReport';
 import { useWorkspaceLogo } from '../hooks/useWorkspaceLogo';
+import { AdLensLogo } from './AdLensLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -126,9 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         {/* Brand Header */}
         <div className="h-16 px-5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs">
-              <BarChart3 className="w-4 h-4" />
-            </div>
+            <AdLensLogo className="w-8 h-8 shrink-0" />
             <div>
               <div className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100 leading-none">
                 {APP_NAME}
