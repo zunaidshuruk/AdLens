@@ -21,8 +21,8 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 4 | Live Search Console data + Vercel support | ✅ Verified (import fix `c72ab43`) | `dddd714` |
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
-| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault (7C-1, 7C-2, 7C-3) | ✅ 7A, 7B, 7B-2 verified (`82c215f`) · ✅ 7C-1/7C-2 build checked (`0096f89`: 79 tests, vault files untouched) · ⏳ Firestore/live checks + 7C-3 pending | `9b447e8` (7A), `3c829da` (7B) |
-| 8 | **Design system, appearance & theming** (UI/UX overhaul) | 🧩 Prep done (theme engine, command palette search, metric glossary) | — |
+| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault + account deletion | ✅ Complete: 7A, 7B, 7B-2, 7C-1/2 and 7C-3 verified (`0bc704d`, 133 tests). One small fix pending (delete-account ownership check order) | `9b447e8`, `3c829da`, `0096f89`, `0bc704d` |
+| 8 | **Design system, appearance & theming** (UI/UX overhaul), in 6 small prompts (8-1 … 8-6) | 🔄 8-1 prompt sent · prep done (theme engine, command palette, metric glossary) | — |
 | 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
 | 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
 | 11 | Search intelligence | 🧩 Prep done (insights + host breakdown + tests) | — |
@@ -30,7 +30,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 13 | Flexible report builders (Explore) | ⬜ Planned | — |
 | 14 | **Custom dashboards: builder + template gallery** | ⬜ Planned | — |
 | 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 Prep done (engine router, report compactor, tool layer) | — |
-| 16 | Bring-your-own AI agents | ⬜ Planned | — |
+| 16 | Bring-your-own AI agents (16a server · 16b settings UI · 16c ask + chat · 16d webhook tools) | 🧩 Agent core prep done (SSRF guard, providers, runner, config, encrypted keys; 183 tests) | — |
 | 17 | MCP endpoint | ⬜ Planned | — |
 | 18 | Scale & hardening (quotas, shared cache, monitoring, reports, alerts) | ⬜ Planned | — |
 | 19 | Enterprise: SAML/OIDC single sign-on, MFA, audit log | ⬜ Planned | — |
@@ -390,8 +390,22 @@ Goal: a cleaner, more modern UI that every user can personalise. It comes before
 
 **Workspace brand theme (owners/admins):** logo + brand colour applied to shared and exported dashboards and reports (full white-label later). Users' personal theme still applies inside the app unless they choose "use workspace theme".
 
-**Prep done (19 Oct 2026), tested and mutation-checked (132 tests in the repo):**
-- `src/utils/themeEngine.ts` (+ test, 15 tests):
+**Finding (19 Oct 2026):** the app has about **607 hard-coded colour classes** (`bg-white`, `text-slate-900`, `blue-600`, `dark:` pairs). A theme can only restyle what uses named colour roles, so the migration to roles is the real work of this sprint.
+
+**Colour roles** (Tailwind utilities generated from `--color-*` variables; defaults come from `tailwindThemeCss()` in `themeEngine.ts`, the user's theme overrides them on `<html>`):
+`bg-page`, `bg-surface`, `bg-raised`, `border-line`, `text-fg`, `text-fg-muted`, `bg-accent`, `hover:bg-accent-hover`, `bg-accent-soft`, `text-on-accent`, `text-accent-text`, `ring-focus`, `text-success`, `text-warning`, `text-danger`, `bg-accent-50 … bg-accent-950`. Charts read `--chart-1 … --chart-8`.
+
+**Six small prompts:**
+- **8-1** theme provider (applies variables, font size, density, radius; remembers the last theme to avoid a flash), Tailwind `@theme` block, Settings → Appearance (presets, accent picker with contrast guard, font size, density, chart palette). No page restyling yet.
+- **8-2** shared components migrated to roles (KpiCard, DataTable, charts, buttons, badges, states).
+- **8-3** app shell: sidebar, header, layout, command palette (Ctrl/⌘ K), mobile navigation.
+- **8-4** Overview and Google Analytics pages migrated.
+- **8-5** Search Console, Meta, AI Traffic, Connections, Settings pages migrated.
+- **8-6** metric tooltips from the glossary, then a test that fails if hard-coded palette classes remain.
+- A migration script (codemod) maps the common class pairs to roles automatically; Claude prepares it so AI Studio only reviews the leftovers.
+
+**Prep done (19 Oct 2026), tested and mutation-checked:**
+- `src/utils/themeEngine.ts` (+ test, 16 tests):
   - one accent in, a complete theme out: OKLCH shade scale, light and dark tokens, tints, radius, density and font-scale tokens, as CSS variables;
   - every text colour is derived and checked against WCAG (AA, AAA in High contrast). A property test over about 1,000 generated themes, including yellow, white, black and grey accents, finds no unreadable text;
   - contrast guard with a "fix it for me" suggestion for accents used as text or links;
@@ -399,7 +413,7 @@ Goal: a cleaner, more modern UI that every user can personalise. It comes before
 - `src/utils/commandPalette.ts` (+ test, 9 tests): Ctrl/⌘+K ranking (exact, prefix, word, keyword, initials such as "gsc", letters-in-order), recent-command boost, bold-highlight ranges, arrow-key wrap.
 - `src/config/metricGlossary.ts` (+ test, 6 tests): plain-language definition, formula and "which direction is good" for 28 metrics, with source-aware lookup ("Clicks" means different things in Search Console and Meta).
 
-**Still to do for Sprint 8 (not prepared, because the Firebase emulator can't run in Claude's environment):** extend `firestore.rules` so `settings.appearance` is accepted and validated, with rule tests. Do it in the build step so GitHub Actions checks it immediately, then republish the rules.
+**Rules for saving appearance (prepared 19 Oct 2026, written but NOT run locally because the Firebase emulator can't run in Claude's environment):** `firebase/firestore.rules` now accepts and validates `settings.appearance` (preset, custom theme with a lower-case #rrggbb accent, radius, density, font scale, chart palette), with one new rules test (15 allow/deny checks). GitHub Actions runs it on upload; after a green run, republish the rules in the Firebase console. The server's settings validation (`server/routes/workspaces.ts`) and the client settings types are updated by AI Studio in 8-1.
 
 ## Sprint 9 — Connections v2 ⬜
 
@@ -554,11 +568,34 @@ Parallel prep candidates:
 - `src/utils/aiReportCompactor.ts` (+ test): shrinks any report result to a token budget: one-line KPIs, small tables, daily series summarised as min/max/average plus a sample, and an honest "showing first N of M rows".
 - `src/utils/aiTools.ts` (+ test): report definitions → Gemini function declarations (`parametersJsonSchema`), date-argument injection, tool shortlisting by question, and a compact tool menu for small models.
 
-## Sprint 16 — Bring-your-own AI agents ⬜
+## Sprint 16 — Bring-your-own AI agents 🧩
 
-- Agent registry: Gemini, OpenAI-compatible endpoints and webhooks. Per-agent system prompt and data-source permissions.
-- Users supply their own AI API keys, stored encrypted.
-- Explicit consent before any data goes to a third-party AI.
+A user can add their own AI agent that answers questions about their ads and traffic, using the same report tools as the built-in analyst (Sprint 15). Three kinds:
+- **Gemini** with the user's own API key.
+- **OpenAI-compatible** (any server that speaks the chat-completions format: OpenAI, OpenRouter, a company gateway, Ollama or vLLM behind HTTPS), with base URL, model and optional key.
+- **Webhook**: the user's own service. AdLens sends a signed JSON request (protocol v1) and the service replies with an answer or with report calls. AdLens shows a generated signing secret once.
+
+**Safety design (built and tested):**
+- **Own keys are encrypted** with the vault, bound to the user and the agent; the browser only ever sees "••••abcd". Keys travel in a header only, never in URLs, logs or error messages.
+- **SSRF protection:** https only, no credentials, no IP addresses or internal-looking names, ports 443/8443, address checked at connect time (DNS rebinding, mixed answers), no redirects, size and time limits. Guards against a user pointing an agent at cloud metadata or an internal network.
+- **Permissions:** each agent gets only the reports whose data source the agent is allowed AND the project has connected, optionally a hand-picked list. A tool outside the list is never run, even if the model asks.
+- **Dates come from the app,** never the model. Report text is wrapped as data that cannot close its tag, and the system rules come before the owner's custom instructions.
+- **Hard limits:** tool calls, steps, total time, answer length; never throws. Chat history from the browser is sanitised (forged tool results are dropped).
+- **Consent:** before an agent is first used, the user confirms that their analytics numbers will be sent to that provider.
+
+**Prep done (19 Oct 2026), 183 tests in the repo, each safety property mutation-checked:**
+- `server/lib/ssrfGuard.ts` (+ test, 12): IP classification (IPv4, IPv6, mapped, NAT64, 6to4), URL rules, connect-time guarded lookup, guarded request. Found and fixed an unhandled-error bug before it reached production.
+- `server/lib/agentProviders.ts` (+ test, 12): request builders and parsers for Gemini (including Gemini 3 thought signatures), OpenAI-compatible (tool-name mapping because OpenAI forbids dots), webhooks (HMAC-signed, replay window); secret redaction; friendly error mapping.
+- `server/lib/agentRunner.ts` (+ test, 14): the tool loop with permissions, budgets, repeat detection, prompt-injection hardening, leak-free errors, timeout, history sanitising; shared with the Sprint 15 cloud analyst.
+- `server/lib/agentConfig.ts` (+ test, 7): validation of agent settings and keys, permission resolution, storage paths (`workspaces/{ws}/agents`, `workspaces/{ws}/agentSecrets`).
+- `server/lib/agentIntegration.test.ts` (3): the whole chain over real sockets.
+- `server/lib/tokenVault.ts` extended (backwards compatible) with `sealAgentSecret` / `openAgentSecret`.
+
+**Build steps (small prompts, after Sprint 15a):**
+- **16a** server: agents API (create, edit, delete, list), key sealing, ask endpoint using the runner, rate limit and plan limit (agents per workspace); Firestore rules for `agents` (members read) and tests.
+- **16b** screens: Settings → AI agents (add, edit, test connection), permissions picker, consent dialog, webhook secret shown once.
+- **16c** AI Analyst page: agent picker, chat, "Numbers used" panel from the trace.
+- **16d** webhook developer page: protocol description, signature verification snippets (Node, Python), test-call button.
 
 ## Sprint 17 — MCP endpoint ⬜
 
@@ -606,6 +643,8 @@ Adopts #30.
 | 18 Oct 2026 | Uploads = profile pictures and workspace logos (Cloud Storage); settings and configuration stored in Firestore and synced across devices. CSV data imports not planned |
 | 18 Oct 2026 | SSO in two stages: social SSO (Google, Microsoft) in Sprint 7A; enterprise SAML/OIDC in Sprint 17 |
 | 18 Oct 2026 | Public-mode safeguard: the Meta system-user token is usable only by allow-listed emails, so other users can never see Synesis IT ad accounts |
+| 19 Oct 2026 | Sprint 8 is split into six small prompts because the app has ~607 hard-coded colour classes that must move to named colour roles (page, surface, line, fg, accent…) before a user theme can change anything |
+| 19 Oct 2026 | Custom AI agents: Gemini, OpenAI-compatible and signed webhooks; the user's own keys are encrypted with the vault; endpoints are SSRF-guarded; each agent only gets reports its allowed AND connected sources cover |
 | 19 Oct 2026 | **AI is hybrid:** cloud Gemini by default; on-device "Private mode" (Chrome built-in Gemini Nano first, WebLLM later if needed) is opt-in; private mode never reaches the cloud without the user's explicit action |
 | 19 Oct 2026 | Token vault: per-user, owner-bound encryption in server-only Firestore collection `connections`; each person uses their own Google/Meta connection; optional TOKEN_ENCRYPTION_KEY_PREVIOUS for key rotation |
 | 18 Oct 2026 | Business model: **subscription** (details parked). Sprint 7 adds plan fields and usage counters; billing built in Sprint 16 |
@@ -627,6 +666,8 @@ Adopts #30.
 - **MCP auth (Sprint 17):** Phase A (access keys) first, Phase B (OAuth 2.1) after.
 
 ## Known issues and backlog
+
+- **Delete account (7C-3):** the "owner with other members" check runs after Google access is revoked, so a blocked deletion still disconnects the user. Move the check before the destructive steps.
 
 - **Verification emails not arriving (19 Oct 2026):** being diagnosed. Check that the account exists in Firebase → Users, then use Firebase's own "Reset password" email to test delivery. A branded sender domain is planned for Sprint 10.
 - **Microsoft sign-in:** not configured yet. Hide the button until it is (AUTH_PROVIDERS env).

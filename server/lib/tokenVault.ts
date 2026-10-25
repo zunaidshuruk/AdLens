@@ -20,13 +20,16 @@
 import crypto from 'node:crypto';
 
 export type VaultProvider = 'google' | 'meta';
+/** Everything that can be sealed: provider connections, plus a user's own AI agent secrets. */
+export type SecretProvider = VaultProvider | 'agent';
 export type ConnectionStatus = 'active' | 'expired' | 'revoked' | 'error';
 
 const FORMAT_VERSION = 'v1';
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 const UID_RE = /^[A-Za-z0-9_-]{1,128}$/;
-const PROVIDERS: readonly VaultProvider[] = ['google', 'meta'];
+const PROVIDERS: readonly SecretProvider[] = ['google', 'meta', 'agent'];
+const SCOPE_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const ACCESS_TOKEN_SKEW_MS = 60_000;
 const MIN_SECRET_LENGTH = 32;
 
@@ -142,18 +145,43 @@ export function parsePreviousSecrets(value: string | undefined): string[] {
 
 export interface VaultContext {
   uid: string;
-  provider: VaultProvider;
+  provider: SecretProvider;
   connectionId: string;
+  /** Required for provider "agent" (the agent id); not allowed for the others. */
+  scope?: string;
 }
 
-export function connectionIdFor(uid: string, provider: VaultProvider): string {
-  return `${uid}_${provider}`;
+/** "{uid}_{provider}", or "{uid}_agent_{agentId}" for a user's own AI agent key. */
+export function connectionIdFor(uid: string, provider: SecretProvider, scope?: string): string {
+  return scope ? `${uid}_${provider}_${scope}` : `${uid}_${provider}`;
 }
 
 function assertContext(ctx: VaultContext): void {
-  if (!UID_RE.test(ctx.uid) || !PROVIDERS.includes(ctx.provider) || ctx.connectionId !== connectionIdFor(ctx.uid, ctx.provider)) {
+  const scopeOk = ctx.provider === 'agent' ? !!ctx.scope && SCOPE_RE.test(ctx.scope) : ctx.scope === undefined;
+  if (
+    !UID_RE.test(ctx.uid) ||
+    !PROVIDERS.includes(ctx.provider) ||
+    !scopeOk ||
+    ctx.connectionId !== connectionIdFor(ctx.uid, ctx.provider, ctx.scope)
+  ) {
     throw new VaultError('VAULT_INVALID_INPUT', 'Invalid connection context.', 400);
   }
+}
+
+const agentContext = (uid: string, agentId: string): VaultContext => ({
+  uid,
+  provider: 'agent',
+  scope: agentId,
+  connectionId: connectionIdFor(uid, 'agent', agentId),
+});
+
+/** Encrypt a user's own AI API key (or webhook signing secret), bound to this user and agent. */
+export function sealAgentSecret(plaintext: string, uid: string, agentId: string, keyring: Keyring): string {
+  return sealSecret(plaintext, agentContext(uid, agentId), keyring);
+}
+
+export function openAgentSecret(sealed: string, uid: string, agentId: string, keyring: Keyring): string {
+  return openSecret(sealed, agentContext(uid, agentId), keyring);
 }
 
 function aadFor(ctx: VaultContext): Buffer {

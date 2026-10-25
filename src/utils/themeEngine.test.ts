@@ -18,7 +18,9 @@ import {
   relativeLuminance,
   resolveAppearance,
   sanitizeAppearance,
+  presetToOptions,
   suggestAccentFix,
+  tailwindThemeCss,
   themeToCss,
   type ThemeOptions,
 } from './themeEngine.js';
@@ -96,7 +98,7 @@ test('every preset in both modes passes all contrast checks (AAA for high contra
       const failing = t.checks.filter((c) => !c.pass).map((c) => `${c.label} ${c.ratio}<${c.required}`);
       assert.deepEqual(failing, [], `${id}/${mode}`);
       if (p.contrast === 'high') {
-        assert.ok(contrastRatio(t.vars['--color-text'], t.vars['--color-bg']) >= 7);
+        assert.ok(contrastRatio(t.vars['--color-fg'], t.vars['--color-page']) >= 7);
         assert.ok(t.checks.some((c) => c.label === 'Borders'));
       }
     }
@@ -115,7 +117,7 @@ test('ANY accent colour gives readable text (seeded random + extremes)', () => {
           const t = buildTheme(opts({ accent, mode, tint, contrast }));
           const failing = t.checks.filter((c) => !c.pass).map((c) => `${c.label} ${c.ratio}`);
           assert.deepEqual(failing, [], `${accent} ${mode} ${tint} ${contrast}`);
-          Object.entries(t.vars).filter(([k]) => k.startsWith('--color-') || k.startsWith('--chart-') || k.startsWith('--accent-')).forEach(([k, v]) => assert.match(v, HEX, k));
+          Object.entries(t.vars).filter(([k]) => k.startsWith('--color-') || k.startsWith('--chart-') || k.startsWith('--color-accent-')).forEach(([k, v]) => assert.match(v, HEX, k));
         }
 });
 
@@ -160,7 +162,7 @@ test('chart palettes: colour-blind is canonical Okabe–Ito; others meet 3:1; mo
 test('themeToCss writes every variable', () => {
   const t = buildTheme(opts());
   const css = themeToCss(t.vars, '.theme');
-  assert.match(css, /^\.theme \{\n  --color-bg: #[0-9a-f]{6};/);
+  assert.match(css, /^\.theme \{\n  --color-page: #[0-9a-f]{6};/);
   assert.equal(css.split('\n').length, Object.keys(t.vars).length + 2);
   assert.ok(Object.keys(t.vars).every((k) => k.startsWith('--')));
 });
@@ -196,4 +198,15 @@ test('sanitizeAppearance: accepts good data, repairs bad data and reports why', 
   assert.equal(bad.value.radius, 'round');
   assert.equal(bad.errors.length, 5);
   assert.equal(sanitizeAppearance({ custom: { accent: '#F00' } }).value.custom.accent, '#ff0000');
+});
+
+test('Tailwind @theme block lists every colour role with the default light values', () => {
+  const css = tailwindThemeCss();
+  assert.match(css, /^@theme \{\n  --color-page: #[0-9a-f]{6};/);
+  for (const role of ['page', 'surface', 'raised', 'line', 'fg', 'fg-muted', 'accent', 'accent-hover', 'accent-soft', 'on-accent', 'accent-text', 'focus', 'success', 'warning', 'danger', 'accent-50', 'accent-950']) {
+    assert.ok(css.includes(`--color-${role}: #`), role);
+  }
+  assert.ok(!css.includes('--radius') && !css.includes('--chart'));
+  assert.equal(presetToOptions('midnight').mode, 'dark');
+  assert.equal(presetToOptions('ocean', { fontScale: 'large' }).fontScale, 'large');
 });

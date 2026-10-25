@@ -290,18 +290,18 @@ export function buildTheme(options: ThemeOptions): Theme {
   const factor = FONT_SCALES[options.fontScale].factor;
 
   const vars: Record<string, string> = {
-    '--color-bg': bg,
+    '--color-page': bg,
     '--color-surface': surface,
-    '--color-surface-raised': surfaceRaised,
-    '--color-border': border,
-    '--color-text': text,
-    '--color-text-muted': textMuted,
+    '--color-raised': surfaceRaised,
+    '--color-line': border,
+    '--color-fg': text,
+    '--color-fg-muted': textMuted,
     '--color-accent': accent,
     '--color-accent-hover': mode === 'light' ? scale[700] : scale[300],
     '--color-accent-soft': mode === 'light' ? scale[100] : scale[900],
     '--color-on-accent': onAccent,
     '--color-accent-text': accentText,
-    '--color-focus-ring': focusRing,
+    '--color-focus': focusRing,
     '--color-success': success,
     '--color-warning': warning,
     '--color-danger': danger,
@@ -312,7 +312,7 @@ export function buildTheme(options: ThemeOptions): Theme {
     '--font-scale': String(factor),
     '--root-font-size': `${factor * 100}%`,
   };
-  SCALE_STEPS.forEach((s) => (vars[`--accent-${s}`] = scale[s]));
+  SCALE_STEPS.forEach((s) => (vars[`--color-accent-${s}`] = scale[s]));
   charts.forEach((c, i) => (vars[`--chart-${i + 1}`] = c));
 
   const check = (label: string, foreground: string, background: string, required: number): ContrastCheck => {
@@ -339,7 +339,18 @@ export function buildTheme(options: ThemeOptions): Theme {
   return { vars, checks, passesAll: checks.every((c) => c.pass), adjustments };
 }
 
-/** CSS text for a variables map, e.g. ":root {\n  --color-bg: #fff;\n}". */
+/**
+ * Tailwind v4 `@theme` block holding the default (AdLens Light) values. Paste it into src/index.css.
+ * At runtime the ThemeProvider overrides the same variables on <html>, so utilities such as
+ * bg-surface, text-fg, text-fg-muted, border-line, bg-accent, hover:bg-accent-hover, bg-accent-soft,
+ * text-on-accent, text-accent-text, ring-focus, text-success/warning/danger follow the user's theme.
+ */
+export function tailwindThemeCss(vars: Record<string, string> = buildTheme(presetToOptions('adlens-light')).vars): string {
+  const colorVars = Object.entries(vars).filter(([k]) => k.startsWith('--color-'));
+  return `@theme {\n${colorVars.map(([k, v]) => `  ${k}: ${v};`).join('\n')}\n}`;
+}
+
+/** CSS text for a variables map, e.g. ":root {\n  --color-page: #fff;\n}". */
 export function themeToCss(vars: Record<string, string>, selector = ':root'): string {
   return `${selector} {\n${Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join('\n')}\n}`;
 }
@@ -378,6 +389,11 @@ export const THEME_PRESETS: Record<PresetId, { label: string; mode: Mode; accent
 };
 
 export const PRESET_IDS = Object.keys(THEME_PRESETS) as PresetId[];
+
+export function presetToOptions(id: PresetId, overrides: Partial<ThemeOptions> = {}): ThemeOptions {
+  const p = THEME_PRESETS[id];
+  return { mode: p.mode, accent: p.accent, tint: p.tint, contrast: p.contrast, radius: 'default', density: 'comfortable', fontScale: 'default', chartPalette: 'default', ...overrides };
+}
 
 /** What is saved per user (Firestore `settings.appearance`). */
 export interface AppearanceSettings {

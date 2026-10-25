@@ -85,10 +85,32 @@ service cloud.firestore {
         && n.get('productUpdates', false) is bool;
     }
 
+    // Appearance (themes, accent colour, font size...). Mirrors sanitizeAppearance() in src/utils/themeEngine.ts.
+    function validCustomTheme(c) {
+      return c is map
+        && c.keys().hasOnly(['mode', 'accent', 'tint'])
+        && c.get('mode', 'light') in ['light', 'dark']
+        && c.get('accent', '#1d4ed8') is string
+        && c.get('accent', '#1d4ed8').matches('^#[0-9a-f]{6}$')
+        && c.get('tint', 'none') in ['none', 'cool', 'warm', 'accent'];
+    }
+
+    function validAppearance(a) {
+      return a is map
+        && a.keys().hasOnly(['preset', 'custom', 'radius', 'density', 'fontScale', 'chartPalette'])
+        && a.get('preset', 'adlens-light') in ['adlens-light', 'adlens-dark', 'midnight', 'ocean', 'forest',
+                                              'sunset', 'high-contrast', 'system', 'custom']
+        && validCustomTheme(a.get('custom', {}))
+        && a.get('radius', 'default') in ['sharp', 'default', 'round']
+        && a.get('density', 'comfortable') in ['comfortable', 'compact']
+        && a.get('fontScale', 'default') in ['small', 'default', 'large', 'xlarge']
+        && a.get('chartPalette', 'default') in ['default', 'colorblind', 'monochrome', 'brand'];
+    }
+
     function validUserSettings(s) {
       return s is map
         && s.keys().hasOnly(['theme', 'defaultDateRange', 'compareByDefault', 'displayCurrency',
-                             'timezone', 'numberFormat', 'emailNotifications'])
+                             'timezone', 'numberFormat', 'emailNotifications', 'appearance'])
         && s.get('theme', 'light') in ['light', 'dark', 'system']
         && s.get('defaultDateRange', 'Last 28 days') in
              ['Today', 'Last 7 days', 'Last 28 days', 'Last 90 days', 'This month', 'Last month']
@@ -96,7 +118,8 @@ service cloud.firestore {
         && isCurrency(s.get('displayCurrency', 'USD'))
         && isTimezone(s.get('timezone', 'UTC'))
         && s.get('numberFormat', 'en-US') in ['en-US', 'en-GB', 'en-IN', 'de-DE', 'fr-FR', 'bn-BD']
-        && validNotifications(s.get('emailNotifications', {}));
+        && validNotifications(s.get('emailNotifications', {}))
+        && validAppearance(s.get('appearance', {}));
     }
 
     // photoURL (e.g. the Google profile photo) is set by the server only.

@@ -126,6 +126,29 @@ describe('users', () => {
     await assertFails(updateDoc(me, { displayName: '', updatedAt: serverTimestamp() }));
   });
 
+  test('appearance settings: valid themes are saved, anything else is rejected', async () => {
+    const me = doc(ctx(ALICE), 'users', ALICE);
+    const save = (appearance: unknown) => updateDoc(me, { settings: { appearance }, updatedAt: serverTimestamp() });
+    await assertSucceeds(save({ preset: 'midnight', radius: 'round', density: 'compact', fontScale: 'large', chartPalette: 'colorblind' }));
+    await assertSucceeds(save({ preset: 'custom', custom: { mode: 'dark', accent: '#e11d48', tint: 'warm' } }));
+    await assertSucceeds(save({ preset: 'system' }));
+    await assertSucceeds(save({}));
+    await assertFails(save({ preset: 'neon' }));
+    await assertFails(save({ custom: { accent: 'red' } }));
+    await assertFails(save({ custom: { accent: '#FF0000' } })); // stored lower-case, as sanitizeAppearance does
+    await assertFails(save({ custom: { accent: '#12345' } }));
+    await assertFails(save({ custom: { mode: 'sepia' } }));
+    await assertFails(save({ custom: { accent: '#e11d48', extra: true } }));
+    await assertFails(save({ fontScale: 'huge' }));
+    await assertFails(save({ radius: 'pointy' }));
+    await assertFails(save({ chartPalette: 7 }));
+    await assertFails(save({ preset: 'adlens-dark', hacker: 1 }));
+    await assertFails(save('dark'));
+    await assertFails(updateDoc(me, { settings: { theme: 'dark', appearance: { preset: 'ocean' }, other: 1 }, updatedAt: serverTimestamp() }));
+    // someone else's profile is still off limits
+    await assertFails(updateDoc(doc(ctx(BOB), 'users', ALICE), { settings: { appearance: { preset: 'ocean' } }, updatedAt: serverTimestamp() }));
+  });
+
   test('cannot create or delete user docs from the browser', async () => {
     await assertFails(setDoc(doc(ctx('newbie'), 'users', 'newbie'), { displayName: 'x' }));
     await assertFails(deleteDoc(doc(ctx(ALICE), 'users', ALICE)));

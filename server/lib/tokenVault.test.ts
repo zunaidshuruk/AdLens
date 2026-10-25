@@ -7,8 +7,10 @@ import {
   connectionIdFor,
   createTokenVault,
   isPermanentRefreshError,
+  openAgentSecret,
   openSecret,
   parsePreviousSecrets,
+  sealAgentSecret,
   sealSecret,
   sealedKeyId,
   type ConnectionRecord,
@@ -247,4 +249,23 @@ test('reconnecting keeps createdAt and reactivates a revoked connection; delete 
 test('saving without a refresh token is refused', async () => {
   const { vault } = setup();
   await assert.rejects(vault.saveConnection({ uid: 'alice', provider: 'google', accountLabel: null, scopes: [], refreshToken: '' }), (e: unknown) => e instanceof VaultError && e.code === 'VAULT_INVALID_INPUT');
+});
+
+test('agent secrets: round trip, bound to the user AND the agent, strict ids', () => {
+  const kr = buildKeyring(SECRET_A);
+  const sealed = sealAgentSecret('sk-user-own-key', 'alice', 'agent_1', kr);
+  assert.ok(!sealed.includes('sk-user-own-key'));
+  assert.equal(openAgentSecret(sealed, 'alice', 'agent_1', kr), 'sk-user-own-key');
+  assert.throws(() => openAgentSecret(sealed, 'bob', 'agent_1', kr), /could not be read/); // other user
+  assert.throws(() => openAgentSecret(sealed, 'alice', 'agent_2', kr), /could not be read/); // other agent
+  assert.throws(() => sealAgentSecret('x', 'alice', '../evil', kr), (e: unknown) => e instanceof VaultError && e.code === 'VAULT_INVALID_INPUT');
+  assert.throws(() => sealAgentSecret('x', 'alice', '', kr), /Invalid connection context/);
+  assert.throws(() => sealAgentSecret('x', 'alice', 'a'.repeat(65), kr), /Invalid connection context/);
+  // a Google connection secret cannot be opened as an agent secret and vice versa
+  const googleSealed = sealSecret('google-refresh', ctx('alice'), kr);
+  assert.throws(() => openAgentSecret(googleSealed, 'alice', 'google', kr), /could not be read/);
+  assert.throws(() => sealSecret('x', { uid: 'alice', provider: 'google', connectionId: 'alice_google_extra', scope: 'extra' }, kr), /Invalid connection context/);
+  assert.throws(() => sealSecret('x', { uid: 'alice', provider: 'agent', connectionId: 'alice_agent' }, kr), /Invalid connection context/);
+  assert.equal(connectionIdFor('alice', 'google'), 'alice_google');
+  assert.equal(connectionIdFor('alice', 'agent', 'a1'), 'alice_agent_a1');
 });
