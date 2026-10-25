@@ -22,7 +22,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
 | 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault (7C-1, 7C-2, 7C-3) | ✅ 7A, 7B, 7B-2 verified (`82c215f`) · ✅ 7C-1/7C-2 build checked (`0096f89`: 79 tests, vault files untouched) · ⏳ Firestore/live checks + 7C-3 pending | `9b447e8` (7A), `3c829da` (7B) |
-| 8 | **Design system, appearance & theming** (UI/UX overhaul) | ⬜ Planned | — |
+| 8 | **Design system, appearance & theming** (UI/UX overhaul) | 🧩 Prep done (theme engine, command palette search, metric glossary) | — |
 | 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
 | 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
 | 11 | Search intelligence | 🧩 Prep done (insights + host breakdown + tests) | — |
@@ -390,9 +390,16 @@ Goal: a cleaner, more modern UI that every user can personalise. It comes before
 
 **Workspace brand theme (owners/admins):** logo + brand colour applied to shared and exported dashboards and reports (full white-label later). Users' personal theme still applies inside the app unless they choose "use workspace theme".
 
-Parallel prep candidates:
-- theme engine (accent → full palette in OKLCH, dark-mode derivation, WCAG contrast checker/fixer, font-scale tokens);
-- Firestore settings validation for appearance (extends the 7B rules).
+**Prep done (19 Oct 2026), tested and mutation-checked (132 tests in the repo):**
+- `src/utils/themeEngine.ts` (+ test, 15 tests):
+  - one accent in, a complete theme out: OKLCH shade scale, light and dark tokens, tints, radius, density and font-scale tokens, as CSS variables;
+  - every text colour is derived and checked against WCAG (AA, AAA in High contrast). A property test over about 1,000 generated themes, including yellow, white, black and grey accents, finds no unreadable text;
+  - contrast guard with a "fix it for me" suggestion for accents used as text or links;
+  - seven presets, "match system", chart palettes (default, canonical colour-blind safe Okabe–Ito, monochrome, brand), and `sanitizeAppearance` to validate saved settings.
+- `src/utils/commandPalette.ts` (+ test, 9 tests): Ctrl/⌘+K ranking (exact, prefix, word, keyword, initials such as "gsc", letters-in-order), recent-command boost, bold-highlight ranges, arrow-key wrap.
+- `src/config/metricGlossary.ts` (+ test, 6 tests): plain-language definition, formula and "which direction is good" for 28 metrics, with source-aware lookup ("Clicks" means different things in Search Console and Meta).
+
+**Still to do for Sprint 8 (not prepared, because the Firebase emulator can't run in Claude's environment):** extend `firestore.rules` so `settings.appearance` is accepted and validated, with rule tests. Do it in the build step so GitHub Actions checks it immediately, then republish the rules.
 
 ## Sprint 9 — Connections v2 ⬜
 
