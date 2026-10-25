@@ -122,17 +122,23 @@ export interface FirestoreStoreAdapter {
     }
   ): Promise<ImageAssetDoc>;
   deleteUserAvatar(uid: string): Promise<void>;
+  deleteUserRecursive(uid: string): Promise<void>;
   listWorkspacesForUser(uid: string): Promise<WorkspaceDoc[]>;
   getWorkspace(wsId: string): Promise<WorkspaceDoc | null>;
   updateWorkspace(
     wsId: string,
     patch: {
       name?: string;
+      ownerId?: string;
+      members?: Record<string, WorkspaceRole>;
+      memberIds?: string[];
       logoURL?: string | null;
       logoPath?: string | null;
       defaults?: WorkspaceDefaults;
     }
   ): Promise<WorkspaceDoc>;
+  deleteWorkspaceRecursive(wsId: string): Promise<void>;
+  removeWorkspaceMember(wsId: string, uid: string): Promise<void>;
   getWorkspaceLogo(wsId: string): Promise<ImageAssetDoc | null>;
   setWorkspaceLogo(
     wsId: string,
@@ -490,6 +496,11 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     );
   },
 
+  async deleteUserRecursive(uid: string): Promise<void> {
+    const db = getAdminFirestore();
+    await db.recursiveDelete(db.collection('users').doc(uid));
+  },
+
   async listWorkspacesForUser(uid: string): Promise<WorkspaceDoc[]> {
     const db = getAdminFirestore();
     const snap = await db
@@ -513,6 +524,9 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
       updatedAt: FieldValue.serverTimestamp(),
     };
     if (patch.name !== undefined) updateData.name = patch.name;
+    if (patch.ownerId !== undefined) updateData.ownerId = patch.ownerId;
+    if (patch.members !== undefined) updateData.members = patch.members;
+    if (patch.memberIds !== undefined) updateData.memberIds = patch.memberIds;
     if (patch.logoURL !== undefined) updateData.logoURL = patch.logoURL;
     if (patch.logoPath !== undefined) updateData.logoPath = patch.logoPath;
     if (patch.defaults !== undefined) updateData.defaults = patch.defaults;
@@ -520,6 +534,30 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     await ref.update(updateData);
     const updated = await ref.get();
     return mapRawWorkspace(updated.id, updated.data() ?? {});
+  },
+
+  async deleteWorkspaceRecursive(wsId: string): Promise<void> {
+    const db = getAdminFirestore();
+    await db.recursiveDelete(db.collection('workspaces').doc(wsId));
+  },
+
+  async removeWorkspaceMember(wsId: string, uid: string): Promise<void> {
+    const db = getAdminFirestore();
+    const ref = db.collection('workspaces').doc(wsId);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const raw = snap.data() ?? {};
+      const ws = mapRawWorkspace(snap.id, raw);
+      const nextMembers = { ...ws.members };
+      delete nextMembers[uid];
+      const nextMemberIds = ws.memberIds.filter((id) => id !== uid);
+      tx.update(ref, {
+        members: nextMembers,
+        memberIds: nextMemberIds,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
   },
 
   async getWorkspaceLogo(wsId: string): Promise<ImageAssetDoc | null> {
@@ -841,9 +879,17 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       }
     },
 
+    async deleteUserRecursive(uid) {
+      users.delete(uid);
+      userAvatars.delete(uid);
+    },
+
     async listWorkspacesForUser(uid) {
       return Array.from(workspaces.values())
-        .filter((w) => Object.prototype.hasOwnProperty.call(w.members, uid))
+        .filter(
+          (w) =>
+            Object.prototype.hasOwnProperty.call(w.members, uid) || w.memberIds.includes(uid)
+        )
         .map((w) => structuredClone(w));
     },
 
@@ -860,6 +906,9 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       const updated: WorkspaceDoc = {
         ...existing,
         ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.ownerId !== undefined ? { ownerId: patch.ownerId } : {}),
+        ...(patch.members !== undefined ? { members: { ...patch.members } } : {}),
+        ...(patch.memberIds !== undefined ? { memberIds: [...patch.memberIds] } : {}),
         ...(patch.logoURL !== undefined ? { logoURL: patch.logoURL } : {}),
         ...(patch.logoPath !== undefined ? { logoPath: patch.logoPath } : {}),
         ...(patch.defaults !== undefined ? { defaults: { ...patch.defaults } } : {}),
@@ -867,6 +916,26 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       };
       workspaces.set(wsId, updated);
       return structuredClone(updated);
+    },
+
+    async deleteWorkspaceRecursive(wsId) {
+      workspaces.delete(wsId);
+      workspaceLogos.delete(wsId);
+      projectsByWs.delete(wsId);
+    },
+
+    async removeWorkspaceMember(wsId, uid) {
+      const ws = workspaces.get(wsId);
+      if (!ws) return;
+      const nextMembers = { ...ws.members };
+      delete nextMembers[uid];
+      const nextMemberIds = ws.memberIds.filter((id) => id !== uid);
+      workspaces.set(wsId, {
+        ...ws,
+        members: nextMembers,
+        memberIds: nextMemberIds,
+        updatedAt: new Date().toISOString(),
+      });
     },
 
     async getWorkspaceLogo(wsId) {

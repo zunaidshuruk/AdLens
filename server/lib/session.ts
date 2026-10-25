@@ -91,3 +91,13 @@ export function clearSession(res: Response): void {
     path: '/',
   });
 }
+
+export function clearOAuthState(res: Response): void {
+  const { isProduction } = getServerConfig();
+  res.clearCookie(OAUTH_STATE_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax',
+    path: '/',
+  });
+}

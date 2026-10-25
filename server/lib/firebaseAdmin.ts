@@ -12,11 +12,44 @@ export class FirebaseAdminConfigError extends Error {
 let cachedAdminApp: App | null = null;
 let cachedServiceAccountSignature: string | null = null;
 let testTokenVerifier: ((token: string) => Promise<DecodedIdToken>) | null = null;
+let testUserDeleter: ((uid: string) => Promise<void>) | null = null;
 
 export function setTestTokenVerifier(
   verifier: ((token: string) => Promise<DecodedIdToken>) | null
 ): void {
   testTokenVerifier = verifier;
+}
+
+export function setTestUserDeleter(
+  deleter: ((uid: string) => Promise<void>) | null
+): void {
+  testUserDeleter = deleter;
+}
+
+function isAuthUserNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code =
+    (err as { code?: unknown; errorInfo?: { code?: unknown } }).code ??
+    (err as { errorInfo?: { code?: unknown } }).errorInfo?.code;
+  if (code === 'auth/user-not-found') return true;
+  const msg = (err as { message?: unknown }).message;
+  return typeof msg === 'string' && msg.includes('auth/user-not-found');
+}
+
+export async function deleteAuthUser(uid: string): Promise<void> {
+  try {
+    if (testUserDeleter) {
+      await testUserDeleter(uid);
+      return;
+    }
+    const app = getFirebaseAdminApp();
+    await getAuth(app).deleteUser(uid);
+  } catch (err) {
+    if (isAuthUserNotFoundError(err)) {
+      return;
+    }
+    throw err;
+  }
 }
 
 export function parseServiceAccountJson(rawJson: string): ServiceAccount {

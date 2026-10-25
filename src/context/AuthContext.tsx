@@ -16,6 +16,7 @@ import {
   OAuthProvider,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  reauthenticateWithPopup,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -77,6 +78,8 @@ export interface AuthContextValue {
   reloadUser: () => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   setPasswordForSsoAccount: (newPassword: string) => Promise<void>;
+  reauthenticateWithPassword: (password: string) => Promise<void>;
+  reauthenticateWithGoogle: () => Promise<void>;
   linkGoogleProvider: () => Promise<void>;
   linkMicrosoftProvider: () => Promise<void>;
   unlinkProvider: (providerId: string) => Promise<void>;
@@ -496,6 +499,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [requireAuthInstance, forceUserRefresh]
   );
 
+  const reauthenticateWithPassword = useCallback(
+    async (password: string) => {
+      const auth = requireAuthInstance();
+      const current = auth.currentUser;
+      if (!current || !current.email) {
+        throw new Error('No signed-in user with an email address.');
+      }
+      try {
+        const credential = EmailAuthProvider.credential(current.email, password);
+        await reauthenticateWithCredential(current, credential);
+        await current.getIdToken(true);
+        forceUserRefresh();
+      } catch (err) {
+        throw new Error(mapFirebaseErrorMessage(err));
+      }
+    },
+    [requireAuthInstance, forceUserRefresh]
+  );
+
+  const reauthenticateWithGoogle = useCallback(async () => {
+    const auth = requireAuthInstance();
+    const current = auth.currentUser;
+    if (!current) {
+      throw new Error('Please sign in first.');
+    }
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
+      await reauthenticateWithPopup(current, provider);
+      await current.getIdToken(true);
+      forceUserRefresh();
+    } catch (err) {
+      throw new Error(mapFirebaseErrorMessage(err));
+    }
+  }, [requireAuthInstance, forceUserRefresh]);
+
   const dismissAccountLinkNotice = useCallback(() => {
     setAccountLinkNotice(null);
   }, []);
@@ -525,6 +565,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       reloadUser,
       changePassword,
       setPasswordForSsoAccount,
+      reauthenticateWithPassword,
+      reauthenticateWithGoogle,
       linkGoogleProvider,
       linkMicrosoftProvider,
       unlinkProvider,
@@ -553,6 +595,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       reloadUser,
       changePassword,
       setPasswordForSsoAccount,
+      reauthenticateWithPassword,
+      reauthenticateWithGoogle,
       linkGoogleProvider,
       linkMicrosoftProvider,
       unlinkProvider,

@@ -26,6 +26,8 @@ import {
   X,
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { apiClient, ApiClientError } from '../api/client';
 import { PasswordStrengthChecklist } from '../components/PasswordStrengthChecklist';
 import {
   APP_NAME,
@@ -157,13 +159,17 @@ export const SettingsPage: React.FC = () => {
     user,
     providers,
     enabledProviders,
+    signOut,
     changePassword,
     setPasswordForSsoAccount,
+    reauthenticateWithPassword,
+    reauthenticateWithGoogle,
     linkGoogleProvider,
     linkMicrosoftProvider,
     unlinkProvider,
   } = useAuth();
 
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<SettingsTab>('all');
 
   // Avatar state
@@ -344,6 +350,99 @@ export const SettingsPage: React.FC = () => {
   const canUnlink = providers.length > 1;
 
   const passwordRules = evaluatePasswordRules(newPassword);
+
+  // Delete account modal state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteReauthPassword, setDeleteReauthPassword] = useState('');
+  const [deleteReauthBusy, setDeleteReauthBusy] = useState(false);
+  const [deleteReauthenticated, setDeleteReauthenticated] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const openDeleteAccountDialog = () => {
+    setDeleteDialogOpen(true);
+    setDeleteReauthPassword('');
+    setDeleteReauthBusy(false);
+    setDeleteReauthenticated(false);
+    setDeleteConfirmText('');
+    setDeleteSubmitting(false);
+    setDeleteError(null);
+  };
+
+  const closeDeleteAccountDialog = () => {
+    if (deleteSubmitting) return;
+    setDeleteDialogOpen(false);
+  };
+
+  const handleDeleteReauthWithPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deleteReauthPassword) return;
+    setDeleteError(null);
+    setDeleteReauthBusy(true);
+    try {
+      await reauthenticateWithPassword(deleteReauthPassword);
+      setDeleteReauthenticated(true);
+      setDeleteReauthPassword('');
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Unable to verify password.');
+    } finally {
+      setDeleteReauthBusy(false);
+    }
+  };
+
+  const handleDeleteReauthWithGoogle = async () => {
+    setDeleteError(null);
+    setDeleteReauthBusy(true);
+    try {
+      await reauthenticateWithGoogle();
+      setDeleteReauthenticated(true);
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : 'Unable to re-authenticate with Google.'
+      );
+    } finally {
+      setDeleteReauthBusy(false);
+    }
+  };
+
+  const handleConfirmDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deleteReauthenticated || deleteConfirmText !== 'DELETE') return;
+    setDeleteError(null);
+    setDeleteSubmitting(true);
+    try {
+      if (user) {
+        await user.getIdToken(true);
+      }
+      await apiClient.deleteMyAccount('DELETE');
+      await signOut();
+      navigate('/sign-in?deleted=1', {
+        replace: true,
+        state: { accountDeletedMessage: 'Your account was deleted.' },
+      });
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        if (err.code === 'TRANSFER_OWNERSHIP_REQUIRED' || err.status === 409) {
+          setDeleteError(
+            'You own a workspace that has other members. Please transfer workspace ownership or remove other members before deleting your account.'
+          );
+          setDeleteSubmitting(false);
+          return;
+        }
+        if (err.code === 'REAUTH_REQUIRED' || err.status === 401) {
+          setDeleteReauthenticated(false);
+          setDeleteError(
+            'Please sign in again to delete your account. Re-authenticate below and try again.'
+          );
+          setDeleteSubmitting(false);
+          return;
+        }
+      }
+      setDeleteError(err instanceof Error ? err.message : 'Unable to delete account.');
+      setDeleteSubmitting(false);
+    }
+  };
 
   // Avatar upload / remove
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1191,6 +1290,36 @@ export const SettingsPage: React.FC = () => {
               <span>Save display name</span>
             </button>
           </form>
+
+          {/* Danger Zone — Delete Account */}
+          <div
+            data-testid="account-danger-zone"
+            className="pt-5 border-t border-slate-200 dark:border-slate-800"
+          >
+            <div className="p-4 rounded-xl border border-red-200 dark:border-red-900/70 bg-red-50/50 dark:bg-red-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-red-700 dark:text-red-400">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Danger zone</span>
+                </div>
+                <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                  Delete account
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Permanently delete your AdLens profile, photo, solo workspaces you own, projects, saved settings, and connected Google/Meta access. This cannot be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openDeleteAccountDialog}
+                data-testid="open-delete-account-dialog"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors cursor-pointer shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete account</span>
+              </button>
+            </div>
+          </div>
         </section>
       )}
 
@@ -2059,6 +2188,179 @@ export const SettingsPage: React.FC = () => {
           <span>Property: {trackedDomain}</span>
         </div>
       </div>
+
+      {/* Delete Account Confirmation Dialog */}
+      {deleteDialogOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-dialog-title"
+          data-testid="delete-account-dialog"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-6 space-y-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-950/70 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2
+                    id="delete-account-dialog-title"
+                    className="text-base font-bold text-slate-900 dark:text-slate-50"
+                  >
+                    Delete account
+                  </h2>
+                  <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                    This action is permanent and cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeDeleteAccountDialog}
+                disabled={deleteSubmitting}
+                aria-label="Close delete account dialog"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+              <div className="font-semibold text-slate-900 dark:text-slate-100">
+                Deleting your account will permanently remove:
+              </div>
+              <ul className="list-disc pl-4 space-y-1 text-slate-600 dark:text-slate-400">
+                <li>Your user profile and profile photo</li>
+                <li>Workspaces you own (with no other members) and workspace logos</li>
+                <li>All projects and usage records inside your owned workspaces</li>
+                <li>Your saved personal preferences and notification settings</li>
+                <li>Connected Google (GA4, Search Console) and Meta Ads access</li>
+              </ul>
+            </div>
+
+            {deleteError && (
+              <div
+                role="alert"
+                data-testid="delete-account-error-banner"
+                className="flex items-start gap-2 p-3 rounded-xl border border-red-200 dark:border-red-900/70 bg-red-50/80 dark:bg-red-950/40 text-xs text-red-800 dark:text-red-200"
+              >
+                <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            {/* Step 1: Re-authenticate */}
+            <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                1. Confirm your identity
+              </div>
+
+              {deleteReauthenticated ? (
+                <div
+                  role="status"
+                  data-testid="delete-account-reauth-verified"
+                  className="flex items-center gap-2 p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/40 text-xs font-medium text-emerald-800 dark:text-emerald-200"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Identity verified — recent sign-in confirmed.</span>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {(hasPasswordProvider || (!hasGoogleProvider && showPasswordOption)) && (
+                    <form onSubmit={handleDeleteReauthWithPassword} className="flex gap-2">
+                      <input
+                        type="password"
+                        required
+                        autoComplete="current-password"
+                        value={deleteReauthPassword}
+                        onChange={(e) => setDeleteReauthPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        data-testid="delete-account-password-input"
+                        className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      />
+                      <button
+                        type="submit"
+                        disabled={deleteReauthBusy || !deleteReauthPassword}
+                        data-testid="delete-account-reauth-password-button"
+                        className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer shrink-0"
+                      >
+                        {deleteReauthBusy ? 'Verifying...' : 'Verify password'}
+                      </button>
+                    </form>
+                  )}
+
+                  {hasGoogleProvider && (
+                    <button
+                      type="button"
+                      disabled={deleteReauthBusy}
+                      onClick={handleDeleteReauthWithGoogle}
+                      data-testid="delete-account-reauth-google-button"
+                      className="w-full inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer disabled:opacity-50"
+                    >
+                      {deleteReauthBusy ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : null}
+                      <span>Re-authenticate with Google</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Type DELETE */}
+            <form onSubmit={handleConfirmDeleteAccount} className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="delete-account-confirm-input"
+                  className="block text-xs font-semibold text-slate-800 dark:text-slate-200"
+                >
+                  2. Type <span className="font-mono text-red-600 dark:text-red-400">DELETE</span> to confirm
+                </label>
+                <input
+                  id="delete-account-confirm-input"
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  disabled={!deleteReauthenticated || deleteSubmitting}
+                  placeholder="DELETE"
+                  data-testid="delete-account-confirm-input"
+                  className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={closeDeleteAccountDialog}
+                  disabled={deleteSubmitting}
+                  className="px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    !deleteReauthenticated ||
+                    deleteConfirmText !== 'DELETE' ||
+                    deleteSubmitting
+                  }
+                  data-testid="confirm-delete-account-button"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                >
+                  {deleteSubmitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>{deleteSubmitting ? 'Deleting account...' : 'Delete account'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

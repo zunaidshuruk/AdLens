@@ -35,6 +35,10 @@ export const SignInPage: React.FC = () => {
     (location.state as { from?: string } | null)?.from ||
     '/';
 
+  const accountDeletedMessage =
+    (location.state as { accountDeletedMessage?: string } | null)?.accountDeletedMessage ||
+    (searchParams.get('deleted') === '1' ? 'Your account was deleted.' : null);
+
   useEffect(() => {
     if (pendingLinkEmail && !email) {
       setEmail(pendingLinkEmail);
@@ -104,6 +108,16 @@ export const SignInPage: React.FC = () => {
 
         {/* Card */}
         <div className="p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs space-y-5">
+          {accountDeletedMessage && (
+            <div
+              role="status"
+              data-testid="account-deleted-banner"
+              className="p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/80 dark:bg-emerald-950/40 text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed"
+            >
+              {accountDeletedMessage}
+            </div>
+          )}
+
           {pendingLinkProviderLabel && (
             <div
               role="status"

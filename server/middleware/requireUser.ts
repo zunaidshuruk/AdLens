@@ -12,6 +12,7 @@ export interface AuthenticatedUser {
   picture?: string | null;
   emailVerified: boolean;
   providers: string[];
+  authTime?: number;
 }
 
 declare global {
@@ -86,6 +87,11 @@ export async function requireUser(
       return;
     }
 
+    const authTime =
+      typeof decoded.auth_time === 'number' && Number.isFinite(decoded.auth_time)
+        ? decoded.auth_time
+        : undefined;
+
     req.user = {
       uid: decoded.uid,
       email: typeof decoded.email === 'string' ? decoded.email : null,
@@ -96,6 +102,7 @@ export async function requireUser(
           : null,
       emailVerified: true,
       providers,
+      authTime,
     };
 
     next();

@@ -135,8 +135,12 @@ async function parseErrorResponse(response: Response): Promise<{ code: string; m
   return { code: errorCode, message: errorMessage };
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  let response = await performFetch(path, init, false);
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+  options?: { forceRefreshToken?: boolean }
+): Promise<T> {
+  let response = await performFetch(path, init, Boolean(options?.forceRefreshToken));
 
   if (!response.ok) {
     let parsedErr = await parseErrorResponse(response);
@@ -244,6 +248,17 @@ export const apiClient = {
     return apiRequest<{ deleted: boolean }>('/api/me/avatar', {
       method: 'DELETE',
     });
+  },
+
+  deleteMyAccount(confirm: string = 'DELETE'): Promise<{ ok: boolean }> {
+    return apiRequest<{ ok: boolean }>(
+      '/api/me/delete',
+      {
+        method: 'POST',
+        body: JSON.stringify({ confirm }),
+      },
+      { forceRefreshToken: true }
+    );
   },
 
   updateWorkspace(

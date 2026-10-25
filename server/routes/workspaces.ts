@@ -1,13 +1,16 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getPlanLimits } from '../config/plans.js';
+import { deleteAuthUser } from '../lib/firebaseAdmin.js';
 import {
   getFirestoreStore,
   type ProjectDoc,
   type WorkspaceDoc,
   type WorkspaceRole,
 } from '../lib/firestore.js';
+import { clearOAuthState, clearSession } from '../lib/session.js';
 import { normalizeDomain } from '../lib/sourceMatcher.js';
+import { getVault } from '../lib/vault.js';
 import { requireUser } from '../middleware/requireUser.js';
 import { validateAsset } from '../../src/utils/imageAssets.js';
 
@@ -361,6 +364,130 @@ meRouter.delete('/avatar', async (req: Request, res: Response) => {
       error: {
         code: 'AVATAR_DELETE_FAILED',
         message: err instanceof Error ? err.message : 'Failed to remove avatar.',
+      },
+    });
+  }
+});
+
+const RECENT_SIGN_IN_MAX_AGE_MS = 5 * 60 * 1000;
+
+// POST /api/me/delete -> permanently delete user account, owned solo workspaces, vault tokens, and auth user
+meRouter.post('/delete', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+
+  if (!req.body || typeof req.body !== 'object' || req.body.confirm !== 'DELETE') {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Confirmation text "DELETE" is required to delete your account.',
+      },
+    });
+    return;
+  }
+
+  const rawAuthTime = req.user?.authTime;
+  const authTimeMs =
+    typeof rawAuthTime === 'number' && Number.isFinite(rawAuthTime) && rawAuthTime > 0
+      ? rawAuthTime > 1e11
+        ? rawAuthTime
+        : rawAuthTime * 1000
+      : 0;
+
+  if (!authTimeMs || Date.now() - authTimeMs > RECENT_SIGN_IN_MAX_AGE_MS) {
+    res.status(401).json({
+      error: {
+        code: 'REAUTH_REQUIRED',
+        message: 'Please sign in again to delete your account',
+      },
+    });
+    return;
+  }
+
+  try {
+    // Step 2a: Revoke Google refresh token (ignore failures), then delete vault connections for google and meta
+    console.info('[delete-account]', { uid, step: 'revoke_and_delete_connections' });
+    const vault = getVault();
+    let refreshToken: string | undefined;
+    try {
+      refreshToken = await vault.getRefreshToken(uid, 'google');
+    } catch {
+      // Ignore VAULT_NOT_CONNECTED or decrypt failure
+    }
+
+    if (refreshToken) {
+      try {
+        const body = new URLSearchParams({ token: refreshToken });
+        await fetch('https://oauth2.googleapis.com/revoke', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+      } catch {
+        // Ignore network/revoke errors
+      }
+    }
+
+    await vault.deleteConnection(uid, 'google');
+    await vault.deleteConnection(uid, 'meta');
+
+    // Step 2b: Clean up workspaces where user is a member
+    console.info('[delete-account]', { uid, step: 'cleanup_workspaces' });
+    const store = getFirestoreStore();
+    const workspaces = await store.listWorkspacesForUser(uid);
+
+    for (const ws of workspaces) {
+      const role = getMemberRole(ws, uid);
+      const isOwner = ws.ownerId === uid || role === 'owner';
+      const allMemberUids = new Set<string>([
+        ...Object.keys(ws.members ?? {}),
+        ...(ws.memberIds ?? []),
+      ]);
+      const otherMembers = Array.from(allMemberUids).filter((mUid) => mUid && mUid !== uid);
+
+      if (isOwner && otherMembers.length > 0) {
+        console.info('[delete-account]', { uid, step: 'transfer_ownership_required' });
+        res.status(409).json({
+          error: {
+            code: 'TRANSFER_OWNERSHIP_REQUIRED',
+            message:
+              'You own a workspace with other members. Please transfer ownership or remove other members before deleting your account.',
+          },
+        });
+        return;
+      }
+    }
+
+    for (const ws of workspaces) {
+      const role = getMemberRole(ws, uid);
+      const isOwner = ws.ownerId === uid || role === 'owner';
+      if (isOwner) {
+        await store.deleteWorkspaceRecursive(ws.id);
+      } else {
+        await store.removeWorkspaceMember(ws.id, uid);
+      }
+    }
+
+    // Step 2c: Recursive delete users/{uid} (includes assets/avatar)
+    console.info('[delete-account]', { uid, step: 'delete_user_doc' });
+    await store.deleteUserRecursive(uid);
+
+    // Step 2d: Delete Firebase Auth user (ignores auth/user-not-found)
+    console.info('[delete-account]', { uid, step: 'delete_auth_user' });
+    await deleteAuthUser(uid);
+
+    // Step 3: Clear oauth-state cookie and session cookie
+    console.info('[delete-account]', { uid, step: 'clear_cookies_and_complete' });
+    clearOAuthState(res);
+    clearSession(res);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[delete-account]', { uid, step: 'failed' });
+    res.status(500).json({
+      error: {
+        code: 'ACCOUNT_DELETE_FAILED',
+        message: err instanceof Error ? err.message : 'Failed to delete account.',
       },
     });
   }
