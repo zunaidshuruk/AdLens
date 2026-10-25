@@ -203,10 +203,26 @@ test('sanitizeAppearance: accepts good data, repairs bad data and reports why', 
 test('Tailwind @theme block lists every colour role with the default light values', () => {
   const css = tailwindThemeCss();
   assert.match(css, /^@theme \{\n  --color-page: #[0-9a-f]{6};/);
-  for (const role of ['page', 'surface', 'raised', 'line', 'fg', 'fg-muted', 'accent', 'accent-hover', 'accent-soft', 'on-accent', 'accent-text', 'focus', 'success', 'warning', 'danger', 'accent-50', 'accent-950']) {
+  for (const role of ['page', 'surface', 'raised', 'fill-1', 'fill-2', 'fill-3', 'line', 'line-strong', 'fg', 'fg-muted', 'fg-subtle', 'accent', 'accent-hover', 'accent-soft', 'accent-line', 'on-accent', 'accent-text', 'focus',
+    'on-success', 'on-warning', 'on-danger', 'scrim', 'on-scrim', 'success', 'success-soft', 'success-line', 'warning', 'warning-soft', 'warning-line', 'danger', 'danger-soft', 'danger-line', 'accent-50', 'accent-950']) {
     assert.ok(css.includes(`--color-${role}: #`), role);
   }
   assert.ok(!css.includes('--radius') && !css.includes('--chart'));
   assert.equal(presetToOptions('midnight').mode, 'dark');
   assert.equal(presetToOptions('ocean', { fontScale: 'large' }).fontScale, 'large');
+});
+
+test('neutral fills step from page to panel; borders and faint text keep their minimum contrast', () => {
+  for (const mode of ['light', 'dark'] as const) {
+    const t = buildTheme(opts({ mode }));
+    const L = (k: string) => hexToOklch(t.vars[k]).L;
+    const order = ['--color-fill-1', '--color-fill-2', '--color-fill-3'].map(L);
+    for (let i = 1; i < order.length; i++) assert.ok(mode === 'light' ? order[i] < order[i - 1] : order[i] > order[i - 1], `${mode} fill ${i}`);
+    assert.ok(contrastRatio(t.vars['--color-line-strong'], t.vars['--color-surface']) >= 3, `${mode} input border`);
+    assert.ok(contrastRatio(t.vars['--color-fg-subtle'], t.vars['--color-surface']) >= 3, `${mode} faint text`);
+    assert.ok(contrastRatio(t.vars['--color-fg-muted'], t.vars['--color-fill-3']) >= 4.5, `${mode} muted on panel`);
+    for (const s of ['success', 'warning', 'danger']) {
+      assert.ok(contrastRatio(t.vars[`--color-${s}`], t.vars[`--color-${s}-soft`]) >= 4.5, `${mode} ${s} on its panel`);
+    }
+  }
 });

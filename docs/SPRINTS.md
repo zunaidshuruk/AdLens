@@ -22,15 +22,15 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
 | 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault + account deletion | ✅ Complete: 7A, 7B, 7B-2, 7C-1/2 and 7C-3 verified (`0bc704d`, 133 tests). One small fix pending (delete-account ownership check order) | `9b447e8`, `3c829da`, `0096f89`, `0bc704d` |
-| 8 | **Design system, appearance & theming** (UI/UX overhaul), in 6 small prompts (8-1 … 8-6) | 🔄 8-1 prompt sent · prep done (theme engine, command palette, metric glossary) | — |
+| 8 | **Design system, appearance & theming** (UI/UX overhaul), in 4 small prompts (8-1 … 8-4) | 🔄 8-1 prompt sent · prep done: theme engine, colour migration script (99.9% automatic), command palette, metric glossary | — |
 | 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
 | 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
 | 11 | Search intelligence | 🧩 Prep done (insights + host breakdown + tests) | — |
 | 12 | Page detail + site snapshot (cross-channel) | 🧩 Prep done (Meta ↔ GA4 campaign matcher) | — |
 | 13 | Flexible report builders (Explore) | ⬜ Planned | — |
 | 14 | **Custom dashboards: builder + template gallery** | ⬜ Planned | — |
-| 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 Prep done (engine router, report compactor, tool layer) | — |
-| 16 | Bring-your-own AI agents (16a server · 16b settings UI · 16c ask + chat · 16d webhook tools) | 🧩 Agent core prep done (SSRF guard, providers, runner, config, encrypted keys; 183 tests) | — |
+| 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 Prep done (engine router, report compactor, tool layer, **analyst service**) | — |
+| 16 | Bring-your-own AI agents (16a server · 16b settings UI · 16c ask + chat · 16d webhook tools) | 🧩 Agent core prep done (SSRF guard, providers, runner, config, encrypted keys, analyst service; 205 tests) | — |
 | 17 | MCP endpoint | ⬜ Planned | — |
 | 18 | Scale & hardening (quotas, shared cache, monitoring, reports, alerts) | ⬜ Planned | — |
 | 19 | Enterprise: SAML/OIDC single sign-on, MFA, audit log | ⬜ Planned | — |
@@ -393,19 +393,29 @@ Goal: a cleaner, more modern UI that every user can personalise. It comes before
 **Finding (19 Oct 2026):** the app has about **607 hard-coded colour classes** (`bg-white`, `text-slate-900`, `blue-600`, `dark:` pairs). A theme can only restyle what uses named colour roles, so the migration to roles is the real work of this sprint.
 
 **Colour roles** (Tailwind utilities generated from `--color-*` variables; defaults come from `tailwindThemeCss()` in `themeEngine.ts`, the user's theme overrides them on `<html>`):
-`bg-page`, `bg-surface`, `bg-raised`, `border-line`, `text-fg`, `text-fg-muted`, `bg-accent`, `hover:bg-accent-hover`, `bg-accent-soft`, `text-on-accent`, `text-accent-text`, `ring-focus`, `text-success`, `text-warning`, `text-danger`, `bg-accent-50 … bg-accent-950`. Charts read `--chart-1 … --chart-8`.
+- Surfaces: `bg-page`, `bg-surface`, `bg-raised`, `bg-fill-1/2/3` (panels, chips, hover), `border-line`, `border-line-strong` (inputs, meets 3:1), `bg-scrim` (overlays).
+- Text: `text-fg`, `text-fg-muted`, `text-fg-subtle` (icons and placeholders, 3:1), `text-on-scrim`.
+- Accent: `bg-accent`, `hover:bg-accent-hover`, `bg-accent-soft`, `border-accent-line`, `text-accent-text`, `text-on-accent`, `ring-focus`, `bg-accent-50 … 950`.
+- Status (each with `-soft` panel, `-line` border, text colour, and `text-on-*` for solid buttons): `success`, `warning`, `danger`.
+- Charts read `--chart-1 … --chart-8`. Every text role is checked against every surface it can sit on.
 
-**Six small prompts:**
-- **8-1** theme provider (applies variables, font size, density, radius; remembers the last theme to avoid a flash), Tailwind `@theme` block, Settings → Appearance (presets, accent picker with contrast guard, font size, density, chart palette). No page restyling yet.
-- **8-2** shared components migrated to roles (KpiCard, DataTable, charts, buttons, badges, states).
-- **8-3** app shell: sidebar, header, layout, command palette (Ctrl/⌘ K), mobile navigation.
-- **8-4** Overview and Google Analytics pages migrated.
-- **8-5** Search Console, Meta, AI Traffic, Connections, Settings pages migrated.
-- **8-6** metric tooltips from the glossary, then a test that fails if hard-coded palette classes remain.
-- A migration script (codemod) maps the common class pairs to roles automatically; Claude prepares it so AI Studio only reviews the leftovers.
+**Finding, corrected:** the app has **2,344 colour class uses in 29 files** (607 was a line count). The default presets use a cool tint so the migrated app keeps today's slate look.
 
-**Prep done (19 Oct 2026), tested and mutation-checked:**
-- `src/utils/themeEngine.ts` (+ test, 16 tests):
+**Four small prompts:**
+- **8-1** theme provider (applies variables, font size, density, radius; remembers the last theme to avoid a flash), the Tailwind `@theme` block, Settings → Appearance (presets, accent picker with contrast guard, font size, density, chart palette). No page restyling yet.
+- **8-2** run the colour migration script, fix the 2 items it lists, add `check:colors`.
+- **8-3** app shell and charts: sidebar, header, mobile navigation, command palette (Ctrl/⌘ K); chart colours (about 40 hex codes in 7 files) move to `--chart-N` and `--color-fg-muted` / `--color-line`.
+- **8-4** metric tooltips from the glossary; `check:colors` added to the tests so hard-coded palette colours cannot return.
+
+**Colour migration (prepared and proven, 19 Oct 2026):**
+- `scripts/migrate-colors.ts` (dry run by default; `--write`; `--check`), engine `scripts/colorMigration.ts`, `scripts/color-shift-report.ts`. Exact string scanner (comments, JSX text and code are never touched); light and `dark:` partners collapse into one role; anything unclear is left as written and reported.
+- Dry run on the real app: **2,341 of 2,344 classes converted automatically (1,071 light/dark pairs collapsed); 2 items need a human** (white spinners on a dark overlay → `text-on-scrim`).
+- Proven on a scratch copy: second run changes nothing; `tsc` clean; build passes; 195 tests pass; all 60 distinct role classes in use exist in the generated Tailwind CSS.
+- Look preserved: usage-weighted mean colour shift 0.077 (53% of usages under 0.06). The biggest changes are deliberate: secondary text merges into the main text colour (slightly crisper), input borders get stronger to meet accessibility contrast, and faint icon text is slightly darker.
+- 11 tests, mutation-checked (scanner, pair collapsing, rule table, rule/theme sync) plus a real-file test that migration is idempotent and changes only the inside of strings.
+
+**Other prep done (19 Oct 2026), tested and mutation-checked:**
+- `src/utils/themeEngine.ts` (+ test, 17 tests):
   - one accent in, a complete theme out: OKLCH shade scale, light and dark tokens, tints, radius, density and font-scale tokens, as CSS variables;
   - every text colour is derived and checked against WCAG (AA, AAA in High contrast). A property test over about 1,000 generated themes, including yellow, white, black and grey accents, finds no unreadable text;
   - contrast guard with a "fix it for me" suggestion for accents used as text or links;
@@ -547,6 +557,7 @@ Parallel prep candidates:
 - Each answer has a "Numbers used" panel showing the report results the model saw.
 
 ### 15a — Tools, chat screen and cloud Gemini (works for everyone)
+Split into small prompts: **15a-1** server endpoint `POST /api/ai/ask` wiring `analystService` (report registry as tools, atomic monthly allowance in Firestore, Gemini key and model from the environment, rate limit); **15a-2** chat screen with "Numbers used" and engine badge; **15a-3** consent dialog, usage meter and "describe a widget".
 - Gemini function calling over the report functions (declarations built by `src/utils/aiTools.ts`), snapshot-first strategy, streaming answers.
 - Chat UI on the AI Analyst page; conversation context includes the selected range and the current page.
 - **"Describe a widget":** generate a dashboard widget from plain language, preview it, add it to a dashboard (Sprint 14 builder).
@@ -564,6 +575,7 @@ Parallel prep candidates:
 - Open models (e.g. Qwen, Llama, Gemma) through WebGPU for browsers without Chrome's built-in AI. Structured JSON output instead of native function calling (WebLLM marks function calling as work in progress). Larger downloads and slower loads; consider only after 15b has real usage.
 
 **Prep done (19 Oct 2026), tested and mutation-checked:**
+- `server/lib/analystService.ts` (+ test, 10): the single entry point for "ask a question". Validates input first; refuses with a clear message when no data source is connected; requires a recorded consent for custom agents; offers only reports whose source is allowed AND connected; takes one question from the monthly allowance before calling the provider (built-in analyst only) and hands it back if the provider fails; never returns secrets.
 - `src/utils/aiEngineRouter.ts` (+ test): engine choice, script/language detection, and the privacy rule checked across every combination of settings and environment (the exhaustive test fails if the rule is weakened).
 - `src/utils/aiReportCompactor.ts` (+ test): shrinks any report result to a token budget: one-line KPIs, small tables, daily series summarised as min/max/average plus a sample, and an honest "showing first N of M rows".
 - `src/utils/aiTools.ts` (+ test): report definitions → Gemini function declarations (`parametersJsonSchema`), date-argument injection, tool shortlisting by question, and a compact tool menu for small models.
@@ -589,9 +601,10 @@ A user can add their own AI agent that answers questions about their ads and tra
 - `server/lib/agentRunner.ts` (+ test, 14): the tool loop with permissions, budgets, repeat detection, prompt-injection hardening, leak-free errors, timeout, history sanitising; shared with the Sprint 15 cloud analyst.
 - `server/lib/agentConfig.ts` (+ test, 7): validation of agent settings and keys, permission resolution, storage paths (`workspaces/{ws}/agents`, `workspaces/{ws}/agentSecrets`).
 - `server/lib/agentIntegration.test.ts` (3): the whole chain over real sockets.
+- `server/lib/analystService.ts` (+ test, 10): consent, allowance, refund, permissions, secrets (see Sprint 15).
 - `server/lib/tokenVault.ts` extended (backwards compatible) with `sealAgentSecret` / `openAgentSecret`.
 
-**Build steps (small prompts, after Sprint 15a):**
+**Build steps (small prompts, after Sprint 15a-1):**
 - **16a** server: agents API (create, edit, delete, list), key sealing, ask endpoint using the runner, rate limit and plan limit (agents per workspace); Firestore rules for `agents` (members read) and tests.
 - **16b** screens: Settings → AI agents (add, edit, test connection), permissions picker, consent dialog, webhook secret shown once.
 - **16c** AI Analyst page: agent picker, chat, "Numbers used" panel from the trace.
@@ -643,7 +656,8 @@ Adopts #30.
 | 18 Oct 2026 | Uploads = profile pictures and workspace logos (Cloud Storage); settings and configuration stored in Firestore and synced across devices. CSV data imports not planned |
 | 18 Oct 2026 | SSO in two stages: social SSO (Google, Microsoft) in Sprint 7A; enterprise SAML/OIDC in Sprint 17 |
 | 18 Oct 2026 | Public-mode safeguard: the Meta system-user token is usable only by allow-listed emails, so other users can never see Synesis IT ad accounts |
-| 19 Oct 2026 | Sprint 8 is split into six small prompts because the app has ~607 hard-coded colour classes that must move to named colour roles (page, surface, line, fg, accent…) before a user theme can change anything |
+| 19 Oct 2026 | Colour migration is automated by a tested script (2,341 of 2,344 classes); Sprint 8 is now four prompts. Cool-tinted default presets keep the current slate look; input borders and faint text deliberately meet WCAG non-text contrast |
+| 19 Oct 2026 | Sprint 8 was first split into six small prompts because the app has ~607 hard-coded colour classes that must move to named colour roles (page, surface, line, fg, accent…) before a user theme can change anything |
 | 19 Oct 2026 | Custom AI agents: Gemini, OpenAI-compatible and signed webhooks; the user's own keys are encrypted with the vault; endpoints are SSRF-guarded; each agent only gets reports its allowed AND connected sources cover |
 | 19 Oct 2026 | **AI is hybrid:** cloud Gemini by default; on-device "Private mode" (Chrome built-in Gemini Nano first, WebLLM later if needed) is opt-in; private mode never reaches the cloud without the user's explicit action |
 | 19 Oct 2026 | Token vault: per-user, owner-bound encryption in server-only Firestore collection `connections`; each person uses their own Google/Meta connection; optional TOKEN_ENCRYPTION_KEY_PREVIOUS for key rotation |

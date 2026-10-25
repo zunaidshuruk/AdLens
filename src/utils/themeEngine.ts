@@ -196,8 +196,8 @@ export function generateAccentScale(accentInput: string): Record<number, string>
 
 const TINTS: Record<Exclude<Tint, 'accent'>, { h: number; c: number }> = {
   none: { h: 0, c: 0 },
-  cool: { h: 250, c: 0.008 },
-  warm: { h: 75, c: 0.011 },
+  cool: { h: 250, c: 0.005 },
+  warm: { h: 75, c: 0.009 },
 };
 
 const OKABE_ITO = ['#e69f00', '#56b4e9', '#009e73', '#f0e442', '#0072b2', '#d55e00', '#cc79a7', '#999999'];
@@ -246,44 +246,71 @@ export interface Theme {
   adjustments: string[];
 }
 
+/** Pushes a colour until it meets `min` against every background (all backgrounds share one polarity). */
+function ensureOnAll(fg: string, bgs: string[], min: number): string {
+  let c = fg;
+  for (let round = 0; round < 3; round++) {
+    for (const bg of bgs) c = ensureContrast(c, bg, min).hex;
+    if (bgs.every((bg) => contrastRatio(c, bg) >= min)) break;
+  }
+  return c;
+}
+
+const STATUS_HUES = { success: 150, warning: 75, danger: 25 } as const;
+
 export function buildTheme(options: ThemeOptions): Theme {
   const accent = normalizeHex(options.accent);
   if (!accent) throw new Error(`Invalid accent colour: ${options.accent}`);
   const { mode, contrast } = options;
+  const light = mode === 'light';
   const high = contrast === 'high';
   const textMin = high ? 7 : 4.5;
   const accentHue = hexToOklch(accent).h;
   const tint = options.tint === 'accent' ? { h: accentHue, c: 0.01 } : TINTS[options.tint];
   const scale = generateAccentScale(accent);
   const adjustments: string[] = [];
+  const tinted = (L: number, k = 1) => oklchToHex(L, tint.c * k, tint.h);
 
-  const bg = mode === 'light' ? oklchToHex(0.98, tint.c, tint.h) : oklchToHex(0.17, tint.c, tint.h);
-  const surface = mode === 'light' ? '#ffffff' : oklchToHex(0.21, tint.c, tint.h);
-  const surfaceRaised = mode === 'light' ? '#ffffff' : oklchToHex(0.25, tint.c, tint.h);
-  const border = high
-    ? mode === 'light' ? oklchToHex(0.45, tint.c, tint.h) : oklchToHex(0.75, tint.c, tint.h)
-    : mode === 'light' ? oklchToHex(0.91, tint.c * 1.2, tint.h) : oklchToHex(0.33, tint.c * 1.2, tint.h);
+  // Neutral surfaces: page < surface < raised, plus three fill levels for panels, chips and hover states.
+  const bg = light ? tinted(0.98) : tinted(0.17);
+  const surface = light ? '#ffffff' : tinted(0.21);
+  const raised = light ? '#ffffff' : tinted(0.25);
+  const fill1 = light ? tinted(0.965) : tinted(0.26);
+  const fill2 = light ? tinted(0.94) : tinted(0.3);
+  const fill3 = light ? tinted(0.905) : tinted(0.35);
+  const border = high ? (light ? tinted(0.45, 1.2) : tinted(0.75, 1.2)) : light ? tinted(0.91, 1.2) : tinted(0.33, 1.2);
+  const lineStrong = ensureOnAll(high ? (light ? tinted(0.35) : tinted(0.85)) : light ? tinted(0.7, 1.5) : tinted(0.5, 1.5), [surface, bg], 3);
+  const grounds = [bg, surface, fill1, fill2, fill3];
 
-  const textBase = high ? (mode === 'light' ? '#000000' : '#ffffff') : mode === 'light' ? oklchToHex(0.21, tint.c, tint.h) : oklchToHex(0.96, tint.c, tint.h);
-  const text = ensureContrast(textBase, bg, textMin).hex;
-  const mutedBase = high ? text : mode === 'light' ? oklchToHex(0.48, tint.c, tint.h) : oklchToHex(0.74, tint.c, tint.h);
-  // Muted text must pass on both the page and the cards.
-  const mutedOnBg = ensureContrast(mutedBase, bg, textMin).hex;
-  const textMuted = ensureContrast(mutedOnBg, surface, textMin).hex;
+  // Text roles, each guaranteed on every ground it can sit on.
+  const fgBase = high ? (light ? '#000000' : '#ffffff') : light ? tinted(0.21) : tinted(0.96);
+  const fg = ensureOnAll(fgBase, grounds, textMin);
+  const mutedBase = high ? fg : light ? tinted(0.48) : tinted(0.74);
+  const fgMuted = ensureOnAll(mutedBase, grounds, textMin);
+  const fgSubtle = ensureOnAll(high ? fgMuted : light ? tinted(0.62) : tinted(0.6), [bg, surface, fill1, fill2], 3);
 
+  // Accent family.
+  const accentSoft = light ? scale[100] : scale[900];
+  const accentLine = light ? scale[200] : scale[800];
   const onAccent = bestOn(accent);
-  const accentTextFix = ensureContrast(accent, surface, textMin);
-  const accentTextOnBg = ensureContrast(accentTextFix.hex, bg, textMin);
-  const accentText = accentTextOnBg.hex;
-  if (accentTextFix.changed || accentTextOnBg.changed) {
-    adjustments.push(`Your accent colour was ${mode === 'light' ? 'darkened' : 'lightened'} where it is used as text or links, to stay readable.`);
+  const accentTextRaw = ensureOnAll(accent, [surface, bg], textMin);
+  const accentText = ensureOnAll(accentTextRaw, [surface, bg, accentSoft, fill1], textMin);
+  if (accentText.toLowerCase() !== accent) {
+    adjustments.push(`Your accent colour was ${light ? 'darkened' : 'lightened'} where it is used as text or links, to stay readable.`);
   }
   const focusRing = ensureContrast(accent, bg, 3).hex;
 
-  const status = (lightHex: string, darkHex: string) => ensureContrast(mode === 'light' ? lightHex : darkHex, surface, textMin).hex;
-  const success = status('#15803d', '#4ade80');
-  const warning = status('#b45309', '#fbbf24');
-  const danger = status('#b91c1c', '#f87171');
+  // Status families: text, soft panel background and panel border.
+  const status = (name: keyof typeof STATUS_HUES, lightBase: string, darkBase: string) => {
+    const h = STATUS_HUES[name];
+    const soft = light ? oklchToHex(0.965, 0.028, h) : oklchToHex(0.27, 0.05, h);
+    const line = light ? oklchToHex(0.89, 0.06, h) : oklchToHex(0.38, 0.075, h);
+    const text = ensureOnAll(light ? lightBase : darkBase, [surface, bg, soft], textMin);
+    return { soft, line, text };
+  };
+  const success = status('success', '#15803d', '#4ade80');
+  const warning = status('warning', '#b45309', '#fbbf24');
+  const danger = status('danger', '#b91c1c', '#f87171');
 
   const charts = chartColors(options.chartPalette, accent, surface, mode);
   const [rSm, rMd, rLg] = RADII[options.radius];
@@ -292,19 +319,36 @@ export function buildTheme(options: ThemeOptions): Theme {
   const vars: Record<string, string> = {
     '--color-page': bg,
     '--color-surface': surface,
-    '--color-raised': surfaceRaised,
+    '--color-raised': raised,
+    '--color-fill-1': fill1,
+    '--color-fill-2': fill2,
+    '--color-fill-3': fill3,
     '--color-line': border,
-    '--color-fg': text,
-    '--color-fg-muted': textMuted,
+    '--color-line-strong': lineStrong,
+    '--color-fg': fg,
+    '--color-fg-muted': fgMuted,
+    '--color-fg-subtle': fgSubtle,
     '--color-accent': accent,
-    '--color-accent-hover': mode === 'light' ? scale[700] : scale[300],
-    '--color-accent-soft': mode === 'light' ? scale[100] : scale[900],
+    '--color-accent-hover': light ? scale[700] : scale[300],
+    '--color-accent-soft': accentSoft,
+    '--color-accent-line': accentLine,
     '--color-on-accent': onAccent,
     '--color-accent-text': accentText,
     '--color-focus': focusRing,
-    '--color-success': success,
-    '--color-warning': warning,
-    '--color-danger': danger,
+    '--color-on-success': bestOn(success.text),
+    '--color-on-warning': bestOn(warning.text),
+    '--color-on-danger': bestOn(danger.text),
+    '--color-scrim': light ? '#0f172a' : '#000000',
+    '--color-on-scrim': '#ffffff',
+    '--color-success': success.text,
+    '--color-success-soft': success.soft,
+    '--color-success-line': success.line,
+    '--color-warning': warning.text,
+    '--color-warning-soft': warning.soft,
+    '--color-warning-line': warning.line,
+    '--color-danger': danger.text,
+    '--color-danger-soft': danger.soft,
+    '--color-danger-line': danger.line,
     '--radius-sm': rSm,
     '--radius-md': rMd,
     '--radius-lg': rLg,
@@ -312,7 +356,7 @@ export function buildTheme(options: ThemeOptions): Theme {
     '--font-scale': String(factor),
     '--root-font-size': `${factor * 100}%`,
   };
-  SCALE_STEPS.forEach((s) => (vars[`--color-accent-${s}`] = scale[s]));
+  SCALE_STEPS.forEach((st) => (vars[`--color-accent-${st}`] = scale[st]));
   charts.forEach((c, i) => (vars[`--chart-${i + 1}`] = c));
 
   const check = (label: string, foreground: string, background: string, required: number): ContrastCheck => {
@@ -320,16 +364,28 @@ export function buildTheme(options: ThemeOptions): Theme {
     return { label, foreground, background, ratio, required, pass: ratio >= required };
   };
   const checks: ContrastCheck[] = [
-    check('Body text on page', text, bg, textMin),
-    check('Body text on cards', text, surface, textMin),
-    check('Secondary text on cards', textMuted, surface, textMin),
-    check('Secondary text on page', textMuted, bg, textMin),
+    check('Body text on page', fg, bg, textMin),
+    check('Body text on cards', fg, surface, textMin),
+    check('Body text on panels', fg, fill3, textMin),
+    check('Secondary text on page', fgMuted, bg, textMin),
+    check('Secondary text on cards', fgMuted, surface, textMin),
+    check('Secondary text on panels', fgMuted, fill3, textMin),
+    check('Faint text and icons on cards', fgSubtle, surface, 3),
+    check('Faint text and icons on panels', fgSubtle, fill2, 3),
     check('Text on accent buttons', onAccent, accent, 4.5),
     check('Accent used as text', accentText, surface, textMin),
+    check('Accent text on accent panels', accentText, accentSoft, textMin),
     check('Focus ring', focusRing, bg, 3),
-    check('Success text', success, surface, textMin),
-    check('Warning text', warning, surface, textMin),
-    check('Danger text', danger, surface, textMin),
+    check('Input borders', lineStrong, surface, 3),
+    check('Success text', success.text, surface, textMin),
+    check('Success text on its panel', success.text, success.soft, textMin),
+    check('Warning text', warning.text, surface, textMin),
+    check('Warning text on its panel', warning.text, warning.soft, textMin),
+    check('Danger text', danger.text, surface, textMin),
+    check('Danger text on its panel', danger.text, danger.soft, textMin),
+    check('Text on solid success buttons', bestOn(success.text), success.text, 4.5),
+    check('Text on solid warning buttons', bestOn(warning.text), warning.text, 4.5),
+    check('Text on solid danger buttons', bestOn(danger.text), danger.text, 4.5),
   ];
   if (high) checks.push(check('Borders', border, bg, 3));
   if (options.chartPalette !== 'colorblind') {
@@ -379,8 +435,8 @@ export function suggestAccentFix(accentInput: string, mode: Mode, contrast: Cont
 export type PresetId = 'adlens-light' | 'adlens-dark' | 'midnight' | 'ocean' | 'forest' | 'sunset' | 'high-contrast';
 
 export const THEME_PRESETS: Record<PresetId, { label: string; mode: Mode; accent: string; tint: Tint; contrast: ContrastLevel }> = {
-  'adlens-light': { label: 'AdLens Light', mode: 'light', accent: '#1d4ed8', tint: 'none', contrast: 'standard' },
-  'adlens-dark': { label: 'AdLens Dark', mode: 'dark', accent: '#3b82f6', tint: 'none', contrast: 'standard' },
+  'adlens-light': { label: 'AdLens Light', mode: 'light', accent: '#1d4ed8', tint: 'cool', contrast: 'standard' },
+  'adlens-dark': { label: 'AdLens Dark', mode: 'dark', accent: '#3b82f6', tint: 'cool', contrast: 'standard' },
   midnight: { label: 'Midnight', mode: 'dark', accent: '#818cf8', tint: 'cool', contrast: 'standard' },
   ocean: { label: 'Ocean', mode: 'light', accent: '#0e7490', tint: 'cool', contrast: 'standard' },
   forest: { label: 'Forest', mode: 'light', accent: '#15803d', tint: 'warm', contrast: 'standard' },
