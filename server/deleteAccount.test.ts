@@ -253,6 +253,25 @@ test('AdLens 7C-3 — POST /api/me/delete: stale auth_time, step ordering, retry
       accessTokenExpiresAt: Date.now() + 3600_000,
     });
 
+    await baseVault.saveConnection({
+      uid: 'uid_owner_team',
+      provider: 'google',
+      accountLabel: 'team-owner@example.com',
+      scopes: GOOGLE_OAUTH_SCOPES,
+      refreshToken: 'RT_SECRET_TEAM_OWNER_GOOGLE',
+      accessToken: 'AT_SECRET_TEAM_OWNER_GOOGLE',
+      accessTokenExpiresAt: Date.now() + 3600_000,
+    });
+    await baseVault.saveConnection({
+      uid: 'uid_owner_team',
+      provider: 'meta',
+      accountLabel: 'team-owner-meta@example.com',
+      scopes: ['ads_read'],
+      refreshToken: 'RT_SECRET_TEAM_OWNER_META',
+      accessToken: 'AT_SECRET_TEAM_OWNER_META',
+      accessTokenExpiresAt: Date.now() + 3600_000,
+    });
+
     // 1. Missing/invalid confirm body -> 400
     const badBodyRes = await originalFetch(`${baseUrl}/api/me/delete`, {
       method: 'POST',
@@ -280,7 +299,7 @@ test('AdLens 7C-3 — POST /api/me/delete: stale auth_time, step ordering, retry
     assert.equal(staleBody.error.message, 'Please sign in again to delete your account');
     assert.equal(stepLog.length, 0);
 
-    // 3. Owner with other members -> 409 TRANSFER_OWNERSHIP_REQUIRED, nothing after step 2b runs
+    // 3. Owner with other members -> 409 TRANSFER_OWNERSHIP_REQUIRED, pre-flight blocks before any destructive step
     stepLog.length = 0;
     const teamOwnerRes = await originalFetch(`${baseUrl}/api/me/delete`, {
       method: 'POST',
@@ -293,6 +312,13 @@ test('AdLens 7C-3 — POST /api/me/delete: stale auth_time, step ordering, retry
     assert.equal(teamOwnerRes.status, 409);
     const teamOwnerBody = (await teamOwnerRes.json()) as { error: { code: string } };
     assert.equal(teamOwnerBody.error.code, 'TRANSFER_OWNERSHIP_REQUIRED');
+    // No revoke or vault delete or destructive Firestore/Auth calls ran
+    assert.deepEqual(stepLog, []);
+    // Team owner's Google and Meta connections remain untouched in the vault
+    assert.equal(vaultStore.map.has('uid_owner_team_google'), true);
+    assert.equal(vaultStore.map.has('uid_owner_team_meta'), true);
+    assert.equal(await baseVault.getRefreshToken('uid_owner_team', 'google'), 'RT_SECRET_TEAM_OWNER_GOOGLE');
+    assert.equal(await baseVault.getRefreshToken('uid_owner_team', 'meta'), 'RT_SECRET_TEAM_OWNER_META');
     // Team owner's workspace, user doc, and auth user still exist
     assert.ok(await baseFirestore.getWorkspace('ws_uid_owner_team'));
     assert.ok(await baseFirestore.getUser('uid_owner_team'));

@@ -404,6 +404,32 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
   }
 
   try {
+    // Pre-flight check: if the user owns any workspace that has other members, block before any destructive step
+    const store = getFirestoreStore();
+    const workspaces = await store.listWorkspacesForUser(uid);
+
+    for (const ws of workspaces) {
+      const role = getMemberRole(ws, uid);
+      const isOwner = ws.ownerId === uid || role === 'owner';
+      const allMemberUids = new Set<string>([
+        ...Object.keys(ws.members ?? {}),
+        ...(ws.memberIds ?? []),
+      ]);
+      const otherMembers = Array.from(allMemberUids).filter((mUid) => mUid && mUid !== uid);
+
+      if (isOwner && otherMembers.length > 0) {
+        console.info('[delete-account]', { uid, step: 'transfer_ownership_required' });
+        res.status(409).json({
+          error: {
+            code: 'TRANSFER_OWNERSHIP_REQUIRED',
+            message:
+              'You own a workspace with other members. Please transfer ownership or remove other members before deleting your account.',
+          },
+        });
+        return;
+      }
+    }
+
     // Step 2a: Revoke Google refresh token (ignore failures), then delete vault connections for google and meta
     console.info('[delete-account]', { uid, step: 'revoke_and_delete_connections' });
     const vault = getVault();
@@ -434,31 +460,6 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
 
     // Step 2b: Clean up workspaces where user is a member
     console.info('[delete-account]', { uid, step: 'cleanup_workspaces' });
-    const store = getFirestoreStore();
-    const workspaces = await store.listWorkspacesForUser(uid);
-
-    for (const ws of workspaces) {
-      const role = getMemberRole(ws, uid);
-      const isOwner = ws.ownerId === uid || role === 'owner';
-      const allMemberUids = new Set<string>([
-        ...Object.keys(ws.members ?? {}),
-        ...(ws.memberIds ?? []),
-      ]);
-      const otherMembers = Array.from(allMemberUids).filter((mUid) => mUid && mUid !== uid);
-
-      if (isOwner && otherMembers.length > 0) {
-        console.info('[delete-account]', { uid, step: 'transfer_ownership_required' });
-        res.status(409).json({
-          error: {
-            code: 'TRANSFER_OWNERSHIP_REQUIRED',
-            message:
-              'You own a workspace with other members. Please transfer ownership or remove other members before deleting your account.',
-          },
-        });
-        return;
-      }
-    }
-
     for (const ws of workspaces) {
       const role = getMemberRole(ws, uid);
       const isOwner = ws.ownerId === uid || role === 'owner';
