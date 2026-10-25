@@ -21,7 +21,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 4 | Live Search Console data + Vercel support | ✅ Verified (import fix `c72ab43`) | `dddd714` |
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
-| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault (7C-1, 7C-2, 7C-3) | ✅ 7A, 7B, 7B-2 verified (`82c215f`) · 🔄 7C-1/7C-2 prompts sent (vault module ready) | `9b447e8` (7A), `3c829da` (7B) |
+| 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault (7C-1, 7C-2, 7C-3) | ✅ 7A, 7B, 7B-2 verified (`82c215f`) · ✅ 7C-1/7C-2 build checked (`0096f89`: 79 tests, vault files untouched) · ⏳ Firestore/live checks + 7C-3 pending | `9b447e8` (7A), `3c829da` (7B) |
 | 8 | **Design system, appearance & theming** (UI/UX overhaul) | ⬜ Planned | — |
 | 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
 | 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
@@ -29,7 +29,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 12 | Page detail + site snapshot (cross-channel) | 🧩 Prep done (Meta ↔ GA4 campaign matcher) | — |
 | 13 | Flexible report builders (Explore) | ⬜ Planned | — |
 | 14 | **Custom dashboards: builder + template gallery** | ⬜ Planned | — |
-| 15 | Built-in AI analyst (Gemini) | ⬜ Planned | — |
+| 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 Prep done (engine router, report compactor, tool layer) | — |
 | 16 | Bring-your-own AI agents | ⬜ Planned | — |
 | 17 | MCP endpoint | ⬜ Planned | — |
 | 18 | Scale & hardening (quotas, shared cache, monitoring, reports, alerts) | ⬜ Planned | — |
@@ -511,12 +511,41 @@ Parallel prep candidates:
 - template → dashboard instantiation with source checks;
 - tests.
 
-## Sprint 15 — Built-in AI analyst (Gemini) ⬜
+## Sprint 15 — Hybrid AI analyst: cloud Gemini + on-device Private mode ⬜
 
-- Gemini function calling over all report functions, using the snapshot-first strategy.
-- **"Describe a widget":** generate a dashboard widget from plain language, preview it, then add it to a dashboard (Sprint 14 builder).
-- Per-user AI usage limits, read from the workspace plan, so one user can't run up costs for everyone.
-- First-use consent: "Your analytics data will be sent to Google Gemini to answer your questions."
+**Decision (19 Oct 2026):** hybrid. **Cloud Gemini is the default; the on-device model is an opt-in "Private mode".**
+
+**How it works (both engines):** AdLens report functions fetch and calculate the exact numbers on the server. The model only chooses which report to run and explains the result in words. This is why a small on-device model can work: it never needs to hold all the data, only one compact table at a time.
+- **Dates are never chosen by the model.** The date range (and comparison) selected in the app are injected into every tool call.
+- **Settings → AI engine (per user, synced in Firestore):**
+  - *Cloud* (default) or *On-device (Private mode)*.
+  - *Allow cloud fallback*: off by default.
+  - *Download on-device model* button, with the size explained before downloading.
+- **Privacy rule (tested):** in Private mode a question is never sent to the cloud unless the user turned on "Allow cloud fallback" or presses **"Ask the cloud model"** for that one question. Every answer shows a badge: "Answered on your device" or "Answered by Gemini".
+- **Cloud engine is the fallback in Cloud mode:** when the cloud is unavailable (offline, plan limit reached, not configured) and the on-device model is already downloaded, AdLens uses it, since that is more private, never less.
+- Each answer has a "Numbers used" panel showing the report results the model saw.
+
+### 15a — Tools, chat screen and cloud Gemini (works for everyone)
+- Gemini function calling over the report functions (declarations built by `src/utils/aiTools.ts`), snapshot-first strategy, streaming answers.
+- Chat UI on the AI Analyst page; conversation context includes the selected range and the current page.
+- **"Describe a widget":** generate a dashboard widget from plain language, preview it, add it to a dashboard (Sprint 14 builder).
+- Per-user AI limits read from the workspace plan. First-use consent: "Your analytics data will be sent to Google Gemini to answer your questions."
+- Gemini API key stays on the server (AI Studio secret `GEMINI_API_KEY`).
+
+### 15b — On-device engine via Chrome's built-in AI (Gemini Nano)
+- Detect availability (`unsupported | downloadable | downloading | available`); download only after explicit consent (the model is several GB).
+- Session with structured JSON output; tool shortlist (3–4 tools) and compacted results (≈1,500 tokens each) so every request fits the small window (~9k tokens measured in one setup).
+- Answers a question in up to 3 tool calls; if the model can't decide, it says so and offers "Ask the cloud model".
+- Requirements shown up front: desktop Chrome 148+, ≥22 GB free disk, GPU with >4 GB VRAM (or 16 GB RAM / 4 cores). English, Spanish and Japanese only; Bangla and other scripts are routed to "Ask the cloud model".
+- Safari and Firefox have no built-in model, so those users see "Private mode isn't available in this browser".
+
+### 15c — Optional WebLLM engine (only if users ask)
+- Open models (e.g. Qwen, Llama, Gemma) through WebGPU for browsers without Chrome's built-in AI. Structured JSON output instead of native function calling (WebLLM marks function calling as work in progress). Larger downloads and slower loads; consider only after 15b has real usage.
+
+**Prep done (19 Oct 2026), tested and mutation-checked:**
+- `src/utils/aiEngineRouter.ts` (+ test): engine choice, script/language detection, and the privacy rule checked across every combination of settings and environment (the exhaustive test fails if the rule is weakened).
+- `src/utils/aiReportCompactor.ts` (+ test): shrinks any report result to a token budget: one-line KPIs, small tables, daily series summarised as min/max/average plus a sample, and an honest "showing first N of M rows".
+- `src/utils/aiTools.ts` (+ test): report definitions → Gemini function declarations (`parametersJsonSchema`), date-argument injection, tool shortlisting by question, and a compact tool menu for small models.
 
 ## Sprint 16 — Bring-your-own AI agents ⬜
 
@@ -570,6 +599,7 @@ Adopts #30.
 | 18 Oct 2026 | Uploads = profile pictures and workspace logos (Cloud Storage); settings and configuration stored in Firestore and synced across devices. CSV data imports not planned |
 | 18 Oct 2026 | SSO in two stages: social SSO (Google, Microsoft) in Sprint 7A; enterprise SAML/OIDC in Sprint 17 |
 | 18 Oct 2026 | Public-mode safeguard: the Meta system-user token is usable only by allow-listed emails, so other users can never see Synesis IT ad accounts |
+| 19 Oct 2026 | **AI is hybrid:** cloud Gemini by default; on-device "Private mode" (Chrome built-in Gemini Nano first, WebLLM later if needed) is opt-in; private mode never reaches the cloud without the user's explicit action |
 | 19 Oct 2026 | Token vault: per-user, owner-bound encryption in server-only Firestore collection `connections`; each person uses their own Google/Meta connection; optional TOKEN_ENCRYPTION_KEY_PREVIOUS for key rotation |
 | 18 Oct 2026 | Business model: **subscription** (details parked). Sprint 7 adds plan fields and usage counters; billing built in Sprint 16 |
 | 18 Oct 2026 | **AdLens goes public:** anyone can sign up and connect their own accounts. Accounts, database and projects move to Sprint 7; launch readiness and platform reviews added as Sprint 9; plan now 16 sprints |
