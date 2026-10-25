@@ -177,11 +177,11 @@ export const AuthActionPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex flex-col justify-center items-center px-4 py-10 bg-page text-fg">
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center text-center space-y-2">
           <AdLensLogo className="w-12 h-12" />
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             {mode === 'resetPassword'
               ? 'Choose a new password'
               : mode === 'verifyEmail'
@@ -190,16 +190,16 @@ export const AuthActionPage: React.FC = () => {
                   ? 'Email recovery'
                   : 'Account action'}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-xs sm:text-sm text-fg-muted">
             {APP_TAGLINE}
           </p>
         </div>
 
-        <div className="p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs space-y-5">
+        <div className="p-6 sm:p-8 rounded-2xl border border-line bg-surface shadow-xs space-y-5">
           {status === 'loading' && (
             <div className="py-8 flex flex-col items-center justify-center gap-3 text-center">
-              <RefreshCw className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin" />
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+              <RefreshCw className="w-6 h-6 text-accent-text animate-spin" />
+              <p className="text-xs sm:text-sm text-fg-muted">
                 Verifying your security link...
               </p>
             </div>
@@ -208,9 +208,9 @@ export const AuthActionPage: React.FC = () => {
           {status === 'ready' && mode === 'resetPassword' && (
             <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
               {accountEmail && (
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300">
+                <div className="p-3 rounded-xl bg-fill-1 border border-line text-xs text-fg-muted">
                   Resetting password for{' '}
-                  <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
+                  <span className="font-mono font-semibold text-fg">
                     {accountEmail}
                   </span>
                 </div>
@@ -219,9 +219,9 @@ export const AuthActionPage: React.FC = () => {
               {formError && (
                 <div
                   role="alert"
-                  className="flex items-start gap-2.5 p-3.5 rounded-xl border border-red-200 dark:border-red-900/70 bg-red-50/80 dark:bg-red-950/40 text-xs text-red-800 dark:text-red-200"
+                  className="flex items-start gap-2.5 p-3.5 rounded-xl border border-danger-line bg-danger-soft text-xs text-danger"
                 >
-                  <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
                   <span>{formError}</span>
                 </div>
               )}
@@ -229,12 +229,12 @@ export const AuthActionPage: React.FC = () => {
               <div className="space-y-1.5">
                 <label
                   htmlFor="action-new-password"
-                  className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                  className="block text-xs font-semibold text-fg"
                 >
                   New password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Lock className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="action-new-password"
                     type="password"
@@ -243,7 +243,7 @@ export const AuthActionPage: React.FC = () => {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter new password"
-                    className="w-full pl-9 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full pl-9 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-line bg-fill-1 text-fg focus:outline-none focus:ring-2 focus:ring-focus"
                   />
                 </div>
                 <PasswordStrengthChecklist password={newPassword} />
@@ -252,12 +252,12 @@ export const AuthActionPage: React.FC = () => {
               <div className="space-y-1.5">
                 <label
                   htmlFor="action-confirm-password"
-                  className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                  className="block text-xs font-semibold text-fg"
                 >
                   Confirm new password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Lock className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="action-confirm-password"
                     type="password"
@@ -266,7 +266,7 @@ export const AuthActionPage: React.FC = () => {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirm new password"
-                    className="w-full pl-9 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full pl-9 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-line bg-fill-1 text-fg focus:outline-none focus:ring-2 focus:ring-focus"
                   />
                 </div>
               </div>
@@ -274,7 +274,7 @@ export const AuthActionPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
               >
                 {submitting ? 'Updating password...' : 'Save new password'}
               </button>
@@ -283,7 +283,7 @@ export const AuthActionPage: React.FC = () => {
 
           {status === 'success' && (
             <div className="space-y-4 text-center py-2">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-full bg-success-soft text-success flex items-center justify-center mx-auto">
                 {mode === 'verifyEmail' ? (
                   <MailCheck className="w-6 h-6" />
                 ) : (
@@ -291,12 +291,12 @@ export const AuthActionPage: React.FC = () => {
                 )}
               </div>
 
-              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+              <p className="text-xs sm:text-sm text-fg leading-relaxed">
                 {statusMessage}
               </p>
 
               {newLinkSentMessage && (
-                <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
+                <div className="p-3 rounded-xl bg-success-soft border border-success-line text-xs text-success">
                   {newLinkSentMessage}
                 </div>
               )}
@@ -308,7 +308,7 @@ export const AuthActionPage: React.FC = () => {
                     await reloadUser().catch(() => false);
                     navigate('/', { replace: true });
                   }}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer"
                 >
                   Continue to {APP_NAME}
                 </button>
@@ -318,7 +318,7 @@ export const AuthActionPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/sign-in', { replace: true })}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer"
                 >
                   Sign in with new password
                 </button>
@@ -326,20 +326,20 @@ export const AuthActionPage: React.FC = () => {
 
               {mode === 'recoverEmail' && (
                 <div className="space-y-2.5">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-fg-muted">
                     If you did not initiate that email change, we recommend resetting your password right away.
                   </p>
                   <button
                     type="button"
                     onClick={handleSendNewLink}
                     disabled={submitting}
-                    className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+                    className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {submitting ? 'Sending reset link...' : 'Reset your password'}
                   </button>
                   <Link
                     to="/sign-in"
-                    className="block text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline pt-1"
+                    className="block text-xs font-semibold text-accent-text hover:underline pt-1"
                   >
                     Return to sign in
                   </Link>
@@ -350,27 +350,27 @@ export const AuthActionPage: React.FC = () => {
 
           {status === 'expired_or_invalid' && (
             <div className="space-y-4 text-center py-2">
-              <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-full bg-warning-soft text-warning flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-6 h-6" />
               </div>
 
               <div className="space-y-1">
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <h2 className="text-sm font-semibold text-fg">
                   Link expired or already used
                 </h2>
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                <p className="text-xs text-fg-muted leading-relaxed">
                   {statusMessage}
                 </p>
               </div>
 
               {newLinkSentMessage && (
-                <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
+                <div className="p-3 rounded-xl bg-success-soft border border-success-line text-xs text-success">
                   {newLinkSentMessage}
                 </div>
               )}
 
               {formError && (
-                <div className="p-3 rounded-xl bg-red-50/80 dark:bg-red-950/40 border border-red-200 dark:border-red-900/70 text-xs text-red-800 dark:text-red-200">
+                <div className="p-3 rounded-xl bg-danger-soft border border-danger-line text-xs text-danger">
                   {formError}
                 </div>
               )}
@@ -379,14 +379,14 @@ export const AuthActionPage: React.FC = () => {
                 type="button"
                 onClick={handleSendNewLink}
                 disabled={submitting}
-                className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
               >
                 {submitting ? 'Sending...' : 'Send a new link'}
               </button>
 
               <Link
                 to="/sign-in"
-                className="block text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline pt-1"
+                className="block text-xs font-semibold text-accent-text hover:underline pt-1"
               >
                 Back to sign in
               </Link>

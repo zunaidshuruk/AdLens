@@ -13,6 +13,34 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      try {
+        var raw = localStorage.getItem('adlens_theme_cache');
+        if (raw) {
+          var cached = JSON.parse(raw);
+          var vars = (cached && typeof cached.vars === 'object' && cached.vars) || cached;
+          var root = document.documentElement;
+          if (vars && typeof vars === 'object') {
+            for (var k in vars) {
+              if (k.indexOf('--') === 0 && typeof vars[k] === 'string') {
+                root.style.setProperty(k, vars[k]);
+              }
+            }
+            if (vars['--root-font-size']) {
+              root.style.fontSize = vars['--root-font-size'];
+            }
+          }
+          var mode =
+            cached && (cached.mode === 'dark' || cached.mode === 'light')
+              ? cached.mode
+              : vars && vars['--color-surface'] && vars['--color-surface'] !== '#ffffff'
+                ? 'dark'
+                : 'light';
+          root.classList.toggle('dark', mode === 'dark');
+          root.style.colorScheme = mode;
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
     <div id="root"></div>

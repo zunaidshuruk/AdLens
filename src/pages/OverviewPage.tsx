@@ -100,8 +100,8 @@ export const OverviewPage: React.FC = () => {
         header: 'Campaign',
         render: (row) => (
           <div>
-            <div className="font-medium text-slate-900 dark:text-slate-100">{row.name}</div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="font-medium text-fg">{row.name}</div>
+            <div className="text-[11px] text-fg-muted">
               {row.objective} · {row.status}
             </div>
           </div>
@@ -150,7 +150,7 @@ export const OverviewPage: React.FC = () => {
         key: 'query',
         header: 'Search Query',
         render: (row) => (
-          <span className="font-medium text-slate-900 dark:text-slate-100">{row.query}</span>
+          <span className="font-medium text-fg">{row.query}</span>
         ),
       },
       {
@@ -186,8 +186,8 @@ export const OverviewPage: React.FC = () => {
           <span
             className={
               row.changePercent >= 0
-                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                : 'text-red-600 dark:text-red-400 font-semibold'
+                ? 'text-success font-semibold'
+                : 'text-danger font-semibold'
             }
           >
             {formatSignedPercent(row.changePercent)}
@@ -204,10 +204,10 @@ export const OverviewPage: React.FC = () => {
       {/* Page Title */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             Executive Overview
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs sm:text-sm text-fg-muted mt-0.5">
             Unified funnel telemetry for {TRACKED_SITE.name} ({TRACKED_SITE.domain}) ·{' '}
             {formatFullDateRange(dateRange.startDate, dateRange.endDate)}
             {compareEnabled &&

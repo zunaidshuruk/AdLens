@@ -143,10 +143,10 @@ export const ConnectionsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
           Data Source Connections
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+        <p className="text-xs sm:text-sm text-fg-muted mt-0.5">
           Manage OAuth credentials and property bindings powering {APP_NAME} for {TRACKED_SITE.name} (
           {TRACKED_SITE.domain})
         </p>
@@ -159,15 +159,15 @@ export const ConnectionsPage: React.FC = () => {
           data-testid="connections-banner"
           className={`flex items-start justify-between gap-3 p-4 rounded-xl border text-xs sm:text-sm ${
             banner.type === 'success'
-              ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200'
-              : 'bg-red-50/80 dark:bg-red-950/40 border-red-200 dark:border-red-800/80 text-red-900 dark:text-red-200'
+              ? 'bg-success-soft border-success-line text-success'
+              : 'bg-danger-soft border-danger-line text-danger'
           }`}
         >
           <div className="flex items-start gap-2.5">
             {banner.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
             ) : (
-              <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
             )}
             <span>{banner.message}</span>
           </div>
@@ -175,7 +175,7 @@ export const ConnectionsPage: React.FC = () => {
             type="button"
             onClick={() => setBanner(null)}
             aria-label="Dismiss notification"
-            className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+            className="p-1 rounded hover:bg-fill-2 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -188,17 +188,17 @@ export const ConnectionsPage: React.FC = () => {
           role="region"
           aria-label="Google OAuth Setup Notice"
           data-testid="google-unconfigured-notice"
-          className="p-5 rounded-xl border border-amber-200 dark:border-amber-800/70 bg-amber-50/60 dark:bg-amber-950/30 space-y-3"
+          className="p-5 rounded-xl border border-warning-line bg-warning-soft space-y-3"
         >
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-warning-soft text-warning flex items-center justify-center shrink-0">
               <KeyRound className="w-5 h-5" />
             </div>
             <div className="space-y-1.5">
-              <h2 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+              <h2 className="text-sm font-semibold text-warning">
                 Google OAuth Environment Configuration Required
               </h2>
-              <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+              <p className="text-xs text-warning leading-relaxed">
                 To enable Google sign-in for Google Analytics 4 and Google Search Console, configure the following missing environment secrets:
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -213,7 +213,7 @@ export const ConnectionsPage: React.FC = () => {
                 ).map((secretName) => (
                   <code
                     key={secretName}
-                    className="px-2.5 py-1 text-xs font-mono font-semibold rounded bg-amber-100/90 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300/70 dark:border-amber-700/70"
+                    className="px-2.5 py-1 text-xs font-mono font-semibold rounded bg-warning-soft text-warning border border-warning-line"
                   >
                     {secretName}
                   </code>
@@ -227,7 +227,7 @@ export const ConnectionsPage: React.FC = () => {
       {error && (
         <div
           role="alert"
-          className="p-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/70 dark:bg-red-950/30 text-xs text-red-800 dark:text-red-200"
+          className="p-4 rounded-xl border border-danger-line bg-danger-soft text-xs text-danger"
         >
           {error}
         </div>
@@ -236,29 +236,29 @@ export const ConnectionsPage: React.FC = () => {
       {/* Main Connections Grid: Google Integration Card (spans 2 cols) + Meta Ads Card (1 col) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Google Integration Card (GA4 + Search Console) */}
-        <div className="lg:col-span-2 p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between gap-6">
+        <div className="lg:col-span-2 p-6 rounded-xl border border-line bg-surface flex flex-col justify-between gap-6">
           <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800/80 pb-5">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-line pb-5">
               <div className="space-y-1">
                 <div className="flex items-center gap-2.5">
-                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  <h2 className="text-base font-bold text-fg">
                     Google Marketing Platform (GA4 & Search Console)
                   </h2>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-fg-muted">
                   Single Google OAuth 2.0 connection authorizing read-only access to Google Analytics 4 and Google Search Console.
                 </p>
               </div>
 
               {googleConnected ? (
-                <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400 shrink-0">
+                <div className="flex items-center gap-2 text-xs font-medium text-success shrink-0">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span data-testid="connected-google-email">
                     {connections?.google.email || 'Google account'}
                   </span>
                 </div>
               ) : (
-                <span className="text-xs font-medium text-amber-700 dark:text-amber-400 shrink-0">
+                <span className="text-xs font-medium text-warning shrink-0">
                   {connections?.google.needsReconnect
                     ? 'Reconnect required · Mock data active'
                     : googleConfigured
@@ -269,19 +269,19 @@ export const ConnectionsPage: React.FC = () => {
             </div>
 
             {/* Source Status Summary Rows */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80 dark:divide-slate-800/80 py-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-line py-1">
               {/* GA4 Status Column */}
               <div className="pb-4 sm:pb-0 sm:pr-6 space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-fg">
+                  <BarChart3 className="w-4 h-4 text-accent-text shrink-0" />
                   <span>Google Analytics 4</span>
                 </div>
                 <div
                   data-testid="ga4-connection-status"
                   className={`text-xs font-medium ${
                     googleConnected && connections?.google.ga4Property
-                      ? 'text-emerald-700 dark:text-emerald-400'
-                      : 'text-amber-700 dark:text-amber-400'
+                      ? 'text-success'
+                      : 'text-warning'
                   }`}
                 >
                   {googleConnected
@@ -291,7 +291,7 @@ export const ConnectionsPage: React.FC = () => {
                     : 'Mock data'}
                 </div>
                 {googleConnected && connections?.google.ga4Property && (
-                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                  <div className="text-[11px] font-mono text-fg-muted truncate">
                     Selected: {connections.google.ga4Property.name} ({connections.google.ga4Property.id})
                   </div>
                 )}
@@ -299,16 +299,16 @@ export const ConnectionsPage: React.FC = () => {
 
               {/* Search Console Status Column */}
               <div className="pt-4 sm:pt-0 sm:pl-6 space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  <Search className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-fg">
+                  <Search className="w-4 h-4 text-accent-text shrink-0" />
                   <span>Google Search Console</span>
                 </div>
                 <div
                   data-testid="gsc-connection-status"
                   className={`text-xs font-medium ${
                     googleConnected && connections?.google.searchConsoleSite
-                      ? 'text-emerald-700 dark:text-emerald-400'
-                      : 'text-amber-700 dark:text-amber-400'
+                      ? 'text-success'
+                      : 'text-warning'
                   }`}
                 >
                   {googleConnected
@@ -318,7 +318,7 @@ export const ConnectionsPage: React.FC = () => {
                     : 'Mock data'}
                 </div>
                 {googleConnected && connections?.google.searchConsoleSite && (
-                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                  <div className="text-[11px] font-mono text-fg-muted truncate">
                     Selected: {connections.google.searchConsoleSite.url}
                   </div>
                 )}
@@ -329,7 +329,7 @@ export const ConnectionsPage: React.FC = () => {
             {googleConnected && (
               <form onSubmit={handleSaveSelection} className="space-y-4 pt-2">
                 {optionsError && (
-                  <div className="p-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300">
+                  <div className="p-3 rounded-lg border border-danger-line bg-danger-soft text-xs text-danger">
                     {optionsError}
                   </div>
                 )}
@@ -339,21 +339,21 @@ export const ConnectionsPage: React.FC = () => {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="ga4-property-select"
-                      className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      className="block text-xs font-semibold text-fg"
                     >
                       GA4 Property (grouped by account)
                     </label>
                     {loadingOptions ? (
-                      <div className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                      <div className="h-9 rounded-lg bg-fill-2 animate-pulse" />
                     ) : ga4Properties.length === 0 ? (
                       <div
                         data-testid="ga4-empty-properties"
-                        className="p-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 text-xs text-slate-600 dark:text-slate-400 space-y-1"
+                        className="p-3 rounded-lg border border-dashed border-line-strong bg-fill-1 text-xs text-fg-muted space-y-1"
                       >
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="font-semibold text-fg">
                           This Google account has no GA4 properties
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <p className="text-[11px] text-fg-muted">
                           Ask your Google Analytics administrator to grant your email Viewer access to the property for {TRACKED_SITE.domain}.
                         </p>
                       </div>
@@ -363,7 +363,7 @@ export const ConnectionsPage: React.FC = () => {
                         aria-label="GA4 Property"
                         value={selectedGa4Id}
                         onChange={(e) => setSelectedGa4Id(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-line bg-fill-1 text-fg focus:outline-none focus:ring-2 focus:ring-focus"
                       >
                         <option value="">Select a GA4 property...</option>
                         {groupedGa4Properties.map(([accountName, props]) => (
@@ -383,21 +383,21 @@ export const ConnectionsPage: React.FC = () => {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="gsc-site-select"
-                      className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      className="block text-xs font-semibold text-fg"
                     >
                       Search Console Verified Site
                     </label>
                     {loadingOptions ? (
-                      <div className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                      <div className="h-9 rounded-lg bg-fill-2 animate-pulse" />
                     ) : searchConsoleSites.length === 0 ? (
                       <div
                         data-testid="gsc-empty-sites"
-                        className="p-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 text-xs text-slate-600 dark:text-slate-400 space-y-1"
+                        className="p-3 rounded-lg border border-dashed border-line-strong bg-fill-1 text-xs text-fg-muted space-y-1"
                       >
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="font-semibold text-fg">
                           This Google account has no verified Search Console sites
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <p className="text-[11px] text-fg-muted">
                           Ask a Search Console administrator to grant Viewer or Full access for {TRACKED_SITE.domain}.
                         </p>
                       </div>
@@ -407,7 +407,7 @@ export const ConnectionsPage: React.FC = () => {
                         aria-label="Search Console Site"
                         value={selectedGscUrl}
                         onChange={(e) => setSelectedGscUrl(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        className="w-full px-3 py-2 text-xs rounded-lg border border-line bg-fill-1 text-fg focus:outline-none focus:ring-2 focus:ring-focus"
                       >
                         <option value="">Select a verified site...</option>
                         {searchConsoleSites.map((s) => (
@@ -421,12 +421,12 @@ export const ConnectionsPage: React.FC = () => {
                 </div>
 
                 {/* Save & Disconnect Actions */}
-                <div className="pt-3 border-t border-slate-200/70 dark:border-slate-800/70 flex flex-wrap items-center justify-between gap-3">
+                <div className="pt-3 border-t border-line flex flex-wrap items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={handleDisconnect}
                     disabled={disconnecting}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/70 border border-red-200 dark:border-red-900/60 transition-colors cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-danger bg-danger-soft hover:bg-danger-soft border border-danger-line transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
@@ -435,7 +435,7 @@ export const ConnectionsPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={saving || loadingOptions}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <Save className="w-3.5 h-3.5" />
                     <span>{saving ? 'Saving...' : 'Save Selection'}</span>
@@ -447,10 +447,10 @@ export const ConnectionsPage: React.FC = () => {
 
           {/* When Not Connected: Connect / Reconnect Google CTA */}
           {!googleConnected && (
-            <div className="pt-4 border-t border-slate-200/70 dark:border-slate-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="pt-4 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-fg-muted">
                 {connections?.google.needsReconnect ? (
-                  <span className="text-amber-700 dark:text-amber-400 font-medium">
+                  <span className="text-warning font-medium">
                     Google access expired or was revoked
                     {connections.google.email ? ` (${connections.google.email})` : ''}. Please reconnect your account.
                   </span>
@@ -466,7 +466,7 @@ export const ConnectionsPage: React.FC = () => {
                 type="button"
                 onClick={connectGoogle}
                 disabled={!googleConfigured || loading}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:bg-fill-3 disabled:text-fg-muted disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>{connections?.google.needsReconnect ? 'Reconnect Google' : 'Connect Google'}</span>
@@ -476,23 +476,23 @@ export const ConnectionsPage: React.FC = () => {
         </div>
 
         {/* Meta Ads Card (System User configuration or missing secrets notice; no connect button) */}
-        <div className="p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between gap-5">
+        <div className="p-6 rounded-xl border border-line bg-surface flex flex-col justify-between gap-5">
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-accent-soft text-accent-text flex items-center justify-center shrink-0">
                   <Megaphone className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  <h2 className="text-sm font-semibold text-fg">
                     Meta Ads
                   </h2>
                   <div
                     data-testid="meta-connection-status"
                     className={`text-xs font-medium mt-0.5 ${
                       metaConfigured && !metaNotAvailable
-                        ? 'text-emerald-700 dark:text-emerald-400'
-                        : 'text-amber-700 dark:text-amber-400'
+                        ? 'text-success'
+                        : 'text-warning'
                     }`}
                   >
                     {metaNotAvailable
@@ -504,46 +504,46 @@ export const ConnectionsPage: React.FC = () => {
                 </div>
               </div>
               {metaConfigured && !metaNotAvailable && (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-1" />
+                <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-1" />
               )}
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            <p className="text-xs text-fg-muted leading-relaxed">
               Campaign, Ad Set, and Ad delivery metrics including spend, reach, frequency, clicks, CPC, CPM, and lead generation for {TRACKED_SITE.name}.
             </p>
 
             {metaConfigured ? (
               <div
                 data-testid="meta-account-details"
-                className="p-3.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2 text-xs"
+                className="p-3.5 rounded-lg border border-line bg-fill-1 space-y-2 text-xs"
               >
                 {metaAccountError ? (
-                  <div className="text-red-700 dark:text-red-300 font-medium">
+                  <div className="text-danger font-medium">
                     {metaAccountError}
                   </div>
                 ) : (
                   <>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 dark:text-slate-400">Account Name</span>
-                      <span className="font-semibold text-slate-900 dark:text-slate-100 text-right">
+                      <span className="text-fg-muted">Account Name</span>
+                      <span className="font-semibold text-fg text-right">
                         {metaAccountInfo?.name ?? 'Loading...'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 dark:text-slate-400">Account ID</span>
-                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                      <span className="text-fg-muted">Account ID</span>
+                      <span className="font-mono text-fg">
                         {metaAccountInfo?.accountId ?? connections?.meta.adAccountId ?? '—'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 dark:text-slate-400">Currency</span>
-                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-fg-muted">Currency</span>
+                      <span className="font-mono font-semibold text-fg">
                         {metaAccountInfo?.currency ?? '—'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 dark:text-slate-400">Time Zone</span>
-                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                      <span className="text-fg-muted">Time Zone</span>
+                      <span className="font-mono text-fg">
                         {metaAccountInfo?.timezoneName ?? '—'}
                       </span>
                     </div>
@@ -555,12 +555,12 @@ export const ConnectionsPage: React.FC = () => {
                 role="region"
                 aria-label="Meta Marketing API Setup Notice"
                 data-testid="meta-unconfigured-notice"
-                className="p-3.5 rounded-lg border border-amber-200 dark:border-amber-800/70 bg-amber-50/60 dark:bg-amber-950/30 space-y-2"
+                className="p-3.5 rounded-lg border border-warning-line bg-warning-soft space-y-2"
               >
-                <div className="text-xs font-semibold text-amber-950 dark:text-amber-100">
+                <div className="text-xs font-semibold text-warning">
                   System User Setup Required
                 </div>
-                <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                <p className="text-[11px] text-warning leading-relaxed">
                   Configure the following environment variables with a read-only Meta System User token (<code className="font-mono">ads_read</code>):
                 </p>
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -570,7 +570,7 @@ export const ConnectionsPage: React.FC = () => {
                   ).map((secretName) => (
                     <code
                       key={secretName}
-                      className="px-2 py-0.5 text-[11px] font-mono font-semibold rounded bg-amber-100/90 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300/70 dark:border-amber-700/70"
+                      className="px-2 py-0.5 text-[11px] font-mono font-semibold rounded bg-warning-soft text-warning border border-warning-line"
                     >
                       {secretName}
                     </code>
@@ -584,7 +584,7 @@ export const ConnectionsPage: React.FC = () => {
 
       {/* Server Status Row from /api/health */}
       <div>
-        <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2.5">
+        <h2 className="text-xs font-semibold text-fg-muted mb-2.5">
           Backend Infrastructure Telemetry
         </h2>
         <ConnectionStatus />

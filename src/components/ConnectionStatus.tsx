@@ -27,39 +27,39 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ compact = fa
 
   if (compact) {
     return (
-      <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-        <Database className="w-3.5 h-3.5 text-slate-400" />
+      <div className="flex items-center gap-2 text-xs text-fg-muted">
+        <Database className="w-3.5 h-3.5 text-fg-subtle" />
         <span>API Server:</span>
         {loading ? (
-          <span className="text-slate-500">Checking...</span>
+          <span className="text-fg-muted">Checking...</span>
         ) : health?.ok ? (
-          <span className="font-medium text-emerald-700 dark:text-emerald-400">
+          <span className="font-medium text-success">
             Online ({health.version})
           </span>
         ) : (
-          <span className="font-medium text-red-600 dark:text-red-400">Offline</span>
+          <span className="font-medium text-danger">Offline</span>
         )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-line bg-surface">
       <div className="flex items-center gap-3">
         {loading ? (
-          <RefreshCw className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
+          <RefreshCw className="w-4 h-4 text-fg-subtle animate-spin shrink-0" />
         ) : health?.ok ? (
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
         ) : (
-          <XCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+          <XCircle className="w-4 h-4 text-danger shrink-0" />
         )}
         <div>
-          <div className="flex items-center gap-2 flex-wrap text-sm font-medium text-slate-900 dark:text-slate-100">
+          <div className="flex items-center gap-2 flex-wrap text-sm font-medium text-fg">
             <span>Server status</span>
-            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-            <span className="font-mono text-xs text-slate-600 dark:text-slate-400">/api/health</span>
-            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-            <span className="text-xs text-slate-600 dark:text-slate-400">
+            <span aria-hidden="true" className="text-line-strong">·</span>
+            <span className="font-mono text-xs text-fg-muted">/api/health</span>
+            <span aria-hidden="true" className="text-line-strong">·</span>
+            <span className="text-xs text-fg-muted">
               Google OAuth:{' '}
               {googleConnected
                 ? `Connected (${connections?.google.email || 'Google account'})`
@@ -67,12 +67,12 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ compact = fa
                   ? 'Configured (Not connected)'
                   : 'Unconfigured'}
             </span>
-            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-            <span className="text-xs text-slate-600 dark:text-slate-400">
+            <span aria-hidden="true" className="text-line-strong">·</span>
+            <span className="text-xs text-fg-muted">
               Meta Ads: {metaConfigured ? 'Connected via system user' : 'Unconfigured (Mock)'}
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs text-fg-muted mt-0.5">
             {loading
               ? 'Verifying backend health endpoint...'
               : health?.ok
@@ -86,7 +86,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ compact = fa
         type="button"
         onClick={handleRefresh}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors self-start sm:self-center cursor-pointer disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fg bg-fill-2 hover:bg-fill-3 rounded-lg transition-colors self-start sm:self-center cursor-pointer disabled:opacity-50"
       >
         <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         <span>Refresh Status</span>

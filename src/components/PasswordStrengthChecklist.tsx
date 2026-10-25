@@ -12,11 +12,11 @@ export const PasswordStrengthChecklist: React.FC<PasswordStrengthChecklistProps>
   const rules = evaluatePasswordRules(password);
 
   const barColors = [
-    'bg-slate-200 dark:bg-slate-800',
-    'bg-red-500',
-    'bg-amber-500',
-    'bg-blue-500',
-    'bg-emerald-500',
+    'bg-fill-3',
+    'bg-danger',
+    'bg-warning',
+    'bg-accent',
+    'bg-success',
   ];
 
   const activeColor = password.length === 0 ? barColors[0] : barColors[rules.score];
@@ -33,18 +33,18 @@ export const PasswordStrengthChecklist: React.FC<PasswordStrengthChecklistProps>
       {/* Strength Meter Bar */}
       <div className="space-y-1">
         <div className="flex items-center justify-between text-[11px]">
-          <span className="text-slate-500 dark:text-slate-400">Password strength</span>
+          <span className="text-fg-muted">Password strength</span>
           <span
             className={`font-semibold ${
               password.length === 0
-                ? 'text-slate-400 dark:text-slate-500'
+                ? 'text-fg-subtle'
                 : rules.score <= 1
-                  ? 'text-red-600 dark:text-red-400'
+                  ? 'text-danger'
                   : rules.score === 2
-                    ? 'text-amber-600 dark:text-amber-400'
+                    ? 'text-warning'
                     : rules.score === 3
-                      ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-emerald-600 dark:text-emerald-400'
+                      ? 'text-accent-text'
+                      : 'text-success'
             }`}
           >
             {password.length === 0 ? 'Enter password' : rules.label}
@@ -58,7 +58,7 @@ export const PasswordStrengthChecklist: React.FC<PasswordStrengthChecklistProps>
               className={`rounded-full transition-colors ${
                 password.length > 0 && rules.score >= step
                   ? activeColor
-                  : 'bg-slate-200 dark:bg-slate-800'
+                  : 'bg-fill-3'
               }`}
             />
           ))}
@@ -72,14 +72,14 @@ export const PasswordStrengthChecklist: React.FC<PasswordStrengthChecklistProps>
             key={item.key}
             className={`flex items-center gap-1.5 ${
               item.met
-                ? 'text-emerald-700 dark:text-emerald-400 font-medium'
-                : 'text-slate-500 dark:text-slate-400'
+                ? 'text-success font-medium'
+                : 'text-fg-muted'
             }`}
           >
             {item.met ? (
-              <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <Check className="w-3.5 h-3.5 shrink-0 text-success" />
             ) : (
-              <Circle className="w-3 h-3 shrink-0 text-slate-300 dark:text-slate-600" />
+              <Circle className="w-3 h-3 shrink-0 text-line-strong" />
             )}
             <span>{item.label}</span>
           </li>

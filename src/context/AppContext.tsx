@@ -38,6 +38,7 @@ import type {
   WorkspaceSummary,
 } from '../types/index.js';
 import { computeDateRange } from '../utils/dateUtils.js';
+import { resolveAppearance, sanitizeAppearance } from '../utils/themeEngine.js';
 import { useAuth } from './AuthContext.js';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -198,13 +199,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  const theme: ThemeMode = useMemo(() => {
-    if (themePreference === 'system') {
-      return systemDark ? 'dark' : 'light';
-    }
-    return themePreference;
-  }, [themePreference, systemDark]);
-
   // Firestore user, workspace & project state
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
@@ -215,22 +209,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState<boolean>(false);
   const settingsAppliedForUid = useRef<string | null>(null);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+  const theme: ThemeMode = useMemo(() => {
+    if (userProfile?.settings?.appearance) {
+      return resolveAppearance(
+        sanitizeAppearance(userProfile.settings.appearance).value,
+        systemDark
+      ).mode;
     }
-    // Only write to localStorage when not signed in
-    if (!user) {
-      try {
-        localStorage.setItem(STORAGE_KEYS.THEME, themePreference);
-      } catch {
-        // ignore
-      }
+    if (themePreference === 'system') {
+      return systemDark ? 'dark' : 'light';
     }
-  }, [theme, themePreference, user]);
+    return themePreference;
+  }, [userProfile?.settings?.appearance, themePreference, systemDark]);
 
   const applyMeResponse = useCallback(
     (

@@ -10,6 +10,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { APP_NAME, APP_TAGLINE } from './config/app';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { AIAnalystPage } from './pages/AIAnalystPage';
 import { AITrafficPage } from './pages/AITrafficPage';
 import { AuthActionPage } from './pages/AuthActionPage';
@@ -33,40 +34,42 @@ export default function App() {
   return (
     <AuthProvider>
       <AppProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Public authentication & legal routes */}
-            <Route path="/sign-in" element={<SignInPage />} />
-            <Route path="/sign-up" element={<SignUpPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/auth/action" element={<AuthActionPage />} />
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-            <Route
-              path="/terms"
-              element={<LegalPlaceholderPage title="Terms of Service" />}
-            />
-            <Route
-              path="/privacy"
-              element={<LegalPlaceholderPage title="Privacy Policy" />}
-            />
+        <ThemeProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public authentication & legal routes */}
+              <Route path="/sign-in" element={<SignInPage />} />
+              <Route path="/sign-up" element={<SignUpPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/auth/action" element={<AuthActionPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route
+                path="/terms"
+                element={<LegalPlaceholderPage title="Terms of Service" />}
+              />
+              <Route
+                path="/privacy"
+                element={<LegalPlaceholderPage title="Privacy Policy" />}
+              />
 
-            {/* Protected application routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route element={<Layout />}>
-                <Route path="/" element={<OverviewPage />} />
-                <Route path="/ga4" element={<GA4Page />} />
-                <Route path="/ai-traffic" element={<AITrafficPage />} />
-                <Route path="/search-console" element={<SearchConsolePage />} />
-                <Route path="/meta-ads" element={<MetaAdsPage />} />
-                <Route path="/ai-analyst" element={<AIAnalystPage />} />
-                <Route path="/connections" element={<ConnectionsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+              {/* Protected application routes */}
+              <Route element={<ProtectedRoute />}>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<OverviewPage />} />
+                  <Route path="/ga4" element={<GA4Page />} />
+                  <Route path="/ai-traffic" element={<AITrafficPage />} />
+                  <Route path="/search-console" element={<SearchConsolePage />} />
+                  <Route path="/meta-ads" element={<MetaAdsPage />} />
+                  <Route path="/ai-analyst" element={<AIAnalystPage />} />
+                  <Route path="/connections" element={<ConnectionsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
               </Route>
-            </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </ThemeProvider>
       </AppProvider>
     </AuthProvider>
   );

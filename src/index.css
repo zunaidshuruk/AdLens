@@ -7,6 +7,52 @@
   --font-mono: 'JetBrains Mono', 'Noto Sans Bengali', monospace;
 }
 
+@theme {
+  --color-page: #f6f9fc;
+  --color-surface: #ffffff;
+  --color-raised: #ffffff;
+  --color-fill-1: #f1f4f7;
+  --color-fill-2: #e9ebee;
+  --color-fill-3: #dde0e3;
+  --color-line: #dee2e5;
+  --color-line-strong: #8c9094;
+  --color-fg: #17181b;
+  --color-fg-muted: #5b5e60;
+  --color-fg-subtle: #848689;
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #234fc0;
+  --color-accent-soft: #e2ebff;
+  --color-accent-line: #c4d8ff;
+  --color-on-accent: #ffffff;
+  --color-accent-text: #1d4ed8;
+  --color-focus: #1d4ed8;
+  --color-on-success: #ffffff;
+  --color-on-warning: #ffffff;
+  --color-on-danger: #ffffff;
+  --color-scrim: #0f172a;
+  --color-on-scrim: #ffffff;
+  --color-success: #15803d;
+  --color-success-soft: #e7f9ea;
+  --color-success-line: #c0e7c6;
+  --color-warning: #b45309;
+  --color-warning-soft: #fff1df;
+  --color-warning-line: #f3d6af;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #ffefee;
+  --color-danger-line: #ffcdc8;
+  --color-accent-50: #f0f5ff;
+  --color-accent-100: #e2ebff;
+  --color-accent-200: #c4d8ff;
+  --color-accent-300: #9dbdff;
+  --color-accent-400: #729eff;
+  --color-accent-500: #4a80ff;
+  --color-accent-600: #3165e8;
+  --color-accent-700: #234fc0;
+  --color-accent-800: #1c3f98;
+  --color-accent-900: #152f72;
+  --color-accent-950: #0d204f;
+}
+
 @layer base {
   body {
     font-family: var(--font-sans);

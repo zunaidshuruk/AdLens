@@ -11,7 +11,9 @@
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
     "test": "tsx --test",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-adlens 'tsx --test --test-concurrency=1 firebase/rules-checks/firestoreRules.check.ts'"
+    "test:rules": "firebase emulators:exec --only firestore --project demo-adlens 'tsx --test --test-concurrency=1 firebase/rules-checks/firestoreRules.check.ts'",
+    "migrate:colors": "tsx scripts/migrate-colors.ts",
+    "check:colors": "tsx scripts/migrate-colors.ts --check"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -10,13 +10,13 @@ export const ProtectedRoute: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-6">
+      <div className="min-h-screen flex items-center justify-center bg-page text-fg p-6">
         <div className="flex flex-col items-center gap-3">
           <AdLensLogo className="w-12 h-12 animate-pulse" />
-          <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <div className="text-sm font-semibold text-fg">
             {APP_NAME} — {APP_TAGLINE}
           </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">
+          <div className="text-xs text-fg-muted">
             Verifying your session...
           </div>
         </div>

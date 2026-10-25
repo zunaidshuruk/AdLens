@@ -12,6 +12,7 @@ import type {
   UserSettings,
 } from '../types/index.js';
 import { prepareImageAsset } from '../utils/imageAssets.js';
+import { sanitizeAppearance } from '../utils/themeEngine.js';
 import { db, firestoreDirectAvailable, markFirestoreDirectUnavailable } from './firebase.js';
 import { invalidateAvatarCache } from '../hooks/useAvatar.js';
 import { invalidateLogoCache } from '../hooks/useWorkspaceLogo.js';
@@ -60,6 +61,9 @@ export function sanitizeUserSettings(raw: Partial<UserSettings>): UserSettings {
 
   if (raw.theme && VALID_THEMES.includes(raw.theme as (typeof VALID_THEMES)[number])) {
     sanitized.theme = raw.theme;
+  }
+  if (raw.appearance !== undefined) {
+    sanitized.appearance = sanitizeAppearance(raw.appearance).value;
   }
   if (
     raw.defaultDateRange &&

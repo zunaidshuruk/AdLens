@@ -102,9 +102,40 @@ export const patchProjectSchema = z
   })
   .strict();
 
-const userSettingsSchema = z
+export const appearanceSettingsSchema = z
+  .object({
+    preset: z.enum([
+      'adlens-light',
+      'adlens-dark',
+      'midnight',
+      'ocean',
+      'forest',
+      'sunset',
+      'high-contrast',
+      'system',
+      'custom',
+    ]),
+    custom: z
+      .object({
+        mode: z.enum(['light', 'dark']),
+        accent: z
+          .string()
+          .regex(/^#[0-9a-f]{6}$/i, 'Accent colour must be a 6-digit hex colour (#rrggbb).')
+          .transform((val) => val.toLowerCase()),
+        tint: z.enum(['none', 'cool', 'warm', 'accent']),
+      })
+      .strict(),
+    radius: z.enum(['sharp', 'default', 'round']),
+    density: z.enum(['comfortable', 'compact']),
+    fontScale: z.enum(['small', 'default', 'large', 'xlarge']),
+    chartPalette: z.enum(['default', 'colorblind', 'monochrome', 'brand']),
+  })
+  .strict();
+
+export const userSettingsSchema = z
   .object({
     theme: z.enum(['light', 'dark', 'system']).optional(),
+    appearance: appearanceSettingsSchema.optional(),
     defaultDateRange: z
       .enum(['Today', 'Last 7 days', 'Last 28 days', 'Last 90 days', 'This month', 'Last month'])
       .optional(),

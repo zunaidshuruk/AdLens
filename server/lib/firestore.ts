@@ -9,8 +9,31 @@ export interface UserEmailNotifications {
   productUpdates?: boolean;
 }
 
+export interface AppearanceSettings {
+  preset:
+    | 'adlens-light'
+    | 'adlens-dark'
+    | 'midnight'
+    | 'ocean'
+    | 'forest'
+    | 'sunset'
+    | 'high-contrast'
+    | 'system'
+    | 'custom';
+  custom: {
+    mode: 'light' | 'dark';
+    accent: string;
+    tint: 'none' | 'cool' | 'warm' | 'accent';
+  };
+  radius: 'sharp' | 'default' | 'round';
+  density: 'comfortable' | 'compact';
+  fontScale: 'small' | 'default' | 'large' | 'xlarge';
+  chartPalette: 'default' | 'colorblind' | 'monochrome' | 'brand';
+}
+
 export interface UserSettings {
   theme?: 'light' | 'dark' | 'system';
+  appearance?: AppearanceSettings;
   defaultDateRange?:
     | 'Today'
     | 'Last 7 days'

@@ -33,8 +33,8 @@ export const DateRangePicker: React.FC = () => {
   return (
     <div className="flex flex-wrap items-center gap-2.5">
       {/* Date Preset Selector */}
-      <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5">
-        <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+      <div className="flex items-center gap-2 bg-fill-2 border border-line rounded-lg px-2.5 py-1.5">
+        <Calendar className="w-3.5 h-3.5 text-accent-text shrink-0" />
         <label htmlFor="adlens-date-preset" className="sr-only">
           Date Range Preset
         </label>
@@ -43,10 +43,10 @@ export const DateRangePicker: React.FC = () => {
           aria-label="Date Range Preset"
           value={preset}
           onChange={handlePresetChange}
-          className="bg-transparent text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none cursor-pointer pr-1"
+          className="bg-transparent text-xs font-medium text-fg focus:outline-none cursor-pointer pr-1"
         >
           {DATE_PRESETS.map((p) => (
-            <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+            <option key={p} value={p} className="bg-surface text-fg">
               {p}
             </option>
           ))}
@@ -54,12 +54,12 @@ export const DateRangePicker: React.FC = () => {
 
         <span
           aria-hidden="true"
-          className="hidden sm:inline text-slate-300 dark:text-slate-600"
+          className="hidden sm:inline text-line-strong"
         >
           |
         </span>
 
-        <span className="hidden sm:inline text-xs font-mono tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap">
+        <span className="hidden sm:inline text-xs font-mono tabular-nums text-fg-muted whitespace-nowrap">
           {formatFullDateRange(dateRange.startDate, dateRange.endDate)}
         </span>
       </div>
@@ -77,9 +77,9 @@ export const DateRangePicker: React.FC = () => {
                 setCustomDates({ startDate: e.target.value, endDate: draftEnd });
               }
             }}
-            className="px-2 py-1 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            className="px-2 py-1 text-xs font-mono rounded-lg border border-line bg-raised text-fg"
           />
-          <span className="text-xs text-slate-400">to</span>
+          <span className="text-xs text-fg-subtle">to</span>
           <input
             type="date"
             aria-label="Custom end date"
@@ -90,7 +90,7 @@ export const DateRangePicker: React.FC = () => {
                 setCustomDates({ startDate: draftStart, endDate: e.target.value });
               }
             }}
-            className="px-2 py-1 text-xs font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+            className="px-2 py-1 text-xs font-mono rounded-lg border border-line bg-raised text-fg"
           />
         </form>
       )}
@@ -107,15 +107,15 @@ export const DateRangePicker: React.FC = () => {
         )}`}
         className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
           compareEnabled
-            ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+            ? 'bg-accent-soft border-accent-line text-accent-text'
+            : 'bg-surface border-line text-fg-muted hover:bg-fill-1'
         }`}
       >
         <GitCompareArrows className="w-3.5 h-3.5 shrink-0" />
         <span>Compare to previous period</span>
         <span
           className={`w-2 h-2 rounded-full ${
-            compareEnabled ? 'bg-blue-600 dark:bg-blue-400' : 'bg-slate-300 dark:bg-slate-600'
+            compareEnabled ? 'bg-accent' : 'bg-fill-3'
           }`}
         />
       </button>

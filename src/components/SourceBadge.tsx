@@ -12,17 +12,17 @@ const SOURCE_LABELS: Record<DataSourceId, { name: string; short: string; colorCl
   ga4: {
     name: 'Google Analytics 4',
     short: 'GA4',
-    colorClass: 'text-amber-700 dark:text-amber-400',
+    colorClass: 'text-warning',
   },
   search_console: {
     name: 'Search Console',
     short: 'GSC',
-    colorClass: 'text-blue-700 dark:text-blue-400',
+    colorClass: 'text-accent-text',
   },
   meta_ads: {
     name: 'Meta Ads',
     short: 'Meta Ads',
-    colorClass: 'text-indigo-700 dark:text-indigo-400',
+    colorClass: 'text-accent-text',
   },
 };
 
@@ -47,8 +47,8 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({
           data-testid={`source-mode-badge-${source}`}
           className={`px-1.5 py-0.5 text-[10px] font-mono font-semibold rounded ${
             isLive
-              ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300/70 dark:border-emerald-800'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+              ? 'bg-success-soft text-success border border-success-line'
+              : 'bg-fill-2 text-fg-muted border border-line'
           }`}
         >
           {isLive ? 'Live' : 'Mock'}

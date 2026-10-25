@@ -32,21 +32,21 @@ interface SelectedAdSet {
 function renderStatusBadge(status: MetaStatusLabel): React.ReactNode {
   if (status === 'Active') {
     return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/70">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-success-soft text-success border border-success-line">
         {status}
       </span>
     );
   }
   if (status === 'Paused') {
     return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/70">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-warning-soft text-warning border border-warning-line">
         {status}
       </span>
     );
   }
   // Neutral styling for statuses beyond Active/Paused (In Review, Rejected, With Issues, Archived, Deleted)
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fill-2 text-fg-muted border border-line">
       {status}
     </span>
   );
@@ -151,16 +151,16 @@ export const MetaAdsPage: React.FC = () => {
         render: (r) => (
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+              <div className="font-semibold text-accent-text hover:underline">
                 {r.name}
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-fg-muted mt-0.5">
                 <span>{r.objective}</span>
                 <span>·</span>
                 {renderStatusBadge(r.status)}
               </div>
             </div>
-            <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 inline-flex items-center gap-0.5 shrink-0">
+            <span className="text-[11px] font-medium text-accent-text inline-flex items-center gap-0.5 shrink-0">
               <span>Ad Sets</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </span>
@@ -244,16 +244,16 @@ export const MetaAdsPage: React.FC = () => {
         render: (r) => (
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+              <div className="font-semibold text-accent-text hover:underline">
                 {r.name}
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-fg-muted mt-0.5">
                 <span>{r.audience}</span>
                 <span>·</span>
                 {renderStatusBadge(r.status)}
               </div>
             </div>
-            <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 inline-flex items-center gap-0.5 shrink-0">
+            <span className="text-[11px] font-medium text-accent-text inline-flex items-center gap-0.5 shrink-0">
               <span>Ads</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </span>
@@ -336,8 +336,8 @@ export const MetaAdsPage: React.FC = () => {
         header: 'Ad Creative',
         render: (r) => (
           <div>
-            <div className="font-semibold text-slate-900 dark:text-slate-100">{r.name}</div>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            <div className="font-semibold text-fg">{r.name}</div>
+            <div className="flex items-center gap-1.5 text-[11px] text-fg-muted mt-0.5">
               <span>Format: {r.format}</span>
               <span>·</span>
               {renderStatusBadge(r.status)}
@@ -416,7 +416,7 @@ export const MetaAdsPage: React.FC = () => {
 
   const breadcrumbHeader = (
     <nav aria-label="Meta Ads Drill-down Breadcrumb" className="flex items-center gap-1.5 flex-wrap text-xs">
-      <Layers className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+      <Layers className="w-3.5 h-3.5 text-accent-text shrink-0" />
       <button
         type="button"
         onClick={() => {
@@ -425,8 +425,8 @@ export const MetaAdsPage: React.FC = () => {
         }}
         className={`font-medium transition-colors cursor-pointer ${
           drillLevel === 'campaigns'
-            ? 'text-slate-900 dark:text-slate-100 font-semibold'
-            : 'text-blue-600 dark:text-blue-400 hover:underline'
+            ? 'text-fg font-semibold'
+            : 'text-accent-text hover:underline'
         }`}
       >
         All Campaigns
@@ -434,14 +434,14 @@ export const MetaAdsPage: React.FC = () => {
 
       {selectedCampaign && (
         <>
-          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <ChevronRight className="w-3.5 h-3.5 text-fg-subtle shrink-0" />
           <button
             type="button"
             onClick={() => setSelectedAdSet(null)}
             className={`font-medium transition-colors cursor-pointer ${
               drillLevel === 'adsets'
-                ? 'text-slate-900 dark:text-slate-100 font-semibold'
-                : 'text-blue-600 dark:text-blue-400 hover:underline'
+                ? 'text-fg font-semibold'
+                : 'text-accent-text hover:underline'
             }`}
           >
             {selectedCampaign.name}
@@ -451,8 +451,8 @@ export const MetaAdsPage: React.FC = () => {
 
       {selectedAdSet && (
         <>
-          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span className="font-semibold text-slate-900 dark:text-slate-100">
+          <ChevronRight className="w-3.5 h-3.5 text-fg-subtle shrink-0" />
+          <span className="font-semibold text-fg">
             {selectedAdSet.name}
           </span>
         </>
@@ -467,18 +467,18 @@ export const MetaAdsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
               Meta Ads Performance
             </h1>
             <SourceBadge source="meta_ads" showMode />
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs sm:text-sm text-fg-muted mt-0.5">
             Paid social spend, reach, lead generation efficiency, and 3-tier campaign drill-down for{' '}
             {TRACKED_SITE.name}
             {isMetaAdsLive && accountInfo && (
               <span data-testid="meta-account-header-info">
                 {' '}
-                · Account: <span className="font-semibold text-slate-700 dark:text-slate-200">{accountInfo.name}</span> (
+                · Account: <span className="font-semibold text-fg">{accountInfo.name}</span> (
                 <span className="font-mono">{accountInfo.currency}</span>)
               </span>
             )}
@@ -491,9 +491,9 @@ export const MetaAdsPage: React.FC = () => {
         <div
           role="note"
           data-testid="meta-timezone-notice"
-          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 text-xs text-slate-600 dark:text-slate-300"
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-line bg-page text-xs text-fg-muted"
         >
-          <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          <Globe className="w-4 h-4 text-accent-text shrink-0" />
           <span>Meta reports use the ad account time zone ({accountInfo.timezoneName})</span>
         </div>
       )}

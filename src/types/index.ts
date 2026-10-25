@@ -1,3 +1,6 @@
+import type { AppearanceSettings } from '../utils/themeEngine.js';
+export type { AppearanceSettings };
+
 export type DatePreset =
   | 'Today'
   | 'Last 7 days'
@@ -427,6 +430,7 @@ export type NumberFormatLocale = 'en-US' | 'en-GB' | 'en-IN' | 'de-DE' | 'fr-FR'
 
 export interface UserSettings {
   theme?: 'light' | 'dark' | 'system';
+  appearance?: AppearanceSettings;
   defaultDateRange?:
     | 'Today'
     | 'Last 7 days'

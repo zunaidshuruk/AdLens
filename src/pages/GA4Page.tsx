@@ -160,7 +160,7 @@ export const GA4Page: React.FC = () => {
         key: 'dimensionValue',
         header: activeDimensionLabel,
         render: (r) => (
-          <span className="font-medium text-slate-900 dark:text-slate-100">
+          <span className="font-medium text-fg">
             {r.dimensionValue}
           </span>
         ),
@@ -217,8 +217,8 @@ export const GA4Page: React.FC = () => {
           <span
             className={
               r.changePercent >= 0
-                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                : 'text-red-600 dark:text-red-400 font-semibold'
+                ? 'text-success font-semibold'
+                : 'text-danger font-semibold'
             }
           >
             {formatSignedPercent(r.changePercent)}
@@ -243,7 +243,7 @@ export const GA4Page: React.FC = () => {
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ backgroundColor: SOURCE_GROUP_COLORS[r.group] || '#64748b' }}
             />
-            <span className="font-medium text-slate-900 dark:text-slate-100">{r.group}</span>
+            <span className="font-medium text-fg">{r.group}</span>
           </div>
         ),
       },
@@ -275,8 +275,8 @@ export const GA4Page: React.FC = () => {
           <span
             className={
               r.changePercent >= 0
-                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                : 'text-red-600 dark:text-red-400 font-semibold'
+                ? 'text-success font-semibold'
+                : 'text-danger font-semibold'
             }
           >
             {formatSignedPercent(r.changePercent)}
@@ -335,7 +335,7 @@ export const GA4Page: React.FC = () => {
         render: (r) => (
           <span>
             {r.country}{' '}
-            {r.code && <span className="text-slate-400 font-mono text-[11px]">({r.code})</span>}
+            {r.code && <span className="text-fg-subtle font-mono text-[11px]">({r.code})</span>}
           </span>
         ),
       },
@@ -368,14 +368,14 @@ export const GA4Page: React.FC = () => {
         key: 'campaign',
         header: 'UTM Campaign Name',
         render: (r) => (
-          <span className="font-medium text-slate-900 dark:text-slate-100">{r.campaign}</span>
+          <span className="font-medium text-fg">{r.campaign}</span>
         ),
       },
       {
         key: 'sourceMedium',
         header: 'Source / Medium',
         render: (r) => (
-          <span className="font-mono text-slate-600 dark:text-slate-400">{r.sourceMedium}</span>
+          <span className="font-mono text-fg-muted">{r.sourceMedium}</span>
         ),
       },
       {
@@ -421,10 +421,10 @@ export const GA4Page: React.FC = () => {
         header: 'Page Path',
         render: (r) => (
           <div>
-            <div className="font-mono font-medium text-slate-900 dark:text-slate-100">
+            <div className="font-mono font-medium text-fg">
               {r.pagePath}
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-xs">
+            <div className="text-[11px] text-fg-muted truncate max-w-xs">
               {r.pageTitle}
             </div>
           </div>
@@ -475,13 +475,13 @@ export const GA4Page: React.FC = () => {
         header: 'Conversion Event',
         render: (r) => (
           <div>
-            <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+            <span className="font-mono font-semibold text-accent-text">
               {r.eventName}
             </span>
-            <span aria-hidden="true" className="mx-1.5 text-slate-300 dark:text-slate-700">
+            <span aria-hidden="true" className="mx-1.5 text-line-strong">
               ·
             </span>
-            <span className="text-slate-700 dark:text-slate-300">{r.label}</span>
+            <span className="text-fg">{r.label}</span>
           </div>
         ),
       },
@@ -512,8 +512,8 @@ export const GA4Page: React.FC = () => {
           <span
             className={
               r.changePercent >= 0
-                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                : 'text-red-600 dark:text-red-400 font-semibold'
+                ? 'text-success font-semibold'
+                : 'text-danger font-semibold'
             }
           >
             {formatSignedPercent(r.changePercent)}
@@ -554,24 +554,24 @@ export const GA4Page: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
               Google Analytics 4
             </h1>
             <SourceBadge source="ga4" showMode />
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-xs sm:text-sm text-fg-muted">
             Session engagement, acquisition channels, UTM attribution, and key conversion events on{' '}
             {isGA4Live && propertyInfo ? propertyInfo.displayName : TRACKED_SITE.domain}
           </p>
 
           {/* Live Property Info & Timezone / 24-48h Freshness Notes */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-fg-muted">
             {isGA4Live && propertyInfo && (
               <span
                 data-testid="ga4-property-header-info"
-                className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300"
+                className="inline-flex items-center gap-1.5 font-medium text-fg"
               >
-                <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <Globe className="w-3.5 h-3.5 text-accent-text shrink-0" />
                 <span>Property: {propertyInfo.displayName}</span>
                 {propertyInfo.timeZone && (
                   <>
@@ -585,7 +585,7 @@ export const GA4Page: React.FC = () => {
             {timezoneMismatch && propertyInfo?.timeZone && (
               <span
                 data-testid="ga4-timezone-mismatch-note"
-                className="text-amber-700 dark:text-amber-400"
+                className="text-warning"
               >
                 GA4 reports use the property time zone ({propertyInfo.timeZone})
               </span>
@@ -594,7 +594,7 @@ export const GA4Page: React.FC = () => {
             {includesRecent48h && (
               <span
                 data-testid="ga4-recent-data-note"
-                className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400"
+                className="inline-flex items-center gap-1 text-fg-muted"
               >
                 <Clock className="w-3.5 h-3.5 shrink-0" />
                 <span>GA4 data for the last 24–48 hours may be incomplete.</span>
@@ -729,16 +729,16 @@ export const GA4Page: React.FC = () => {
           {/* Source Groups Card (Donut Chart + Table + Info Icon for SOURCE_GROUP_RULES) */}
           <div
             data-testid="ga4-source-groups-card"
-            className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4"
+            className="p-5 rounded-xl border border-line bg-surface space-y-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <h2 className="text-sm font-semibold text-fg">
                   Source groups
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-fg-muted mt-0.5">
                   All GA4 sessions classified into AdLens source groups (total:{' '}
-                  <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                  <span className="font-mono font-semibold text-fg">
                     {formatNumber(data?.sourceGroups.totalSessions ?? 0)}
                   </span>{' '}
                   sessions)
@@ -751,9 +751,9 @@ export const GA4Page: React.FC = () => {
                 aria-expanded={showSourceGroupRules}
                 aria-label="Toggle source group classification rules"
                 data-testid="source-group-rules-toggle"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-fg-muted bg-fill-2 hover:bg-fill-3 transition-colors cursor-pointer"
               >
-                <Info className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <Info className="w-3.5 h-3.5 text-accent-text shrink-0" />
                 <span>Classification rules</span>
               </button>
             </div>
@@ -761,12 +761,12 @@ export const GA4Page: React.FC = () => {
             {showSourceGroupRules && (
               <div
                 data-testid="source-group-rules-panel"
-                className="p-3.5 rounded-lg border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30 text-xs text-slate-700 dark:text-slate-300 space-y-1.5"
+                className="p-3.5 rounded-lg border border-accent-line bg-accent-soft text-xs text-fg space-y-1.5"
               >
-                <div className="font-semibold text-slate-900 dark:text-slate-100">
+                <div className="font-semibold text-fg">
                   Source Group Classification Rules (evaluated in order)
                 </div>
-                <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-300">
+                <ul className="list-disc list-inside space-y-1 text-fg-muted">
                   {(data?.sourceGroups.rules ?? []).map((rule) => (
                     <li key={rule}>{rule}</li>
                   ))}
@@ -778,7 +778,7 @@ export const GA4Page: React.FC = () => {
               {/* Donut Chart */}
               <div className="h-60 w-full flex flex-col items-center justify-center">
                 {loading ? (
-                  <div className="w-44 h-44 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                  <div className="w-44 h-44 rounded-full bg-fill-2 animate-pulse" />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -841,14 +841,14 @@ export const GA4Page: React.FC = () => {
           {/* Traffic Breakdown Section (Dimension Tabs + Country/Device/Browser Filters + Sortable Table) */}
           <div
             data-testid="ga4-traffic-breakdown-section"
-            className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4"
+            className="p-5 rounded-xl border border-line bg-surface space-y-4"
           >
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <h2 className="text-sm font-semibold text-fg">
                   Traffic breakdown
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-fg-muted mt-0.5">
                   Explore sessions, users, engagement, and key events across dimensions with
                   country, device, and browser filters
                 </p>
@@ -856,7 +856,7 @@ export const GA4Page: React.FC = () => {
 
               {/* Country, Device, Browser Filter Dropdowns */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-fg-muted mr-1">
                   <Filter className="w-3.5 h-3.5" />
                   <span>Filters:</span>
                 </span>
@@ -865,7 +865,7 @@ export const GA4Page: React.FC = () => {
                   aria-label="Filter by country"
                   value={countryFilter}
                   onChange={(e) => setCountryFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-line bg-fill-1 text-fg"
                 >
                   <option value="">All countries</option>
                   {availableCountryOptions.map((c) => (
@@ -879,7 +879,7 @@ export const GA4Page: React.FC = () => {
                   aria-label="Filter by device"
                   value={deviceFilter}
                   onChange={(e) => setDeviceFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-line bg-fill-1 text-fg"
                 >
                   <option value="">All devices</option>
                   {DEVICE_FILTER_OPTIONS.map((d) => (
@@ -893,7 +893,7 @@ export const GA4Page: React.FC = () => {
                   aria-label="Filter by browser"
                   value={browserFilter}
                   onChange={(e) => setBrowserFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-line bg-fill-1 text-fg"
                 >
                   <option value="">All browsers</option>
                   {BROWSER_FILTER_OPTIONS.map((b) => (
@@ -911,7 +911,7 @@ export const GA4Page: React.FC = () => {
                       setDeviceFilter('');
                       setBrowserFilter('');
                     }}
-                    className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-fg-muted hover:text-fg cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                     <span>Clear</span>
@@ -924,7 +924,7 @@ export const GA4Page: React.FC = () => {
             <div
               role="tablist"
               aria-label="Traffic breakdown dimensions"
-              className="flex items-center gap-1.5 flex-wrap border-b border-slate-200 dark:border-slate-800 pb-3"
+              className="flex items-center gap-1.5 flex-wrap border-b border-line pb-3"
             >
               {BREAKDOWN_DIMENSIONS.map((dim) => {
                 const isActive = breakdownDimension === dim.id;
@@ -937,8 +937,8 @@ export const GA4Page: React.FC = () => {
                     onClick={() => setBreakdownDimension(dim.id)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                       isActive
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        ? 'bg-accent text-on-accent'
+                        : 'bg-fill-2 text-fg-muted hover:bg-fill-3'
                     }`}
                   >
                     {dim.label}

@@ -63,22 +63,22 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 space-y-2">
+    <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xs border-b border-line px-4 sm:px-6 py-3 space-y-2">
       {accountLinkNotice && (
         <div
           role="status"
           data-testid="account-linked-toast"
-          className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/50 text-xs text-emerald-900 dark:text-emerald-200"
+          className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-lg border border-success-line bg-success-soft text-xs text-success"
         >
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
             <span>{accountLinkNotice}</span>
           </div>
           <button
             type="button"
             onClick={dismissAccountLinkNotice}
             aria-label="Dismiss account link notice"
-            className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+            className="p-0.5 rounded hover:bg-fill-2 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -93,23 +93,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
               type="button"
               onClick={onOpenSidebar}
               aria-label="Open navigation menu"
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 md:hidden cursor-pointer"
+              className="p-2 rounded-lg border border-line text-fg hover:bg-fill-2 md:hidden cursor-pointer"
             >
               <Menu className="w-4 h-4" />
             </button>
 
             <div className="flex items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100 md:hidden">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-fg md:hidden">
                 <AdLensLogo className="w-5 h-5 shrink-0" />
                 <span>{APP_NAME}</span>
               </span>
-              <span className="hidden md:inline font-semibold text-slate-900 dark:text-slate-100">
+              <span className="hidden md:inline font-semibold text-fg">
                 {projectName}
               </span>
-              <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">
+              <span aria-hidden="true" className="text-line-strong">
                 ·
               </span>
-              <span className="font-mono text-slate-500 dark:text-slate-400">
+              <span className="font-mono text-fg-muted">
                 {projectDomain}
               </span>
             </div>
@@ -117,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
             {isMocked && (
               <span
                 data-testid="mock-data-badge"
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold tracking-wide bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-800 rounded-md whitespace-nowrap shrink-0"
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold tracking-wide bg-warning-soft text-warning border border-warning-line rounded-md whitespace-nowrap shrink-0"
               >
                 {isDemo ? 'DEMO STORE' : 'MOCK DATA'}
               </span>
@@ -126,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
             {googleConnected && (
               <span
                 data-testid="header-google-connected"
-                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"
+                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-success"
               >
                 <span>·</span>
                 <span>Google: {connections?.google.email || 'Google account'}</span>
@@ -140,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
               type="button"
               onClick={() => setCurrency(currency === 'BDT' ? 'USD' : 'BDT')}
               aria-label={`Switch currency (currently ${currency})`}
-              className="px-2.5 py-1.5 text-xs font-mono font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer"
+              className="px-2.5 py-1.5 text-xs font-mono font-semibold rounded-lg border border-line bg-fill-1 text-fg cursor-pointer"
             >
               {currency}
             </button>
@@ -148,7 +148,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
               type="button"
               onClick={toggleTheme}
               aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer"
+              className="p-1.5 rounded-lg border border-line bg-fill-1 text-fg cursor-pointer"
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
@@ -159,12 +159,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
         <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5">
           <DateRangePicker />
 
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2 pl-2 border-l border-line">
             <button
               type="button"
               onClick={() => setCurrency(currency === 'BDT' ? 'USD' : 'BDT')}
               aria-label={`Switch currency (currently ${currency})`}
-              className="hidden lg:inline-flex px-2.5 py-1.5 text-xs font-mono font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              className="hidden lg:inline-flex px-2.5 py-1.5 text-xs font-mono font-semibold rounded-lg border border-line bg-fill-1 text-fg hover:bg-fill-2 transition-colors cursor-pointer"
             >
               {currency === 'BDT' ? '৳ BDT' : '$ USD'}
             </button>
@@ -173,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
               type="button"
               onClick={toggleTheme}
               aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-              className="hidden lg:inline-flex p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              className="hidden lg:inline-flex p-1.5 rounded-lg border border-line bg-fill-1 text-fg hover:bg-fill-2 transition-colors cursor-pointer"
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
@@ -186,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                 aria-expanded={menuOpen}
                 aria-label="Open user account menu"
                 data-testid="header-user-menu-button"
-                className="flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-2 py-1 rounded-lg border border-line bg-fill-1 hover:bg-fill-2 transition-colors cursor-pointer"
               >
                 {avatarUrl ? (
                   <img
@@ -196,28 +196,28 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                     className="w-6 h-6 rounded-full object-cover"
                   />
                 ) : (
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+                  <span className="w-6 h-6 rounded-full bg-accent text-on-accent text-[11px] font-bold flex items-center justify-center shrink-0">
                     {initials}
                   </span>
                 )}
-                <span className="hidden sm:inline text-xs font-medium text-slate-800 dark:text-slate-200 max-w-[120px] truncate">
+                <span className="hidden sm:inline text-xs font-medium text-fg max-w-[120px] truncate">
                   {displayName}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronDown className="w-3.5 h-3.5 text-fg-subtle" />
               </button>
 
               {menuOpen && (
                 <div
                   role="menu"
                   data-testid="header-user-menu-dropdown"
-                  className="absolute right-0 mt-2 w-60 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg py-1.5 z-50"
+                  className="absolute right-0 mt-2 w-60 rounded-xl border border-line bg-surface shadow-lg py-1.5 z-50"
                 >
-                  <div className="px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800">
-                    <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                  <div className="px-3.5 py-2.5 border-b border-line">
+                    <div className="text-xs font-semibold text-fg truncate">
                       {displayName}
                     </div>
                     {email && (
-                      <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                      <div className="text-[11px] font-mono text-fg-muted truncate mt-0.5">
                         {email}
                       </div>
                     )}
@@ -231,9 +231,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                         setMenuOpen(false);
                         navigate('/settings');
                       }}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-fg hover:bg-fill-2 cursor-pointer"
                     >
-                      <Settings className="w-3.5 h-3.5 text-slate-400" />
+                      <Settings className="w-3.5 h-3.5 text-fg-subtle" />
                       <span>Settings</span>
                     </button>
 
@@ -241,7 +241,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                       type="button"
                       role="menuitem"
                       onClick={handleSignOut}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-danger hover:bg-danger-soft cursor-pointer"
                     >
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Sign out</span>

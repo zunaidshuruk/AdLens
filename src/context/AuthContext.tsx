@@ -609,14 +609,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         <div
           role="alert"
           data-testid="firebase-init-error-banner"
-          className="w-full px-4 py-3 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100 text-xs sm:text-sm flex flex-wrap items-center justify-center gap-3"
+          className="w-full px-4 py-3 bg-warning-soft border-b border-warning-line text-warning text-xs sm:text-sm flex flex-wrap items-center justify-center gap-3"
         >
           <span>{initErrorMessage}</span>
           <button
             type="button"
             onClick={() => void retryFirebaseInit()}
             disabled={retryingInit}
-            className="px-3 py-1 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer disabled:opacity-50"
+            className="px-3 py-1 rounded-lg font-semibold bg-warning hover:bg-warning/90 text-on-warning transition-colors cursor-pointer disabled:opacity-50"
           >
             {retryingInit ? 'Retrying...' : 'Retry'}
           </button>

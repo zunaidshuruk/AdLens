@@ -86,7 +86,7 @@ export const SearchConsolePage: React.FC = () => {
         key: 'query',
         header: 'Query',
         render: (r) => (
-          <span className="font-medium text-slate-900 dark:text-slate-100">{r.query}</span>
+          <span className="font-medium text-fg">{r.query}</span>
         ),
       },
       {
@@ -122,8 +122,8 @@ export const SearchConsolePage: React.FC = () => {
           <span
             className={
               r.changePercent >= 0
-                ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                : 'text-red-600 dark:text-red-400 font-semibold'
+                ? 'text-success font-semibold'
+                : 'text-danger font-semibold'
             }
           >
             {formatSignedPercent(r.changePercent)}
@@ -141,7 +141,7 @@ export const SearchConsolePage: React.FC = () => {
         key: 'pageUrl',
         header: 'Indexed URL',
         render: (r) => (
-          <span className="font-mono text-slate-900 dark:text-slate-100">{r.pageUrl}</span>
+          <span className="font-mono text-fg">{r.pageUrl}</span>
         ),
       },
       {
@@ -183,7 +183,7 @@ export const SearchConsolePage: React.FC = () => {
         render: (r) => (
           <span>
             {r.country}{' '}
-            <span className="font-mono text-[11px] text-slate-400">({r.code})</span>
+            <span className="font-mono text-[11px] text-fg-subtle">({r.code})</span>
           </span>
         ),
       },
@@ -275,24 +275,24 @@ export const SearchConsolePage: React.FC = () => {
     <div className="space-y-6">
       <div className="space-y-1">
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             Google Search Console
           </h1>
           <SourceBadge source="search_console" showMode />
         </div>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-xs sm:text-sm text-fg-muted">
           Organic search visibility, keyword rankings, CTR, and device breakdown for{' '}
           {isSearchConsoleLive && selectedSiteUrl ? selectedSiteUrl : TRACKED_SITE.domain}
         </p>
 
         {/* Selected Site URL & 2-3 Day Freshness Lag Note */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-fg-muted">
           {isSearchConsoleLive && selectedSiteUrl && (
             <span
               data-testid="gsc-site-header-info"
-              className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300"
+              className="inline-flex items-center gap-1.5 font-medium text-fg"
             >
-              <Globe className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+              <Globe className="w-3.5 h-3.5 text-accent-text shrink-0" />
               <span>Site:</span>
               <span className="font-mono">{selectedSiteUrl}</span>
             </span>
@@ -301,7 +301,7 @@ export const SearchConsolePage: React.FC = () => {
           {endsWithinLast3Days && (
             <span
               data-testid="gsc-recent-data-note"
-              className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400"
+              className="inline-flex items-center gap-1 text-fg-muted"
             >
               <Clock className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -431,9 +431,9 @@ export const SearchConsolePage: React.FC = () => {
               />
               <p
                 data-testid="gsc-queries-privacy-note"
-                className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-1"
+                className="flex items-center gap-1.5 text-xs text-fg-muted px-1"
               >
-                <Info className="w-3.5 h-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
+                <Info className="w-3.5 h-3.5 shrink-0 text-fg-subtle" />
                 <span>
                   Google hides some low-volume queries for privacy, so table totals can be lower than the overview totals.
                 </span>

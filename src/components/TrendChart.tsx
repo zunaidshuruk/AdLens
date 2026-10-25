@@ -51,35 +51,35 @@ export function TrendChart<T extends Record<string, unknown>>({
 }: TrendChartProps<T>) {
   if (loading) {
     return (
-      <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 animate-pulse">
+      <div className="p-5 rounded-xl border border-line bg-surface animate-pulse">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="h-4 w-44 bg-slate-200 dark:bg-slate-800 rounded mb-2" />
-            <div className="h-3 w-64 bg-slate-100 dark:bg-slate-800/70 rounded" />
+            <div className="h-4 w-44 bg-fill-3 rounded mb-2" />
+            <div className="h-3 w-64 bg-fill-2 rounded" />
           </div>
-          <div className="h-4 w-28 bg-slate-200 dark:bg-slate-800 rounded" />
+          <div className="h-4 w-28 bg-fill-3 rounded" />
         </div>
         <div
           style={{ height }}
-          className="w-full bg-slate-100 dark:bg-slate-800/50 rounded-lg"
+          className="w-full bg-fill-2 rounded-lg"
         />
       </div>
     );
   }
 
   return (
-    <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <div className="p-5 rounded-xl border border-line bg-surface">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+          <h2 className="text-base font-semibold text-fg">{title}</h2>
           {subtitle && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+            <p className="text-xs text-fg-muted mt-0.5">{subtitle}</p>
           )}
         </div>
 
         <div className="flex items-center gap-4 flex-wrap">
           {series.map((s) => (
-            <div key={s.key} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+            <div key={s.key} className="flex items-center gap-1.5 text-xs text-fg-muted">
               <span
                 className="w-3 h-0.5 inline-block rounded-full"
                 style={{
@@ -142,8 +142,8 @@ export function TrendChart<T extends Record<string, unknown>>({
                 content={({ active, payload, label }) => {
                   if (!active || !payload || payload.length === 0) return null;
                   return (
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-lg text-xs">
-                      <div className="font-semibold text-slate-900 dark:text-slate-100 mb-1.5 font-mono">
+                    <div className="rounded-lg border border-line bg-surface p-3 shadow-lg text-xs">
+                      <div className="font-semibold text-fg mb-1.5 font-mono">
                         {formatShortDate(String(label))} ({String(label)})
                       </div>
                       <div className="space-y-1">
@@ -153,8 +153,8 @@ export function TrendChart<T extends Record<string, unknown>>({
                           const formatted = cfg?.formatter ? cfg.formatter(rawVal) : rawVal.toLocaleString();
                           return (
                             <div key={String(entry.dataKey)} className="flex items-center justify-between gap-4">
-                              <span className="text-slate-600 dark:text-slate-300">{cfg?.label ?? String(entry.name)}:</span>
-                              <span className="font-mono font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                              <span className="text-fg-muted">{cfg?.label ?? String(entry.name)}:</span>
+                              <span className="font-mono font-semibold text-fg tabular-nums">
                                 {formatted}
                               </span>
                             </div>
