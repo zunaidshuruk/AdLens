@@ -31,6 +31,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 14 | **Custom dashboards: builder + template gallery** | ⬜ Planned | — |
 | 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 Prep done (engine router, report compactor, tool layer, **analyst service**) | — |
 | 16 | Bring-your-own AI agents (16a server · 16b settings UI · 16c ask + chat · 16d webhook tools) | 🧩 Agent core prep done (SSRF guard, providers, runner, config, encrypted keys, analyst service; 205 tests) | — |
+| 16.5 | **Installable app (PWA)** for Chrome on Windows and iPhone/iPad: manifest + icons, offline shell, install experience, phone polish, sign-in that works inside the installed app | 🧩 Prep done: icons, manifest, offline page, service worker, update logic, install detection, sign-in proxy (60 new tests, 265 in the repo) | — |
 | 17 | MCP endpoint | ⬜ Planned | — |
 | 18 | Scale & hardening (quotas, shared cache, monitoring, reports, alerts) | ⬜ Planned | — |
 | 19 | Enterprise: SAML/OIDC single sign-on, MFA, audit log | ⬜ Planned | — |
@@ -610,6 +611,46 @@ A user can add their own AI agent that answers questions about their ads and tra
 - **16c** AI Analyst page: agent picker, chat, "Numbers used" panel from the trace.
 - **16d** webhook developer page: protocol description, signature verification snippets (Node, Python), test-call button.
 
+## Sprint 16.5 — Installable app (PWA) ⬜
+
+Goal: AdLens installs like an app on **Windows (Chrome, also Edge)** and on **iPhone/iPad (Add to Home Screen)**, opens in its own window with its own icon, and signs in reliably there. No app-store account or native code.
+
+**Research (19 Oct 2026):**
+- **Windows:** Chrome and Edge install web apps on Windows; Chromium needs a manifest (name, icons, start address, display mode) and HTTPS. Users can also install any site from the browser menu. The installed app gets a Start menu entry, taskbar icon, its own window, and updates itself from the site.
+- **iPhone/iPad:** every browser on iOS uses Apple's engine (WebKit). iOS 26 opens every site added to the Home Screen as a web app by default, with no manifest or service worker required; a manifest still gives proper icons and behaviour. iOS has **no install prompt**, so the app must show its own "how to install" hint. Web push works only for apps added to the Home Screen (iOS 16.4+).
+- **Not available on iPhone:** Chrome's built-in on-device model (Gemini Nano) does not exist on iOS, so Private mode (Sprint 15b) shows "not available" there and the cloud analyst is used.
+- **Biggest risk: sign-in.** Firebase's Google and Microsoft sign-in uses a helper page hosted on `adlens-404e6.firebaseapp.com`, which is a different address from the app. Browsers increasingly block that cross-site storage, and installed iOS apps keep their storage separate from Safari. Firebase's documented fix is to serve the helper from the app's own address (set `authDomain` to the app's host and proxy `/__/auth/*` to Firebase).
+
+**Decisions that shape the work:**
+- **Domain first.** An installed app is tied to its address. Installing from `adlens-1.ai.studio` and moving to a custom domain later means every user must reinstall and sign in again. The same-origin sign-in helper also needs a domain AdLens controls. Plan: custom domain (Sprint 10 item) before inviting users to install; installing for the team and testing before that is fine.
+- **Privacy of cached data.** The service worker caches the app's own files only. It never caches `/api/*` responses (they are per user and signed in) or sign-in pages, and everything is cleared on sign-out. An optional "last snapshot while offline" is a later, opt-in feature.
+- **No new dependencies:** a small hand-written service worker built with esbuild (already in the project), logic in pure functions so it is unit-tested.
+
+**Findings from the real build (25 Oct 2026):**
+- Vite copies everything in `public/` into the build, so the manifest, icons and offline page ship automatically.
+- The server currently sends `Cache-Control: max-age=0` for everything (hashed build files are re-checked on every load) and answers a **missing file with the app page and "200 OK"**, for example `/assets/missing.js`. The service worker is built to refuse to store that, but the server should return 404 for missing files.
+- All 7 real build files (including the vendor chunks) are recognised by the worker's caching rule.
+
+**Prep done (25 Oct 2026), tested and mutation-checked (60 new tests):**
+- **Icons** (`public/icons/*`, generator `scripts/generate-icons.mjs`): 192, 512, maskable 512 (the logo is verified by code to stay inside Android's circular safe zone: 171.5 of 204.8 px), Apple touch 180 (opaque, since iOS fills transparent icons with black), favicons 32 and 16. Checked by eye on light, dark and circle-cropped backgrounds; a first version had a black fill bug that the preview caught.
+- **Manifest** (`public/manifest.webmanifest`): stable `id`, scope, relative `start_url`, standalone, three shortcuts (Overview, AI Analyst, Connections) that are tested to point at real routes. 6 tests check icon files and sizes straight from the PNG headers; a seventh switches itself on when PWA-1 adds the tags to `index.html`.
+- **Offline page** (`public/offline.html`): branded, light/dark, safe-area aware, no external files, no user data (tested).
+- **Service worker** (`src/sw/swLogic.ts`, `src/sw/sw.ts`, built by `scripts/build-sw.mjs`, 3.6 KB, no dependencies): never touches `/api`, `/__/*`, non-GET, other sites or authorised requests; pages are stored under one fixed key so addresses are never kept; one-time-link pages are never stored; the app page returned for a missing file is never stored as a script; `no-store` responses are not stored; the previous build's cache is kept so open tabs survive an update; a new version waits for the user (no automatic skipWaiting). 26 tests, including a behavioural suite that builds and runs the real worker in a fake browser. Seven deliberate breaks of these rules were all caught (one gap in my tests was found this way and closed).
+- **Update handling** (`src/pwa/updateManager.ts`, `src/pwa/register.ts`): no prompt or reload on first install, one reload only after the user accepts, no uninvited reload when another tab updates, update check when an installed app returns to the foreground, caches cleared on sign-out (other sites' caches untouched). 12 tests.
+- **Install detection** (`src/pwa/installState.ts`): Windows Chrome/Edge get a real install button; iPhone and iPad (including an iPad that reports itself as a Mac) get a three-step guide, shown once in a banner and always in Settings. 6 tests with real browser identifiers.
+- **Sign-in proxy** (`server/lib/authProxy.ts`): serves Firebase's helper files from the app's own address. Only GET/HEAD for `/__/auth/<file>` and `/__/firebase/init.json`; refuses traversal tricks; forwards no cookies, authorisation or referrer; drops Set-Cookie; never follows redirects; size, time (with its own timer) and rate limits; the return page is sent with `no-store`; `chooseAuthDomain` only ever picks an allow-listed address (a forged Host header cannot become the sign-in address). 10 tests including a real Express server; eight deliberate breaks all caught.
+
+**Five small prompts (each about 10 minutes):**
+- **PWA-1 Foundation:** page tags in `index.html` (manifest link, icons, `theme-color` pair for light and dark, Apple web-app tags, `viewport-fit=cover`); server headers: `/assets/*` long and immutable, missing files under `/assets` return 404, `sw.js`, `version.json`, manifest, offline page and `index.html` always revalidated, icons one day. The tags and files already exist; AI Studio only wires them.
+- **PWA-2 Service worker:** add `node scripts/build-sw.mjs` to the build, call `registerServiceWorker` in `main.tsx`, "new version — Refresh" toast, clear caches on sign-out, offline banner and friendly offline errors, self-host the fonts with `@fontsource` packages (Vite emits hashed files the worker caches).
+- **PWA-3 Install experience:** "Install AdLens" button and iPhone guide using `installState.ts` (profile menu, Settings, one-time dismissible banner).
+- **PWA-4 Phone and window polish:** safe-area padding for the notch and home bar, status bar style, theme-color following the user's theme, no accidental pull-to-refresh, window title on Windows.
+- **PWA-5 Sign-in inside the installed app:** register `registerAuthProxy` before the app fallback, use `chooseAuthDomain` in `/api/public-config`, switch (`AUTH_PROXY=on`), new redirect addresses with Google and Microsoft, Firebase authorized domains; verification and reset emails explained for installed apps.
+
+**Test matrix (real devices):** Windows 11 Chrome tab and installed window; iPhone Safari tab and Home Screen app; iPhone Chrome added to Home Screen. In each: email sign-in, Google sign-in, reload, sign-out then sign-in as another user (no leftover data), update toast after a new release, offline page. Lighthouse installability audit must pass.
+
+**Later and optional:** push notifications for alerts (installed apps only on iOS; Sprint 19 alerts), badge counts, Microsoft Store listing through PWABuilder, offline "last snapshot", custom title bar on Windows.
+
 ## Sprint 17 — MCP endpoint ⬜
 
 Adopts #30.
@@ -656,6 +697,8 @@ Adopts #30.
 | 18 Oct 2026 | Uploads = profile pictures and workspace logos (Cloud Storage); settings and configuration stored in Firestore and synced across devices. CSV data imports not planned |
 | 18 Oct 2026 | SSO in two stages: social SSO (Google, Microsoft) in Sprint 7A; enterprise SAML/OIDC in Sprint 17 |
 | 18 Oct 2026 | Public-mode safeguard: the Meta system-user token is usable only by allow-listed emails, so other users can never see Synesis IT ad accounts |
+| 25 Oct 2026 | PWA prep built and tested (icons, manifest, offline page, service worker with a behavioural test suite, update logic, install detection, sign-in proxy). The worker keeps the app's own files only and waits for the user before updating |
+| 25 Oct 2026 | **Installable app (PWA)** planned as Sprint 16.5 (5 small prompts): Windows Chrome and iPhone Home Screen. Decided: custom domain before inviting installs; service worker caches app files only, never `/api` or sign-in pages; same-origin Firebase sign-in helper for installed apps; no new dependencies |
 | 19 Oct 2026 | Colour migration is automated by a tested script (2,341 of 2,344 classes); Sprint 8 is now four prompts. Cool-tinted default presets keep the current slate look; input borders and faint text deliberately meet WCAG non-text contrast |
 | 19 Oct 2026 | Sprint 8 was first split into six small prompts because the app has ~607 hard-coded colour classes that must move to named colour roles (page, surface, line, fg, accent…) before a user theme can change anything |
 | 19 Oct 2026 | Custom AI agents: Gemini, OpenAI-compatible and signed webhooks; the user's own keys are encrypted with the vault; endpoints are SSRF-guarded; each agent only gets reports its allowed AND connected sources cover |
@@ -669,6 +712,10 @@ Adopts #30.
 
 ## Open decisions
 
+- **Custom domain timing (Sprint 16.5 / 10):** before inviting users to install (recommended), or accept a reinstall later.
+- **Offline scope (Sprint 16.5):** offline page only (default), or later an opt-in "last snapshot" of the most recent dashboard.
+- **Microsoft Store listing (optional):** only if you want AdLens to appear in the Store as well as installing from Chrome.
+
 - **Theme presets and fonts (Sprint 8):** final list of preset themes and fonts; whether the default stays deep blue.
 - **Template list (Sprint 14):** confirm the 8 starter templates; dashboards per project per plan.
 
@@ -680,6 +727,9 @@ Adopts #30.
 - **MCP auth (Sprint 17):** Phase A (access keys) first, Phase B (OAuth 2.1) after.
 
 ## Known issues and backlog
+
+- **No install support yet:** no manifest, no service worker, only an SVG icon, no safe-area handling for phones, no cache headers for static files. Planned in Sprint 16.5.
+- **Fonts load from Google Fonts:** blocks a fully offline shell and sends visitors' addresses to Google. Self-host them in PWA-2.
 
 - **Delete account (7C-3):** the "owner with other members" check runs after Google access is revoked, so a blocked deletion still disconnects the user. Move the check before the destructive steps.
 

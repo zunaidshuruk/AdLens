@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex" />
+<meta name="color-scheme" content="light dark" />
+<title>You're offline — AdLens</title>
+<style>
+  :root { --bg:#f6f9fc; --card:#ffffff; --fg:#17181b; --muted:#5b5e60; --line:#dee2e5; --accent:#1d4ed8; --on-accent:#ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e1012; --card:#17181b; --fg:#eff2f5; --muted:#a9adb1; --line:#2c2f33; --accent:#3b82f6; --on-accent:#0b0d10; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; align-items: center; justify-content: center; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+         background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 26rem; width: 100%; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 32px 24px; }
+  svg { width: 72px; height: 72px; }
+  h1 { font-size: 1.35rem; margin: 16px 0 8px; }
+  p { margin: 0 0 20px; color: var(--muted); }
+  button { appearance: none; border: 0; border-radius: 10px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; background: var(--accent); color: var(--on-accent); }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  small { display: block; margin-top: 16px; color: var(--muted); font-size: .8rem; }
+</style>
+</head>
+<body>
+<main>
+  <svg viewBox="0 0 512 512" fill="none" role="img" aria-label="AdLens">
+    <defs>
+      <linearGradient id="b" x1="80" y1="380" x2="396" y2="106" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3378FF"/><stop offset="50%" stop-color="#5168F4"/><stop offset="100%" stop-color="#2E90FA"/></linearGradient>
+      <linearGradient id="t" x1="445" y1="198" x2="201" y2="453" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00B6A7"/><stop offset="100%" stop-color="#14B37B"/></linearGradient>
+    </defs>
+    <path d="M 156 435 A 205 205 0 1 1 396 106" stroke="url(#b)" stroke-width="52" stroke-linecap="round"/>
+    <path d="M 451 193 A 205 205 0 0 1 201 453" stroke="url(#t)" stroke-width="52" stroke-linecap="round"/>
+    <path d="M 177 326 L 256 162 L 335 326" stroke="#34B3E7" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="256" cy="282" r="40" fill="#F79307"/>
+  </svg>
+  <h1>You're offline</h1>
+  <p>AdLens needs an internet connection to load your analytics. Check your connection, then try again.</p>
+  <button type="button" onclick="location.reload()">Try again</button>
+  <small>Your data is not stored on this device while you're offline.</small>
+</main>
+</body>
+</html>
