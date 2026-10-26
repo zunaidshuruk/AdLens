@@ -3070,10 +3070,293 @@ test('Sprint 15a-1: /api/health aiConfigured, POST /api/ai/ask validation, ToolI
     delete process.env.TOKEN_ENCRYPTION_KEY;
     delete process.env.APP_BASE_URL;
     delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY_2;
     delete process.env.GEMINI_MODEL;
     server.close();
   }
 });
 
+test('Sprint 15a-1b: GEMINI_API_KEY_2 fallback key in /api/health and POST /api/ai/ask retry and quota rules', async () => {
+  const { app } = await import('../../server/index.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const {
+    createInMemoryFirestoreStore,
+    getUtcMonthPeriod,
+    setTestFirestoreStore,
+  } = await import('../../server/lib/firestore.js');
+  const { createInMemoryVaultStore, setTestConnectionStore } = await import(
+    '../../server/lib/connectionStore.js'
+  );
+  const { getVault, resetVaultSingleton } = await import('../../server/lib/vault.js');
+  const { clearAiRateLimit, setTestAiRequest } = await import('../../server/routes/ai.js');
 
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-15a1b-32c!';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY_2;
+  delete process.env.GEMINI_MODEL;
 
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+  const connStore = createInMemoryVaultStore();
+  setTestConnectionStore(connStore);
+  resetVaultSingleton();
+  clearAiRateLimit();
+
+  const { workspace } = await store.bootstrapUserAndWorkspace({
+    uid: 'uid_ai_fallback',
+    email: 'fallback@acme.com',
+    displayName: 'Fallback Tester',
+  });
+  const wsId = workspace.id;
+
+  const project = await store.createProject(wsId, {
+    name: 'Fallback Shop',
+    domain: 'fallback.example',
+    ga4PropertyId: '55112233',
+    ga4PropertyName: 'Fallback GA4',
+    searchConsoleSite: null,
+    metaAdAccountId: null,
+    timezone: 'UTC',
+    currency: 'USD',
+    createdBy: 'uid_ai_fallback',
+  });
+
+  await getVault().saveConnection({
+    uid: 'uid_ai_fallback',
+    provider: 'google',
+    accountLabel: 'fallback@acme.com',
+    scopes: ['openid', 'email'],
+    refreshToken: 'rt-fb-1',
+    accessToken: 'at-fb-1',
+    accessTokenExpiresAt: Date.now() + 3_600_000,
+  });
+
+  setTestTokenVerifier(async () => ({
+    uid: 'uid_ai_fallback',
+    email: 'fallback@acme.com',
+    email_verified: true,
+    firebase: { identities: { 'google.com': ['g-fb'] }, sign_in_provider: 'google.com' },
+  }) as never);
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const headers = {
+    Authorization: 'Bearer token-ai-fallback',
+    'Content-Type': 'application/json',
+    'X-AdLens-Project': `${wsId}/${project.id}`,
+  };
+
+  const PRIMARY_KEY = 'AIzaPrimarySecretKey111';
+  const FALLBACK_KEY = 'AIzaFallbackSecretKey222';
+  const period = getUtcMonthPeriod();
+
+  try {
+    // 1. /api/health reports aiConfigured & aiFallbackKeyConfigured without leaking keys
+    process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+    let hRaw = await (await fetch(`${baseUrl}/api/health`)).text();
+    let hJson = JSON.parse(hRaw) as { aiConfigured: boolean; aiFallbackKeyConfigured: boolean };
+    assert.equal(hJson.aiConfigured, false);
+    assert.equal(hJson.aiFallbackKeyConfigured, false);
+
+    // Only second key set -> aiConfigured true, aiFallbackKeyConfigured true
+    process.env.GEMINI_API_KEY_2 = `  ${FALLBACK_KEY}  `;
+    hRaw = await (await fetch(`${baseUrl}/api/health`)).text();
+    hJson = JSON.parse(hRaw) as { aiConfigured: boolean; aiFallbackKeyConfigured: boolean };
+    assert.equal(hJson.aiConfigured, true);
+    assert.equal(hJson.aiFallbackKeyConfigured, true);
+    assert.ok(!hRaw.includes(FALLBACK_KEY));
+
+    // Only second key exists -> used as main key (no retry)
+    const keysSeenOnlySecond: string[] = [];
+    setTestAiRequest(async (_url, opts) => {
+      keysSeenOnlySecond.push(String(opts.headers?.['x-goog-api-key'] ?? ''));
+      return {
+        status: 200,
+        headers: {},
+        text: JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'Answered with key 2 as main key.' }] } }],
+        }),
+      };
+    });
+
+    const resOnlySecond = await fetch(`${baseUrl}/api/ai/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: 'Does key 2 work alone?',
+        startDate: '2026-10-01',
+        endDate: '2026-10-07',
+      }),
+    });
+    assert.equal(resOnlySecond.status, 200);
+    const bodyOnlySecond = (await resOnlySecond.json()) as {
+      ok: boolean;
+      answer: string;
+      quota: { used: number; limit: number };
+    };
+    assert.equal(bodyOnlySecond.ok, true);
+    assert.equal(bodyOnlySecond.answer, 'Answered with key 2 as main key.');
+    assert.deepEqual(keysSeenOnlySecond, [FALLBACK_KEY]);
+    assert.equal(bodyOnlySecond.quota.used, 1);
+
+    // 2. Both keys set: first key gives PROVIDER_AUTH (401) and second works -> one answer returned, monthly count rises by 1
+    process.env.GEMINI_API_KEY = PRIMARY_KEY;
+    process.env.GEMINI_API_KEY_2 = FALLBACK_KEY;
+    await store.setUsage!(wsId, period, { aiQuestions: 10 });
+
+    const seenCallsRetry: { key: string; body: string }[] = [];
+    setTestAiRequest(async (_url, opts) => {
+      const key = String(opts.headers?.['x-goog-api-key'] ?? '');
+      seenCallsRetry.push({ key, body: opts.body ?? '' });
+      if (key === PRIMARY_KEY) {
+        return {
+          status: 401,
+          headers: {},
+          text: JSON.stringify({ error: { message: `Invalid key ${PRIMARY_KEY}` } }),
+        };
+      }
+      return {
+        status: 200,
+        headers: {},
+        text: JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'Fallback key succeeded!' }] } }],
+        }),
+      };
+    });
+
+    const resRetryRaw = await (
+      await fetch(`${baseUrl}/api/ai/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: 'Did fallback work?',
+          history: [{ role: 'user', content: 'Hi there' }],
+          startDate: '2026-10-01',
+          endDate: '2026-10-07',
+          compareStartDate: '2026-09-24',
+          compareEndDate: '2026-09-30',
+        }),
+      })
+    ).text();
+    const resRetry = JSON.parse(resRetryRaw) as {
+      ok: boolean;
+      answer: string;
+      quota: { used: number; limit: number };
+    };
+    assert.equal(resRetry.ok, true);
+    assert.equal(resRetry.answer, 'Fallback key succeeded!');
+    assert.deepEqual(
+      seenCallsRetry.map((c) => c.key),
+      [PRIMARY_KEY, FALLBACK_KEY]
+    );
+    // Same question, history, and dates sent on retry
+    assert.equal(seenCallsRetry[0].body, seenCallsRetry[1].body);
+    // Monthly count rose by exactly 1 (from 10 to 11)
+    assert.deepEqual(resRetry.quota, { used: 11, limit: 100 });
+    assert.ok(!resRetryRaw.includes(PRIMARY_KEY));
+    assert.ok(!resRetryRaw.includes(FALLBACK_KEY));
+
+    // 3. First key works -> second key never used
+    const keysSeenFirstWorks: string[] = [];
+    setTestAiRequest(async (_url, opts) => {
+      keysSeenFirstWorks.push(String(opts.headers?.['x-goog-api-key'] ?? ''));
+      return {
+        status: 200,
+        headers: {},
+        text: JSON.stringify({
+          candidates: [{ content: { parts: [{ text: 'Primary key worked first try.' }] } }],
+        }),
+      };
+    });
+
+    const resFirstWorks = (await (
+      await fetch(`${baseUrl}/api/ai/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: 'Primary test',
+          startDate: '2026-10-01',
+          endDate: '2026-10-07',
+        }),
+      })
+    ).json()) as { ok: boolean; answer: string; quota: { used: number; limit: number } };
+    assert.equal(resFirstWorks.ok, true);
+    assert.deepEqual(keysSeenFirstWorks, [PRIMARY_KEY]);
+    assert.equal(resFirstWorks.quota.used, 12);
+
+    // 4. Other error codes (e.g. PROVIDER_NOT_FOUND 404, PROVIDER_BAD_REQUEST 400) -> no retry
+    const keysSeenOtherErr: string[] = [];
+    setTestAiRequest(async (_url, opts) => {
+      keysSeenOtherErr.push(String(opts.headers?.['x-goog-api-key'] ?? ''));
+      return {
+        status: 404,
+        headers: {},
+        text: JSON.stringify({ error: { message: 'Model not found' } }),
+      };
+    });
+
+    const resOtherErr = (await (
+      await fetch(`${baseUrl}/api/ai/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: 'Will 404 retry?',
+          startDate: '2026-10-01',
+          endDate: '2026-10-07',
+        }),
+      })
+    ).json()) as { ok: boolean; error?: { code: string } };
+    assert.equal(resOtherErr.ok, false);
+    assert.equal(resOtherErr.error?.code, 'PROVIDER_NOT_FOUND');
+    assert.deepEqual(keysSeenOtherErr, [PRIMARY_KEY], 'Must not retry on non-retryable error codes');
+
+    // 5. No second key -> no retry even on PROVIDER_AUTH
+    delete process.env.GEMINI_API_KEY_2;
+    const keysSeenNoSecond: string[] = [];
+    setTestAiRequest(async (_url, opts) => {
+      keysSeenNoSecond.push(String(opts.headers?.['x-goog-api-key'] ?? ''));
+      return {
+        status: 401,
+        headers: {},
+        text: JSON.stringify({ error: { message: `Rejected ${PRIMARY_KEY}` } }),
+      };
+    });
+
+    const resNoSecondRaw = await (
+      await fetch(`${baseUrl}/api/ai/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: 'No fallback configured',
+          startDate: '2026-10-01',
+          endDate: '2026-10-07',
+        }),
+      })
+    ).text();
+    const resNoSecond = JSON.parse(resNoSecondRaw) as { ok: boolean; error?: { code: string } };
+    assert.equal(resNoSecond.ok, false);
+    assert.equal(resNoSecond.error?.code, 'PROVIDER_AUTH');
+    assert.deepEqual(keysSeenNoSecond, [PRIMARY_KEY]);
+    assert.ok(!resNoSecondRaw.includes(PRIMARY_KEY));
+  } finally {
+    setTestAiRequest(null);
+    setTestFirestoreStore(null);
+    setTestConnectionStore(null);
+    setTestTokenVerifier(null);
+    resetVaultSingleton();
+    clearAiRateLimit();
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY_2;
+    delete process.env.GEMINI_MODEL;
+    server.close();
+  }
+});

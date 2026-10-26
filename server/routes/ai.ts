@@ -221,7 +221,29 @@ aiRouter.post('/ask', async (req: Request, res: Response) => {
     input: r.input,
   }));
 
-  const deps: AnalystDeps = {
+  const primaryApiKey = cfg.geminiApiKey || cfg.geminiApiKey2 || undefined;
+  const fallbackApiKey = cfg.geminiApiKey && cfg.geminiApiKey2 ? cfg.geminiApiKey2 : undefined;
+
+  const askInput = {
+    question: parsed.data.question,
+    history: parsed.data.history,
+    workspaceId,
+    project: {
+      name: project?.name || 'AdLens Project',
+      domain: project?.domain || null,
+      currency: project?.currency || 'USD',
+      timezone: project?.timezone || 'UTC',
+    },
+    dates: {
+      startDate: parsed.data.startDate,
+      endDate: parsed.data.endDate,
+      ...(parsed.data.compareStartDate ? { compareStartDate: parsed.data.compareStartDate } : {}),
+      ...(parsed.data.compareEndDate ? { compareEndDate: parsed.data.compareEndDate } : {}),
+    },
+    connectedSources,
+  };
+
+  const makeDeps = (apiKey: string | undefined): AnalystDeps => ({
     tools,
     executeTool: (id, args) => executeRegisteredReportTool(id, args, reportCtx),
     makeProvider: (providerCfg) =>
@@ -229,34 +251,24 @@ aiRouter.post('/ask', async (req: Request, res: Response) => {
         request: testAiRequestOverride ?? guardedRequest,
       }),
     cloud: {
-      apiKey: cfg.geminiApiKey || undefined,
+      apiKey,
       model: cfg.geminiModel || undefined,
     },
     consumeQuota: (wsId) => store.consumeAiQuota(wsId),
     refundQuota: (wsId) => store.refundAiQuota(wsId),
-  };
+  });
 
-  const result = await askAnalyst(
-    {
-      question: parsed.data.question,
-      history: parsed.data.history,
-      workspaceId,
-      project: {
-        name: project?.name || 'AdLens Project',
-        domain: project?.domain || null,
-        currency: project?.currency || 'USD',
-        timezone: project?.timezone || 'UTC',
-      },
-      dates: {
-        startDate: parsed.data.startDate,
-        endDate: parsed.data.endDate,
-        ...(parsed.data.compareStartDate ? { compareStartDate: parsed.data.compareStartDate } : {}),
-        ...(parsed.data.compareEndDate ? { compareEndDate: parsed.data.compareEndDate } : {}),
-      },
-      connectedSources,
-    },
-    deps
-  );
+  let result = await askAnalyst(askInput, makeDeps(primaryApiKey));
+
+  if (
+    fallbackApiKey &&
+    result.error?.code &&
+    (result.error.code === 'PROVIDER_AUTH' ||
+      result.error.code === 'PROVIDER_RATE_LIMITED' ||
+      result.error.code === 'PROVIDER_UNAVAILABLE')
+  ) {
+    result = await askAnalyst(askInput, makeDeps(fallbackApiKey));
+  }
 
   if (result.error?.code === 'QUOTA_EXCEEDED') {
     res.status(429).json(result);

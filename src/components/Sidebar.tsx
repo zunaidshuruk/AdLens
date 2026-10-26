@@ -38,7 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/ai-traffic', label: 'AI Traffic', icon: Sparkles, badge: 'NEW' },
   { to: '/search-console', label: 'Search Console', icon: Search },
   { to: '/meta-ads', label: 'Meta Ads', icon: Megaphone },
-  { to: '/ai-analyst', label: 'AI Analyst', icon: Sparkles, badge: 'SOON' },
+  { to: '/ai-analyst', label: 'AI Analyst', icon: Sparkles },
   { to: '/connections', label: 'Connections', icon: Link2 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

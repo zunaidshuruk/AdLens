@@ -1,5 +1,7 @@
 import { getCurrentIdToken } from '../lib/firebase.js';
 import type {
+  AskAnalystRequest,
+  AskResult,
   ComputedDateRange,
   ConnectionsResponse,
   GA4AcquisitionReport,
@@ -166,11 +168,36 @@ async function parseErrorResponse(response: Response): Promise<{ code: string; m
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit,
-  options?: { forceRefreshToken?: boolean }
+  options?: { forceRefreshToken?: boolean; allowStatuses?: number[] }
 ): Promise<T> {
   let response = await performFetch(path, init, Boolean(options?.forceRefreshToken));
 
   if (!response.ok) {
+    if (options?.allowStatuses?.includes(response.status)) {
+      const rawJson = (await response.json()) as Record<string, unknown>;
+      if (rawJson && typeof rawJson === 'object' && 'ok' in rawJson) {
+        return rawJson as unknown as T;
+      }
+      const errObj =
+        rawJson && typeof rawJson.error === 'object' && rawJson.error !== null
+          ? (rawJson.error as { code?: string; message?: string })
+          : undefined;
+      return {
+        ok: false,
+        answer: '',
+        error: {
+          code: errObj?.code || 'API_ERROR',
+          message: errObj?.message || `API request failed: ${response.status}`,
+        },
+        engine: null,
+        stopReason: 'rejected',
+        numbersUsed: [],
+        toolsUsed: [],
+        quota: null,
+        usage: { inputTokens: 0, outputTokens: 0 },
+      } as unknown as T;
+    }
+
     let parsedErr = await parseErrorResponse(response);
 
     // On 401 AUTH_REQUIRED retry once with getIdToken(true), then go to /sign-in
@@ -564,5 +591,16 @@ export const apiClient = {
     const query = buildDateRangeParams(range);
     const extra = adSetId ? `&adSetId=${encodeURIComponent(adSetId)}` : '';
     return apiRequest<MetaAdRow[]>(`/api/meta/ads?${query}${extra}`);
+  },
+
+  askAnalyst(body: AskAnalystRequest): Promise<AskResult> {
+    return apiRequest<AskResult>(
+      '/api/ai/ask',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+      { allowStatuses: [429] }
+    );
   },
 };

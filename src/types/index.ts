@@ -554,4 +554,37 @@ export interface SearchConsoleSiteOption {
   permissionLevel: string;
 }
 
+export interface AskAnalystHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AskAnalystRequest {
+  question: string;
+  history: AskAnalystHistoryMessage[];
+  startDate: string;
+  endDate: string;
+  compareStartDate?: string;
+  compareEndDate?: string;
+}
+
+export interface AskAnalystNumberUsed {
+  toolId: string;
+  args: Record<string, unknown>;
+  text: string;
+}
+
+export interface AskResult {
+  ok: boolean;
+  answer: string;
+  error?: { code: string; message: string };
+  engine: { kind: 'cloud-gemini' | 'custom-agent'; label: string; dataLeavesDevice: true } | null;
+  stopReason: string;
+  numbersUsed: AskAnalystNumberUsed[];
+  toolsUsed: { id: string; args: Record<string, unknown> }[];
+  quota: { used: number; limit: number } | null;
+  usage: { inputTokens: number; outputTokens: number };
+}
+
+
 

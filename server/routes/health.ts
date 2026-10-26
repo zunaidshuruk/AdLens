@@ -18,6 +18,7 @@ healthRouter.get('/', (_req: Request, res: Response) => {
     firebaseMissing: cfg.firebaseMissing,
     vaultReady: cfg.vaultReady,
     aiConfigured: cfg.aiConfigured,
+    aiFallbackKeyConfigured: cfg.aiFallbackKeyConfigured,
     timestamp: new Date().toISOString(),
   });
 });
