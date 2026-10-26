@@ -586,5 +586,9 @@ export interface AskResult {
   usage: { inputTokens: number; outputTokens: number };
 }
 
-
-
+export interface AiUsageResponse {
+  used: number;
+  limit: number;
+  period: string;
+  aiConfigured: boolean;
+}

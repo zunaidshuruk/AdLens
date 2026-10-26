@@ -1,5 +1,6 @@
 import { getCurrentIdToken } from '../lib/firebase.js';
 import type {
+  AiUsageResponse,
   AskAnalystRequest,
   AskResult,
   ComputedDateRange,
@@ -591,6 +592,10 @@ export const apiClient = {
     const query = buildDateRangeParams(range);
     const extra = adSetId ? `&adSetId=${encodeURIComponent(adSetId)}` : '';
     return apiRequest<MetaAdRow[]>(`/api/meta/ads?${query}${extra}`);
+  },
+
+  getAiUsage(): Promise<AiUsageResponse> {
+    return apiRequest<AiUsageResponse>('/api/ai/usage');
   },
 
   askAnalyst(body: AskAnalystRequest): Promise<AskResult> {

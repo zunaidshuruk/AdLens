@@ -1,14 +1,30 @@
-import React, { useRef, useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, MessageSquare, Send, User } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  MessageSquare,
+  Send,
+  Shield,
+  User,
+} from 'lucide-react';
 import { ApiClientError, apiClient } from '../api/client';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { useDateRange } from '../hooks';
 import type { AskAnalystHistoryMessage, AskAnalystNumberUsed } from '../types';
 import { formatFullDateRange } from '../utils/dateUtils';
 
 export const MAX_ANALYST_QUESTION_LENGTH = 2000;
 export const MAX_ANALYST_HISTORY_MESSAGES = 20;
+export const AI_CONSENT_TITLE = 'Before you ask';
+export const AI_CONSENT_BODY =
+  "To answer, AdLens sends the report numbers for your selected project and dates, plus your question, to Google's Gemini AI. Your raw account data and sign-in details are never sent.";
+export const AI_NOT_CONFIGURED_NOTICE =
+  "The AI analyst isn't set up yet. The owner needs to add the AI key.";
+export const AI_QUOTA_REACHED_TEXT = "You've used all AI questions for this month.";
 
 export interface ChatTurn {
   id: string;
@@ -18,6 +34,85 @@ export interface ChatTurn {
   numbersUsed?: AskAnalystNumberUsed[];
 }
 
+export function getAiConsentStorageKey(uid: string | null | undefined): string {
+  const safeUid = uid && uid.trim() ? uid.trim() : 'anonymous';
+  return `adlens_ai_consent_${safeUid}`;
+}
+
+export function hasStoredAiConsent(
+  uid: string | null | undefined,
+  storage?: Pick<Storage, 'getItem'> | null
+): boolean {
+  try {
+    const store =
+      storage !== undefined
+        ? storage
+        : typeof window !== 'undefined'
+          ? window.localStorage
+          : null;
+    if (!store) return false;
+    const val = store.getItem(getAiConsentStorageKey(uid));
+    return val === '1' || val === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function saveStoredAiConsent(
+  uid: string | null | undefined,
+  storage?: Pick<Storage, 'setItem'> | null
+): boolean {
+  try {
+    const store =
+      storage !== undefined
+        ? storage
+        : typeof window !== 'undefined'
+          ? window.localStorage
+          : null;
+    if (!store) return false;
+    store.setItem(getAiConsentStorageKey(uid), '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function formatUsageMeterText(used: number, limit: number): string {
+  return `${used} of ${limit} AI questions used this month`;
+}
+
+const USAGE_WIDTH_CLASSES: readonly string[] = [
+  'w-0',
+  'w-[5%]',
+  'w-[10%]',
+  'w-[15%]',
+  'w-[20%]',
+  'w-[25%]',
+  'w-[30%]',
+  'w-[35%]',
+  'w-[40%]',
+  'w-[45%]',
+  'w-[50%]',
+  'w-[55%]',
+  'w-[60%]',
+  'w-[65%]',
+  'w-[70%]',
+  'w-[75%]',
+  'w-[80%]',
+  'w-[85%]',
+  'w-[90%]',
+  'w-[95%]',
+  'w-full',
+];
+
+export function getUsageBarWidthClass(used: number, limit: number): string {
+  if (limit <= 0 || used <= 0) return 'w-0';
+  if (used >= limit) return 'w-full';
+  const ratio = Math.min(1, Math.max(0, used / limit));
+  const stepIndex = Math.max(1, Math.min(20, Math.round(ratio * 20)));
+  return USAGE_WIDTH_CLASSES[stepIndex] ?? 'w-0';
+}
+
 export function formatAnalystErrorMessage(code?: string, serverMessage?: string): string {
   switch (code) {
     case 'NO_DATA_SOURCES':
@@ -25,7 +120,7 @@ export function formatAnalystErrorMessage(code?: string, serverMessage?: string)
     case 'CLOUD_NOT_CONFIGURED':
       return "The AI analyst isn't set up yet.";
     case 'QUOTA_EXCEEDED':
-      return "You've used all AI questions for this month.";
+      return AI_QUOTA_REACHED_TEXT;
     case 'RATE_LIMIT_EXCEEDED':
       return 'Too many questions. Wait a minute.';
     default:
@@ -46,7 +141,10 @@ export function trimHistoryMessages(messages: ChatTurn[]): AskAnalystHistoryMess
 
 export const AIAnalystPage: React.FC = () => {
   const { dateRange, compareEnabled } = useDateRange();
-  const { activeProject } = useAppContext();
+  const { activeProject, activeWorkspace, userProfile } = useAppContext();
+  const { user } = useAuth();
+  const currentUid = user?.uid || userProfile?.uid || 'demo';
+
   const TRACKED_SITE = {
     name: activeProject?.name || DEMO_PROJECT.name,
     domain: activeProject?.domain || DEMO_PROJECT.domain,
@@ -56,8 +154,40 @@ export const AIAnalystPage: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [isWaiting, setIsWaiting] = useState(false);
   const [openNumbersIds, setOpenNumbersIds] = useState<Record<string, boolean>>({});
+  const [usage, setUsage] = useState<{ used: number; limit: number }>({ used: 0, limit: 100 });
+  const [aiConfigured, setAiConfigured] = useState<boolean>(true);
+  const [hasConsented, setHasConsented] = useState<boolean>(() => hasStoredAiConsent(currentUid));
+  const [consentDialogOpen, setConsentDialogOpen] = useState<boolean>(false);
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+
   const seqRef = useRef(1);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setHasConsented(hasStoredAiConsent(currentUid));
+  }, [currentUid]);
+
+  useEffect(() => {
+    let active = true;
+    apiClient
+      .getAiUsage()
+      .then((res) => {
+        if (!active) return;
+        setUsage({
+          used: typeof res.used === 'number' ? res.used : 0,
+          limit: typeof res.limit === 'number' ? res.limit : 100,
+        });
+        setAiConfigured(Boolean(res.aiConfigured));
+      })
+      .catch(() => {
+        // Keep defaults in demo / unauthenticated fallback mode
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeWorkspace?.id, activeProject?.id]);
+
+  const isQuotaExhausted = usage.limit > 0 && usage.used >= usage.limit;
 
   const sampleQuestions = [
     `Which Meta Ads campaign drove the lowest cost per demo_request on ${TRACKED_SITE.domain} during ${formatFullDateRange(dateRange.startDate, dateRange.endDate)}?`,
@@ -78,12 +208,7 @@ export const AIAnalystPage: React.FC = () => {
     textareaRef.current?.focus();
   };
 
-  const handleSend = async () => {
-    const trimmed = question.trim();
-    if (!trimmed || trimmed.length > MAX_ANALYST_QUESTION_LENGTH || isWaiting) {
-      return;
-    }
-
+  const executeQuestionSend = async (trimmed: string) => {
     const historyToSend = trimHistoryMessages(messages);
     const userTurn: ChatTurn = {
       id: `turn_${seqRef.current++}`,
@@ -112,6 +237,14 @@ export const AIAnalystPage: React.FC = () => {
             }
           : {}),
       });
+
+      if (
+        res.quota &&
+        typeof res.quota.used === 'number' &&
+        typeof res.quota.limit === 'number'
+      ) {
+        setUsage({ used: res.quota.used, limit: res.quota.limit });
+      }
 
       const isAnswerOk = Boolean(res.ok && !res.error);
       const assistantContent = isAnswerOk
@@ -146,6 +279,49 @@ export const AIAnalystPage: React.FC = () => {
     }
   };
 
+  const handleSend = async () => {
+    const trimmed = question.trim();
+    if (
+      !trimmed ||
+      trimmed.length > MAX_ANALYST_QUESTION_LENGTH ||
+      isWaiting ||
+      isQuotaExhausted ||
+      !aiConfigured
+    ) {
+      return;
+    }
+
+    const alreadyConsented = hasConsented || hasStoredAiConsent(currentUid);
+    if (!alreadyConsented) {
+      setPendingQuestion(trimmed);
+      setConsentDialogOpen(true);
+      return;
+    }
+
+    await executeQuestionSend(trimmed);
+  };
+
+  const handleConsentAgree = () => {
+    saveStoredAiConsent(currentUid);
+    setHasConsented(true);
+    setConsentDialogOpen(false);
+    const queued = pendingQuestion;
+    setPendingQuestion(null);
+    if (queued) {
+      void executeQuestionSend(queued);
+    }
+  };
+
+  const handleConsentCancel = () => {
+    setConsentDialogOpen(false);
+    setPendingQuestion(null);
+  };
+
+  const handleOpenReviewNotice = () => {
+    setPendingQuestion(null);
+    setConsentDialogOpen(true);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -153,11 +329,17 @@ export const AIAnalystPage: React.FC = () => {
     }
   };
 
-  const canSend = !isWaiting && question.trim().length > 0 && question.length <= MAX_ANALYST_QUESTION_LENGTH;
+  const canSend =
+    !isWaiting &&
+    !isQuotaExhausted &&
+    aiConfigured &&
+    question.trim().length > 0 &&
+    question.length <= MAX_ANALYST_QUESTION_LENGTH;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* Page Header with Usage Meter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
             AI Marketing Analyst
@@ -165,6 +347,34 @@ export const AIAnalystPage: React.FC = () => {
           <p className="text-xs sm:text-sm text-fg-muted mt-0.5">
             Cross-channel conversational intelligence across Google Analytics 4, Search Console, and Meta Ads
           </p>
+        </div>
+
+        <div
+          data-testid="analyst-usage-meter"
+          className="px-3.5 py-2.5 rounded-xl border border-line bg-surface min-w-[230px] space-y-1.5"
+        >
+          <div
+            data-testid="analyst-usage-text"
+            className={`text-xs font-medium ${isQuotaExhausted ? 'text-warning' : 'text-fg-muted'}`}
+          >
+            {formatUsageMeterText(usage.used, usage.limit)}
+          </div>
+          <div
+            data-testid="analyst-usage-bar"
+            role="progressbar"
+            aria-valuenow={usage.used}
+            aria-valuemin={0}
+            aria-valuemax={usage.limit}
+            aria-label="Monthly AI question usage"
+            className="h-1.5 w-full rounded-full bg-fill-2 overflow-hidden"
+          >
+            <div
+              data-testid="analyst-usage-bar-fill"
+              className={`h-full rounded-full transition-all ${
+                isQuotaExhausted ? 'bg-warning' : 'bg-accent'
+              } ${getUsageBarWidthClass(usage.used, usage.limit)}`}
+            />
+          </div>
         </div>
       </div>
 
@@ -193,25 +403,27 @@ export const AIAnalystPage: React.FC = () => {
           )}
 
           {/* Sample Question Chips */}
-          <div className="w-full max-w-3xl mx-auto">
-            <div className="text-xs font-semibold text-fg-muted mb-2">
-              Sample questions:
+          {aiConfigured && (
+            <div className="w-full max-w-3xl mx-auto">
+              <div className="text-xs font-semibold text-fg-muted mb-2">
+                Sample questions:
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {sampleQuestions.map((q, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleSampleClick(q)}
+                    data-testid={`analyst-sample-chip-${i}`}
+                    className="p-3 rounded-lg border border-line bg-fill-1 hover:bg-fill-2 text-left text-xs text-fg-muted hover:text-fg flex items-start gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-accent-text shrink-0 mt-0.5" />
+                    <span>{q}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {sampleQuestions.map((q, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => handleSampleClick(q)}
-                  data-testid={`analyst-sample-chip-${i}`}
-                  className="p-3 rounded-lg border border-line bg-fill-1 hover:bg-fill-2 text-left text-xs text-fg-muted hover:text-fg flex items-start gap-2.5 transition-colors cursor-pointer"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-accent-text shrink-0 mt-0.5" />
-                  <span>{q}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Message List */}
           {messages.length > 0 && (
@@ -353,43 +565,129 @@ export const AIAnalystPage: React.FC = () => {
           )}
         </div>
 
-        {/* Chat Composer */}
+        {/* Chat Composer OR Not Configured Notice */}
         <div className="p-4 border-t border-line bg-page/60">
-          <div className="max-w-3xl mx-auto space-y-1.5">
-            <div className="flex items-end gap-2.5">
-              <textarea
-                ref={textareaRef}
-                rows={2}
-                maxLength={MAX_ANALYST_QUESTION_LENGTH}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value.slice(0, MAX_ANALYST_QUESTION_LENGTH))}
-                onKeyDown={handleKeyDown}
-                aria-label="Ask AI Analyst"
-                placeholder={`Ask ${APP_NAME} Analyst about ${TRACKED_SITE.name} campaigns, queries, or conversions...`}
-                className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-focus resize-none"
-              />
-              <button
-                type="button"
-                disabled={!canSend}
-                onClick={() => void handleSend()}
-                aria-label="Send message"
-                data-testid="analyst-send-button"
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-on-accent disabled:bg-fill-3 disabled:text-fg-muted disabled:cursor-not-allowed whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+          {!aiConfigured ? (
+            <div
+              role="status"
+              data-testid="analyst-not-configured-notice"
+              className="max-w-3xl mx-auto flex items-center gap-2.5 p-3.5 rounded-lg border border-warning-line bg-warning-soft text-xs sm:text-sm text-fg"
+            >
+              <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+              <span>{AI_NOT_CONFIGURED_NOTICE}</span>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto space-y-1.5">
+              {isQuotaExhausted && (
+                <div
+                  role="status"
+                  data-testid="analyst-quota-exhausted-notice"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-warning-line bg-warning-soft text-xs text-warning font-medium"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+                  <span>{AI_QUOTA_REACHED_TEXT}</span>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2.5">
+                <textarea
+                  ref={textareaRef}
+                  rows={2}
+                  maxLength={MAX_ANALYST_QUESTION_LENGTH}
+                  value={question}
+                  onChange={(e) =>
+                    setQuestion(e.target.value.slice(0, MAX_ANALYST_QUESTION_LENGTH))
+                  }
+                  onKeyDown={handleKeyDown}
+                  aria-label="Ask AI Analyst"
+                  placeholder={`Ask ${APP_NAME} Analyst about ${TRACKED_SITE.name} campaigns, queries, or conversions...`}
+                  className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-focus resize-none"
+                />
+                <button
+                  type="button"
+                  disabled={!canSend}
+                  onClick={() => void handleSend()}
+                  aria-label="Send message"
+                  data-testid="analyst-send-button"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-medium rounded-lg bg-accent hover:bg-accent-hover text-on-accent disabled:bg-fill-3 disabled:text-fg-muted disabled:cursor-not-allowed whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-fg-subtle px-0.5">
+                <div className="flex items-center gap-2">
+                  <span>Press Enter to send, Shift+Enter for a new line</span>
+                  <span aria-hidden="true">·</span>
+                  <button
+                    type="button"
+                    onClick={handleOpenReviewNotice}
+                    data-testid="analyst-review-notice-link"
+                    className="text-accent-text hover:underline cursor-pointer"
+                  >
+                    Review notice
+                  </button>
+                </div>
+                <span data-testid="analyst-char-counter" className="font-mono">
+                  {question.length}/{MAX_ANALYST_QUESTION_LENGTH}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Consent Notice Dialog */}
+      {consentDialogOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-consent-dialog-title"
+          data-testid="ai-consent-dialog"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/60 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-line bg-surface shadow-xl p-6 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-accent-soft border border-accent-line text-accent-text flex items-center justify-center shrink-0">
+                <Shield className="w-4 h-4" />
+              </div>
+              <h2
+                id="ai-consent-dialog-title"
+                className="text-base font-bold text-fg"
               >
-                <Send className="w-3.5 h-3.5" />
-                <span>Send</span>
-              </button>
+                {AI_CONSENT_TITLE}
+              </h2>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-fg-subtle px-0.5">
-              <span>Press Enter to send, Shift+Enter for a new line</span>
-              <span data-testid="analyst-char-counter" className="font-mono">
-                {question.length}/{MAX_ANALYST_QUESTION_LENGTH}
-              </span>
+            <p
+              data-testid="ai-consent-dialog-body"
+              className="text-xs sm:text-sm text-fg-muted leading-relaxed"
+            >
+              {AI_CONSENT_BODY}
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-line">
+              <button
+                type="button"
+                onClick={handleConsentCancel}
+                data-testid="ai-consent-cancel"
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold text-fg border border-line hover:bg-fill-2 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConsentAgree}
+                data-testid="ai-consent-agree"
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer"
+              >
+                I agree
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -3360,3 +3360,104 @@ test('Sprint 15a-1b: GEMINI_API_KEY_2 fallback key in /api/health and POST /api/
     server.close();
   }
 });
+
+test('Sprint 15a-3b: apiClient.getAiUsage, AI consent storage helpers (per uid + blocked storage), and usage meter formatting', async () => {
+  const { apiClient, setActiveProjectHeader } = await import('../api/client.js');
+  const { registerAuthTokenGetter } = await import('../lib/firebase.js');
+  const {
+    AI_CONSENT_BODY,
+    AI_CONSENT_TITLE,
+    AI_NOT_CONFIGURED_NOTICE,
+    AI_QUOTA_REACHED_TEXT,
+    formatUsageMeterText,
+    getAiConsentStorageKey,
+    getUsageBarWidthClass,
+    hasStoredAiConsent,
+    saveStoredAiConsent,
+  } = await import('../pages/AIAnalystPage.js');
+
+  assert.equal(formatUsageMeterText(0, 100), '0 of 100 AI questions used this month');
+  assert.equal(formatUsageMeterText(42, 100), '42 of 100 AI questions used this month');
+  assert.equal(getUsageBarWidthClass(0, 100), 'w-0');
+  assert.equal(getUsageBarWidthClass(50, 100), 'w-[50%]');
+  assert.equal(getUsageBarWidthClass(100, 100), 'w-full');
+  assert.equal(getUsageBarWidthClass(120, 100), 'w-full');
+
+  assert.equal(AI_CONSENT_TITLE, 'Before you ask');
+  assert.equal(
+    AI_CONSENT_BODY,
+    "To answer, AdLens sends the report numbers for your selected project and dates, plus your question, to Google's Gemini AI. Your raw account data and sign-in details are never sent."
+  );
+  assert.equal(
+    AI_NOT_CONFIGURED_NOTICE,
+    "The AI analyst isn't set up yet. The owner needs to add the AI key."
+  );
+  assert.equal(AI_QUOTA_REACHED_TEXT, "You've used all AI questions for this month.");
+
+  // Consent storage key per signed-in user
+  assert.equal(getAiConsentStorageKey('uid_user_1'), 'adlens_ai_consent_uid_user_1');
+  const memMap = new Map<string, string>();
+  const mockStorage = {
+    getItem: (k: string) => memMap.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      memMap.set(k, v);
+    },
+  };
+  assert.equal(hasStoredAiConsent('uid_user_1', mockStorage), false);
+  assert.equal(saveStoredAiConsent('uid_user_1', mockStorage), true);
+  assert.equal(memMap.get('adlens_ai_consent_uid_user_1'), '1');
+  assert.equal(hasStoredAiConsent('uid_user_1', mockStorage), true);
+  assert.equal(hasStoredAiConsent('uid_user_2', mockStorage), false);
+
+  // Blocked storage is caught and falls back gracefully
+  const throwingStorage = {
+    getItem: () => {
+      throw new Error('QuotaExceededError');
+    },
+    setItem: () => {
+      throw new Error('QuotaExceededError');
+    },
+  };
+  assert.equal(hasStoredAiConsent('uid_user_1', throwingStorage), false);
+  assert.equal(saveStoredAiConsent('uid_user_1', throwingStorage), false);
+
+  // apiClient.getAiUsage() GETs /api/ai/usage with auth and X-AdLens-Project header
+  const originalFetch = globalThis.fetch;
+  try {
+    registerAuthTokenGetter(async () => 'token-15a3b');
+    setActiveProjectHeader('ws_1/proj_1');
+    let seenUrl = '';
+    let seenAuth = '';
+    let seenProject = '';
+    globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
+      seenUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const h = new Headers(init?.headers);
+      seenAuth = h.get('Authorization') ?? '';
+      seenProject = h.get('X-AdLens-Project') ?? '';
+      return new Response(
+        JSON.stringify({
+          used: 7,
+          limit: 100,
+          period: '2026-10',
+          aiConfigured: true,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const usageRes = await apiClient.getAiUsage();
+    assert.equal(seenUrl, '/api/ai/usage');
+    assert.equal(seenAuth, 'Bearer token-15a3b');
+    assert.equal(seenProject, 'ws_1/proj_1');
+    assert.deepEqual(usageRes, {
+      used: 7,
+      limit: 100,
+      period: '2026-10',
+      aiConfigured: true,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    registerAuthTokenGetter(null);
+    setActiveProjectHeader(null);
+  }
+});
