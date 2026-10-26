@@ -630,7 +630,7 @@ export const MetaAdsPage: React.FC = () => {
           {
             key: 'spendDisplay',
             label: `Spend (${activeCurrencyCode})`,
-            color: '#2563eb',
+            color: 'var(--chart-1)',
             type: 'area',
             formatter: (v) => `${activeCurrencySymbol}${formatNumber(v)}`,
           },
@@ -639,7 +639,7 @@ export const MetaAdsPage: React.FC = () => {
                 {
                   key: 'previousSpendDisplay',
                   label: `Prev. Spend (${activeCurrencyCode})`,
-                  color: '#94a3b8',
+                  color: 'var(--color-fg-muted)',
                   type: 'line' as const,
                   dashed: true,
                   formatter: (v: number) => `${activeCurrencySymbol}${formatNumber(v)}`,

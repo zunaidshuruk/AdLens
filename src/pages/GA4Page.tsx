@@ -40,14 +40,14 @@ const BREAKDOWN_DIMENSIONS: { id: GA4TrafficBreakdownDimension; label: string }[
 ];
 
 const SOURCE_GROUP_COLORS: Record<string, string> = {
-  Search: '#2563eb',
-  Paid: '#0d9488',
-  'Direct / unknown': '#64748b',
-  Referral: '#7c3aed',
-  Social: '#ea580c',
-  Email: '#d97706',
-  'AI assistants': '#0284c7',
-  Other: '#94a3b8',
+  Search: 'var(--chart-1)',
+  Paid: 'var(--chart-2)',
+  'Direct / unknown': 'var(--chart-3)',
+  Referral: 'var(--chart-4)',
+  Social: 'var(--chart-5)',
+  Email: 'var(--chart-6)',
+  'AI assistants': 'var(--chart-7)',
+  Other: 'var(--chart-8)',
 };
 
 const COUNTRY_FILTER_OPTIONS = [
@@ -241,7 +241,7 @@ export const GA4Page: React.FC = () => {
           <div className="flex items-center gap-2">
             <span
               className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: SOURCE_GROUP_COLORS[r.group] || '#64748b' }}
+              style={{ backgroundColor: SOURCE_GROUP_COLORS[r.group] || 'var(--chart-3)' }}
             />
             <span className="font-medium text-fg">{r.group}</span>
           </div>
@@ -700,14 +700,14 @@ export const GA4Page: React.FC = () => {
               {
                 key: 'sessions',
                 label: 'Sessions',
-                color: '#2563eb',
+                color: 'var(--chart-1)',
                 type: 'area',
                 formatter: (v) => formatNumber(v),
               },
               {
                 key: 'users',
                 label: 'Users',
-                color: '#0d9488',
+                color: 'var(--chart-2)',
                 type: 'line',
                 formatter: (v) => formatNumber(v),
               },
@@ -716,7 +716,7 @@ export const GA4Page: React.FC = () => {
                     {
                       key: 'previousSessions',
                       label: 'Prev. Sessions',
-                      color: '#94a3b8',
+                      color: 'var(--color-fg-muted)',
                       type: 'line' as const,
                       dashed: true,
                       formatter: (v: number) => formatNumber(v),
@@ -797,7 +797,7 @@ export const GA4Page: React.FC = () => {
                           .map((entry) => (
                             <Cell
                               key={entry.group}
-                              fill={SOURCE_GROUP_COLORS[entry.group] || '#64748b'}
+                              fill={SOURCE_GROUP_COLORS[entry.group] || 'var(--chart-3)'}
                             />
                           ))}
                       </Pie>
@@ -808,7 +808,7 @@ export const GA4Page: React.FC = () => {
                         ]}
                         contentStyle={{
                           borderRadius: '0.5rem',
-                          border: '1px solid #e2e8f0',
+                          border: '1px solid var(--color-line)',
                           fontSize: '12px',
                         }}
                       />

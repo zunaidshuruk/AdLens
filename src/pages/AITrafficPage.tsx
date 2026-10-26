@@ -249,28 +249,28 @@ export const AITrafficPage: React.FC = () => {
                         strokeDasharray="3 3"
                         horizontal={true}
                         vertical={false}
-                        stroke="#e2e8f0"
+                        stroke="var(--color-line)"
                       />
                       <XAxis
                         type="number"
-                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        tick={{ fontSize: 11, fill: 'var(--color-fg-muted)' }}
                         tickFormatter={(v) => formatNumber(Number(v))}
                       />
                       <YAxis
                         type="category"
                         dataKey="assistant"
                         width={96}
-                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        tick={{ fontSize: 11, fill: 'var(--color-fg-muted)' }}
                       />
                       <Tooltip
                         formatter={(value: unknown) => [formatNumber(Number(value)), 'Sessions']}
                         contentStyle={{
                           borderRadius: '0.5rem',
-                          border: '1px solid #e2e8f0',
+                          border: '1px solid var(--color-line)',
                           fontSize: '12px',
                         }}
                       />
-                      <Bar dataKey="sessions" fill="#2563eb" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="sessions" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -288,7 +288,7 @@ export const AITrafficPage: React.FC = () => {
                 {
                   key: 'sessions',
                   label: 'AI Sessions',
-                  color: '#2563eb',
+                  color: 'var(--chart-1)',
                   type: 'area',
                   formatter: (v) => formatNumber(v),
                 },
@@ -297,7 +297,7 @@ export const AITrafficPage: React.FC = () => {
                       {
                         key: 'previousSessions',
                         label: 'Prev. AI Sessions',
-                        color: '#94a3b8',
+                        color: 'var(--color-fg-muted)',
                         type: 'line' as const,
                         dashed: true,
                         formatter: (v: number) => formatNumber(v),

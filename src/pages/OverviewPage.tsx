@@ -349,7 +349,7 @@ export const OverviewPage: React.FC = () => {
           {
             key: 'sessions',
             label: 'GA4 Sessions',
-            color: '#2563eb',
+            color: 'var(--chart-1)',
             yAxisId: 'left',
             type: 'area',
             formatter: (v) => formatNumber(v),
@@ -359,7 +359,7 @@ export const OverviewPage: React.FC = () => {
                 {
                   key: 'previousSessions',
                   label: 'Prev. Period Sessions',
-                  color: '#94a3b8',
+                  color: 'var(--color-fg-muted)',
                   yAxisId: 'left' as const,
                   type: 'line' as const,
                   dashed: true,
@@ -370,7 +370,7 @@ export const OverviewPage: React.FC = () => {
           {
             key: 'spendDisplay',
             label: `Meta Spend (${metaCurrencyCode})`,
-            color: '#0d9488',
+            color: 'var(--chart-2)',
             yAxisId: 'right',
             type: 'line',
             formatter: (v) => `${metaCurrencySymbol}${formatNumber(v)}`,

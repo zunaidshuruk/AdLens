@@ -110,11 +110,11 @@ export function TrendChart<T extends Record<string, unknown>>({
                     </linearGradient>
                   ))}
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" strokeOpacity={0.2} vertical={false} />
               <XAxis
                 dataKey={String(xKey)}
                 tickFormatter={(val) => formatShortDate(String(val))}
-                tick={{ fontSize: 11, fill: '#64748b' }}
+                tick={{ fontSize: 11, fill: 'var(--color-fg-muted)' }}
                 axisLine={false}
                 tickLine={false}
                 minTickGap={24}
@@ -122,7 +122,7 @@ export function TrendChart<T extends Record<string, unknown>>({
               <YAxis
                 yAxisId="left"
                 tickFormatter={leftAxisFormatter}
-                tick={{ fontSize: 11, fill: '#64748b' }}
+                tick={{ fontSize: 11, fill: 'var(--color-fg-muted)' }}
                 axisLine={false}
                 tickLine={false}
                 width={56}
@@ -132,7 +132,7 @@ export function TrendChart<T extends Record<string, unknown>>({
                   yAxisId="right"
                   orientation="right"
                   tickFormatter={rightAxisFormatter}
-                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  tick={{ fontSize: 11, fill: 'var(--color-fg-muted)' }}
                   axisLine={false}
                   tickLine={false}
                   width={60}

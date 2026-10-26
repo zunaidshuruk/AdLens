@@ -386,7 +386,7 @@ export const SearchConsolePage: React.FC = () => {
               {
                 key: 'clicks',
                 label: 'Clicks',
-                color: '#2563eb',
+                color: 'var(--chart-1)',
                 yAxisId: 'left',
                 type: 'area',
                 formatter: (v) => formatNumber(v),
@@ -396,7 +396,7 @@ export const SearchConsolePage: React.FC = () => {
                     {
                       key: 'previousClicks',
                       label: 'Prev. Clicks',
-                      color: '#94a3b8',
+                      color: 'var(--color-fg-muted)',
                       yAxisId: 'left' as const,
                       type: 'line' as const,
                       dashed: true,
@@ -407,7 +407,7 @@ export const SearchConsolePage: React.FC = () => {
               {
                 key: 'impressions',
                 label: 'Impressions',
-                color: '#7c3aed',
+                color: 'var(--chart-2)',
                 yAxisId: 'right',
                 type: 'line',
                 formatter: (v) => formatNumber(v),
