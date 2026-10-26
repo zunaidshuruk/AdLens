@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { apiClient, startMetaLogin } from '../api/client.js';
 import type { ConnectionsResponse } from '../types/index.js';
-import { parseMetaReturnParams, resolveMetaAdsLiveMode } from './useConnections.js';
+import { isMetaUserConnected, parseMetaReturnParams, resolveMetaAdsLiveMode } from './useConnections.js';
 
 function makeConnections(
   metaOverrides: Partial<ConnectionsResponse['meta']> = {}
@@ -62,6 +62,7 @@ test('Task 9d-1 — resolveMetaAdsLiveMode enables live mode for user Facebook c
   const userConn = makeConnections({
     loginConfigured: true,
     connected: true,
+    connectedAt: '2026-10-26T00:00:00.000Z',
     reconnect: 'ok',
     adAccountId: '12345678',
     notAvailable: true,
@@ -180,4 +181,12 @@ test('Task 9d-1 — apiClient Meta endpoints (getMetaAdAccounts, selectMetaAdAcc
       (globalThis as { window?: unknown }).window = originalWindow;
     }
   }
+});
+
+test('isMetaUserConnected ignores the shared company connection (so Disconnect really switches the card back)', () => {
+  // Shared company token keeps meta.connected true, but there is no personal connection.
+  assert.equal(isMetaUserConnected({ loginConfigured: true, connectedAt: null }), false);
+  assert.equal(isMetaUserConnected({ loginConfigured: false, connectedAt: '2026-10-26T00:00:00.000Z' }), false);
+  assert.equal(isMetaUserConnected({ loginConfigured: true, connectedAt: '2026-10-26T00:00:00.000Z' }), true);
+  assert.equal(isMetaUserConnected(undefined), false);
 });

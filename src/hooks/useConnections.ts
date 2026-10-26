@@ -84,6 +84,17 @@ export function parseMetaReturnParams(search: string | URLSearchParams): ParsedM
 }
 
 /**
+ * True only when the signed-in user has their OWN Facebook connection saved.
+ * `meta.connected` can also be true because of the shared company token, so it must not be used alone:
+ * the server sets `connectedAt` only when the user's own connection exists.
+ */
+export function isMetaUserConnected(
+  meta: { loginConfigured?: boolean; connectedAt?: string | null } | null | undefined
+): boolean {
+  return Boolean(meta?.loginConfigured && meta?.connectedAt);
+}
+
+/**
  * Pure helper: decides whether 'meta_ads' should run in live mode.
  * True when the user has their own Facebook connected (meta.connected && meta.loginConfigured),
  * otherwise falls back to the existing shared-token rule.
@@ -96,7 +107,7 @@ export function resolveMetaAdsLiveMode(
   if (isDemo) {
     return false;
   }
-  const userConnected = Boolean(conn?.meta.connected && conn?.meta.loginConfigured);
+  const userConnected = isMetaUserConnected(conn?.meta);
   if (userConnected) {
     return true;
   }
@@ -255,7 +266,7 @@ export function useConnections(): UseConnectionsResult {
       const missing = connRes.google.missing ?? healthRes?.missing ?? [];
       setMissingSecrets(missing);
 
-      const userMetaConnected = Boolean(connRes.meta.connected && connRes.meta.loginConfigured);
+      const userMetaConnected = isMetaUserConnected(connRes.meta);
       const isMetaCfg = Boolean(
         healthRes?.metaConfigured ?? connRes.meta.configured ?? connRes.meta.connected
       );
@@ -519,7 +530,7 @@ export function useConnections(): UseConnectionsResult {
   );
 
   const metaLoginConfigured = Boolean(connections?.meta.loginConfigured);
-  const metaUserConnected = Boolean(connections?.meta.connected && connections?.meta.loginConfigured);
+  const metaUserConnected = isMetaUserConnected(connections?.meta);
   const metaReconnect: MetaReconnectState = connections?.meta.reconnect ?? 'no_expiry';
   const metaExpiresAt = connections?.meta.expiresAt ?? null;
 
