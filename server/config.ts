@@ -38,7 +38,10 @@ export interface ServerConfig {
   googleConfigured: boolean;
   missing: RequiredGoogleEnvVar[];
   metaAccessToken: string;
+  metaAppId: string;
   metaAppSecret: string;
+  metaLoginConfigId: string;
+  metaLoginConfigured: boolean;
   metaAdAccountId: string;
   metaConfigured: boolean;
   metaMissing: RequiredMetaEnvVar[];
@@ -113,7 +116,10 @@ export function getServerConfig(): ServerConfig {
   }
 
   const metaAccessToken = (process.env.META_ACCESS_TOKEN || '').trim();
+  const metaAppId = (process.env.META_APP_ID || '').trim();
   const metaAppSecret = (process.env.META_APP_SECRET || '').trim();
+  const metaLoginConfigId = (process.env.META_LOGIN_CONFIG_ID || '').trim();
+  const metaLoginConfigured = Boolean(metaAppId && metaAppSecret && metaLoginConfigId);
   const metaAdAccountId = normalizeMetaAdAccountId(process.env.META_AD_ACCOUNT_ID);
 
   const metaMissing: RequiredMetaEnvVar[] = [];
@@ -162,7 +168,10 @@ export function getServerConfig(): ServerConfig {
     googleConfigured: missing.length === 0,
     missing,
     metaAccessToken,
+    metaAppId,
     metaAppSecret,
+    metaLoginConfigId,
+    metaLoginConfigured,
     metaAdAccountId,
     metaConfigured: metaMissing.length === 0,
     metaMissing,

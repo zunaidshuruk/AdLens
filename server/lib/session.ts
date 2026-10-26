@@ -4,6 +4,7 @@ import { decryptPayload, encryptPayload } from './crypto.js';
 
 export const SESSION_COOKIE_NAME = 'adlens_session';
 export const OAUTH_STATE_COOKIE_NAME = 'adlens_oauth_state';
+export const META_OAUTH_STATE_COOKIE_NAME = 'adlens_meta_oauth_state';
 export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 export const MAX_COOKIE_BYTES = 4000; // Keep under 4 KB

@@ -5,8 +5,16 @@ import { decryptPayload, encryptPayload } from '../lib/crypto.js';
 import { createOAuthClient, GOOGLE_OAUTH_SCOPES } from '../lib/google.js';
 import { signLinkToken, verifyLinkToken } from '../lib/linkToken.js';
 import {
+  buildCodeExchangeUrl,
+  buildLongLivedExchangeUrl,
+  buildMetaLoginUrl,
+  effectiveExpiry,
+  parseTokenResponse,
+} from '../lib/metaOAuth.js';
+import {
   clearSession,
   getSessionCookieOptions,
+  META_OAUTH_STATE_COOKIE_NAME,
   OAUTH_STATE_COOKIE_NAME,
   OAUTH_STATE_MAX_AGE_MS,
 } from '../lib/session.js';
@@ -15,6 +23,35 @@ import { getVault } from '../lib/vault.js';
 import { requireUser } from '../middleware/requireUser.js';
 
 export const authRouter = Router();
+
+const META_EXCHANGE_TIMEOUT_MS = 8_000;
+
+async function fetchMetaJsonWithTimeout(url: string): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const controller = new AbortController();
+  try {
+    const resp = await Promise.race([
+      fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('META_EXCHANGE_TIMEOUT'));
+        }, META_EXCHANGE_TIMEOUT_MS);
+      }),
+    ]);
+    if (!resp.ok) {
+      throw new Error('META_EXCHANGE_HTTP_ERROR');
+    }
+    return await resp.json();
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
 
 function decodeEmailFromIdToken(idToken?: string | null): string | null {
   if (!idToken) return null;
@@ -259,3 +296,135 @@ authRouter.post(
     res.json({ ok: true });
   }
 );
+
+// GET /api/auth/meta/start?lt=<link token>
+authRouter.get('/meta/start', (req: Request, res: Response) => {
+  const cfg = getServerConfig();
+  const lt = typeof req.query.lt === 'string' ? req.query.lt.trim() : '';
+
+  let verifiedLink: { uid: string };
+  try {
+    verifiedLink = verifyLinkToken(lt, cfg.tokenEncryptionKey);
+  } catch (err) {
+    res.status(401).json({
+      error: {
+        code: 'INVALID_LINK_TOKEN',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'A valid, non-expired link token is required.',
+      },
+    });
+    return;
+  }
+
+  if (!cfg.metaLoginConfigured) {
+    res.redirect('/connections?error=meta_not_configured');
+    return;
+  }
+
+  const state = crypto.randomBytes(24).toString('base64url');
+  const encryptedState = encodeOAuthStateCookie(state, verifiedLink.uid, cfg.tokenEncryptionKey);
+
+  res.cookie(
+    META_OAUTH_STATE_COOKIE_NAME,
+    encryptedState,
+    getSessionCookieOptions(OAUTH_STATE_MAX_AGE_MS)
+  );
+
+  const redirectUri = `${cfg.appBaseUrl}/api/auth/meta/callback`;
+  const loginUrl = buildMetaLoginUrl({
+    appId: cfg.metaAppId,
+    configId: cfg.metaLoginConfigId,
+    redirectUri,
+    state,
+  });
+
+  res.redirect(loginUrl);
+});
+
+// GET /api/auth/meta/callback
+authRouter.get('/meta/callback', async (req: Request, res: Response) => {
+  const cfg = getServerConfig();
+  const rawStoredState = req.cookies?.[META_OAUTH_STATE_COOKIE_NAME];
+
+  res.clearCookie(META_OAUTH_STATE_COOKIE_NAME, {
+    httpOnly: true,
+    secure: cfg.isProduction,
+    sameSite: 'lax',
+    path: '/',
+  });
+
+  const hasOAuthError =
+    (typeof req.query.error === 'string' && req.query.error.length > 0) ||
+    (typeof req.query.error_reason === 'string' && req.query.error_reason.length > 0);
+  if (hasOAuthError) {
+    res.redirect('/connections?error=meta_denied');
+    return;
+  }
+
+  const queryState = typeof req.query.state === 'string' ? req.query.state : '';
+  const decodedState = decodeOAuthStateCookie(rawStoredState, cfg.tokenEncryptionKey);
+
+  if (!queryState || !decodedState || queryState !== decodedState.state) {
+    res.redirect('/connections?error=invalid_state');
+    return;
+  }
+
+  if (!cfg.metaLoginConfigured) {
+    res.redirect('/connections?error=meta_not_configured');
+    return;
+  }
+
+  const code = typeof req.query.code === 'string' ? req.query.code.trim() : '';
+  if (!code) {
+    res.redirect('/connections?error=meta_exchange_failed');
+    return;
+  }
+
+  try {
+    const redirectUri = `${cfg.appBaseUrl}/api/auth/meta/callback`;
+    const codeUrl = buildCodeExchangeUrl({
+      appId: cfg.metaAppId,
+      appSecret: cfg.metaAppSecret,
+      redirectUri,
+      code,
+    });
+    const shortJson = await fetchMetaJsonWithTimeout(codeUrl);
+    const shortToken = parseTokenResponse(shortJson);
+
+    const longUrl = buildLongLivedExchangeUrl({
+      appId: cfg.metaAppId,
+      appSecret: cfg.metaAppSecret,
+      shortLivedToken: shortToken.accessToken,
+    });
+    const longJson = await fetchMetaJsonWithTimeout(longUrl);
+    const longToken = parseTokenResponse(longJson);
+
+    const dataAccessExpiresUnix =
+      longJson &&
+      typeof longJson === 'object' &&
+      typeof (longJson as { data_access_expires_at?: unknown }).data_access_expires_at === 'number'
+        ? (longJson as { data_access_expires_at: number }).data_access_expires_at
+        : undefined;
+
+    const expiryIso = effectiveExpiry(longToken.expiresAt, dataAccessExpiresUnix);
+    const accessTokenExpiresAt = expiryIso ? new Date(expiryIso).getTime() : undefined;
+
+    const vault = getVault();
+    await vault.saveConnection({
+      uid: decodedState.uid,
+      provider: 'meta',
+      accountLabel: null,
+      scopes: ['ads_read'],
+      refreshToken: longToken.accessToken,
+      accessToken: longToken.accessToken,
+      accessTokenExpiresAt,
+    });
+
+    res.redirect('/connections?connected=meta');
+  } catch {
+    res.redirect('/connections?error=meta_exchange_failed');
+  }
+});
+

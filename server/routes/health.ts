@@ -13,6 +13,7 @@ healthRouter.get('/', (_req: Request, res: Response) => {
     googleConfigured: cfg.googleConfigured,
     missing: cfg.missing,
     metaConfigured: cfg.metaConfigured,
+    metaLoginConfigured: cfg.metaLoginConfigured,
     metaMissing: cfg.metaMissing,
     firebaseConfigured: cfg.firebaseConfigured,
     firebaseMissing: cfg.firebaseMissing,
