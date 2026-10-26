@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Settings, Sun, WifiOff, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Search, Settings, Sun, WifiOff, X } from 'lucide-react';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { AdLensLogo } from './AdLensLogo';
+import { openCommandPalette } from './CommandPalette';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useAvatar } from '../hooks/useAvatar';
@@ -184,6 +185,19 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
           <DateRangePicker />
 
           <div className="flex items-center gap-2 pl-2 border-l border-line">
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              data-testid="header-search-button"
+              className="inline-flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-line bg-fill-1 text-fg-muted hover:text-fg hover:bg-fill-2 transition-colors cursor-pointer"
+            >
+              <Search className="w-3.5 h-3.5 shrink-0" />
+              <span className="sr-only sm:not-sr-only">Search</span>
+              <kbd className="hidden sm:inline px-1.5 py-0.5 text-[10px] font-mono text-fg-subtle bg-surface border border-line rounded">
+                Ctrl K
+              </kbd>
+            </button>
+
             <button
               type="button"
               onClick={() => setCurrency(currency === 'BDT' ? 'USD' : 'BDT')}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
+import { CommandPalette } from './CommandPalette';
 import { ProjectOnboardingModal } from './ProjectOnboardingModal';
 import { Sidebar } from './Sidebar';
 
@@ -20,6 +21,7 @@ export const Layout: React.FC = () => {
       </div>
 
       <ProjectOnboardingModal />
+      <CommandPalette />
     </div>
   );
 };
