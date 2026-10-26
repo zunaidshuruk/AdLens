@@ -151,3 +151,74 @@ export async function fetchSearchConsoleSites(accessToken: string): Promise<Sear
       permissionLevel: entry.permissionLevel,
     }));
 }
+
+interface AnalyticsAdminDataStreamsResponse {
+  dataStreams?: {
+    name?: string;
+    type?: string;
+    webStreamData?: {
+      defaultUri?: string;
+    };
+  }[];
+  nextPageToken?: string;
+}
+
+export async function fetchGA4StreamUris(
+  accessToken: string,
+  propertyId: string
+): Promise<string[]> {
+  const cleanId = propertyId.replace(/^properties\//, '');
+  if (!cleanId) return [];
+
+  const uris: string[] = [];
+  let pageToken: string | undefined = undefined;
+  let pagesFetched = 0;
+
+  do {
+    const url = new URL(
+      `https://analyticsadmin.googleapis.com/v1beta/properties/${encodeURIComponent(cleanId)}/dataStreams`
+    );
+    if (pageToken) {
+      url.searchParams.set('pageToken', pageToken);
+    }
+
+    const resp = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (resp.status === 401) {
+      throw new GoogleApiError(
+        'GOOGLE_REAUTH_REQUIRED',
+        'Google Analytics authorization failed. Please reconnect your Google account.',
+        401
+      );
+    }
+
+    if (!resp.ok) {
+      throw new GoogleApiError(
+        'GA4_API_ERROR',
+        `Failed to list GA4 data streams (HTTP ${resp.status}).`,
+        resp.status
+      );
+    }
+
+    const body = (await resp.json()) as AnalyticsAdminDataStreamsResponse;
+    for (const stream of body.dataStreams ?? []) {
+      if (stream.type === 'WEB_DATA_STREAM') {
+        const defaultUri = stream.webStreamData?.defaultUri;
+        if (typeof defaultUri === 'string' && defaultUri.trim().length > 0) {
+          uris.push(defaultUri.trim());
+        }
+      }
+    }
+
+    pageToken = body.nextPageToken;
+    pagesFetched += 1;
+  } while (pageToken && pagesFetched < 3);
+
+  return uris;
+}
+

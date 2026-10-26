@@ -8,9 +8,16 @@ import {
 import { getFirestoreStore } from '../lib/firestore.js';
 import {
   fetchGA4Properties,
+  fetchGA4StreamUris,
   fetchSearchConsoleSites,
   GoogleApiError,
+  type GA4PropertySummaryItem,
 } from '../lib/google.js';
+import {
+  matchSourcesForDomain,
+  normalizeDomain,
+  scoreGA4Property,
+} from '../lib/sourceMatcher.js';
 import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
@@ -22,6 +29,10 @@ export const googleApiRouter = Router();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 60;
 const ipRequestCounters = new Map<string, { count: number; resetAt: number }>();
+
+export function clearGoogleRateLimit(): void {
+  ipRequestCounters.clear();
+}
 
 export function googleRateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -157,6 +168,112 @@ googleApiRouter.get('/search-console/sites', async (req: Request, res: Response)
   }
 });
 
+const MAX_DISCOVER_STREAM_PROPERTIES = 20;
+const DISCOVER_STREAM_CONCURRENCY = 5;
+const DISCOVER_STREAM_TIMEOUT_MS = 8_000;
+
+async function fetchStreamUrisWithTimeout(
+  accessToken: string,
+  propertyId: string
+): Promise<string[] | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fetchGA4StreamUris(accessToken, propertyId),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Stream lookup timed out')),
+          DISCOVER_STREAM_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } catch {
+    return undefined;
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+// GET /api/google/discover?domain=<text>
+googleApiRouter.get('/discover', async (req: Request, res: Response) => {
+  const rawDomain = typeof req.query.domain === 'string' ? req.query.domain.trim() : '';
+  if (rawDomain.length < 1 || rawDomain.length > 253) {
+    res.status(400).json({
+      error: {
+        code: 'INVALID_DOMAIN',
+        message: 'Domain must be between 1 and 253 characters.',
+      },
+    });
+    return;
+  }
+
+  try {
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'google');
+    const [properties, sites] = await Promise.all([
+      fetchGA4Properties(accessToken),
+      fetchSearchConsoleSites(accessToken),
+    ]);
+
+    const normalizedDomain = normalizeDomain(rawDomain) || rawDomain.toLowerCase();
+    const scoredForOrdering = properties.map((prop, index) => ({
+      prop,
+      index,
+      nameScore: scoreGA4Property(normalizedDomain, {
+        propertyId: prop.propertyId,
+        displayName: prop.propertyName,
+        accountName: prop.accountName,
+      }).score,
+    }));
+    scoredForOrdering.sort((a, b) => b.nameScore - a.nameScore || a.index - b.index);
+
+    const propertiesToCheck: GA4PropertySummaryItem[] = scoredForOrdering
+      .slice(0, MAX_DISCOVER_STREAM_PROPERTIES)
+      .map((item) => item.prop);
+
+    const streamUrisByProperty = new Map<string, string[]>();
+    let cursor = 0;
+
+    async function worker(): Promise<void> {
+      while (cursor < propertiesToCheck.length) {
+        const currentIndex = cursor;
+        cursor += 1;
+        const prop = propertiesToCheck[currentIndex];
+        const uris = await fetchStreamUrisWithTimeout(accessToken, prop.propertyId);
+        if (uris !== undefined) {
+          streamUrisByProperty.set(prop.propertyId, uris);
+        }
+      }
+    }
+
+    const workerCount = Math.min(DISCOVER_STREAM_CONCURRENCY, propertiesToCheck.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+    const ga4Candidates = properties.map((prop) => ({
+      propertyId: prop.propertyId,
+      displayName: prop.propertyName,
+      accountName: prop.accountName,
+      streamUris: streamUrisByProperty.get(prop.propertyId),
+    }));
+
+    const searchConsoleCandidates = sites.map((site) => ({
+      siteUrl: site.siteUrl,
+      permissionLevel: site.permissionLevel,
+    }));
+
+    const matched = matchSourcesForDomain(rawDomain, ga4Candidates, searchConsoleCandidates);
+
+    res.json({
+      ...matched,
+      checkedProperties: propertiesToCheck.length,
+      totalProperties: properties.length,
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // POST /api/google/selection
 googleApiRouter.post('/selection', async (req: Request, res: Response) => {
   try {
@@ -259,3 +376,4 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
     sendError(res, err);
   }
 });
+

@@ -63,7 +63,7 @@ function Root() {
         <div
           role="status"
           data-testid="sw-update-toast"
-          className="fixed bottom-4 right-4 z-50 flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg border border-success-line bg-success-soft text-xs text-success shadow-lg"
+          className="fixed bottom-20 md:bottom-4 right-4 z-50 flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-lg border border-success-line bg-success-soft text-xs text-success shadow-lg"
         >
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
