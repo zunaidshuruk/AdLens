@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -6,10 +6,13 @@ import {
   CheckCircle2,
   ExternalLink,
   KeyRound,
+  Loader2,
   LogOut,
   Megaphone,
+  RefreshCw,
   Save,
   Search,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { ConnectionStatus } from '../components/ConnectionStatus';
@@ -21,21 +24,22 @@ import type { GA4PropertyOption } from '../types';
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   access_denied:
-    'Google sign-in was cancelled or access was denied. Please grant read-only access to connect your properties.',
+    'Google sign-in was cancelled or access was denied. Please allow read-only access to connect your accounts.',
   invalid_state:
-    'OAuth security state verification failed or expired. Please start the Google sign-in flow again.',
+    'Security check expired. Please start the Google sign-in flow again.',
   no_refresh_token:
-    'Google did not return a refresh token. Please try connecting again and accept the consent prompt.',
+    'Google did not finish connecting. Please try again and accept the prompt.',
   token_exchange_failed:
-    'Failed to exchange the authorization code with Google. Verify your GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and Redirect URI.',
+    'Could not finish connecting with Google. Please check your server settings and try again.',
 };
 
 export const ConnectionsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeProject } = useAppContext();
+  const projectDomain = (activeProject?.domain ?? '').trim();
   const TRACKED_SITE = {
     name: activeProject?.name || DEMO_PROJECT.name,
-    domain: activeProject?.domain || DEMO_PROJECT.domain,
+    domain: projectDomain || DEMO_PROJECT.domain,
   };
   const {
     connections,
@@ -55,6 +59,10 @@ export const ConnectionsPage: React.FC = () => {
     disconnecting,
     error,
     optionsError,
+    discovering,
+    discovery,
+    discoverError,
+    discoverSources,
     connectGoogle,
     disconnectGoogle,
     saveSelection,
@@ -68,6 +76,18 @@ export const ConnectionsPage: React.FC = () => {
 
   const [selectedGa4Id, setSelectedGa4Id] = useState<string>('');
   const [selectedGscUrl, setSelectedGscUrl] = useState<string>('');
+  const [manualMode, setManualMode] = useState<boolean>(false);
+  const [checkingAgain, setCheckingAgain] = useState<boolean>(false);
+  const [domainInput, setDomainInput] = useState<string>(projectDomain);
+  const autoDiscoveredRef = useRef<string | null>(null);
+
+  const hasSavedSelection = Boolean(
+    connections?.google.ga4Property?.id || connections?.google.searchConsoleSite?.url
+  );
+
+  useEffect(() => {
+    setDomainInput((activeProject?.domain ?? '').trim());
+  }, [activeProject?.id, activeProject?.domain]);
 
   // Read ?connected and ?error query parameters once, display banner, and clean the URL
   useEffect(() => {
@@ -77,7 +97,7 @@ export const ConnectionsPage: React.FC = () => {
     if (connectedParam === 'google') {
       setBanner({
         type: 'success',
-        message: 'Google account connected! Select your GA4 property and Search Console site below.',
+        message: 'Google account connected! Looking for your website now.',
       });
       const next = new URLSearchParams(searchParams);
       next.delete('connected');
@@ -85,7 +105,7 @@ export const ConnectionsPage: React.FC = () => {
     } else if (errorParam) {
       const msg =
         OAUTH_ERROR_MESSAGES[errorParam] ||
-        `Google authentication failed (${errorParam}). Please try again.`;
+        `Google sign-in could not be completed (${errorParam}). Please try again.`;
       setBanner({
         type: 'error',
         message: msg,
@@ -96,7 +116,7 @@ export const ConnectionsPage: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  // Synchronize dropdown state with saved session selection
+  // Synchronize dropdown state with saved selection
   useEffect(() => {
     setSelectedGa4Id(connections?.google.ga4Property?.id ?? '');
     setSelectedGscUrl(connections?.google.searchConsoleSite?.url ?? '');
@@ -104,6 +124,22 @@ export const ConnectionsPage: React.FC = () => {
     connections?.google.ga4Property?.id,
     connections?.google.searchConsoleSite?.url,
   ]);
+
+  // Automatically run discovery when connected and no property is chosen yet
+  useEffect(() => {
+    if (!googleConnected || loading || hasSavedSelection) {
+      return;
+    }
+    if (!projectDomain) {
+      return;
+    }
+    const key = `${activeProject?.id ?? 'default'}:${projectDomain}`;
+    if (autoDiscoveredRef.current === key) {
+      return;
+    }
+    autoDiscoveredRef.current = key;
+    void discoverSources(projectDomain);
+  }, [googleConnected, loading, hasSavedSelection, projectDomain, activeProject?.id, discoverSources]);
 
   // Group GA4 properties by accountName
   const groupedGa4Properties = useMemo(() => {
@@ -116,6 +152,65 @@ export const ConnectionsPage: React.FC = () => {
     return Array.from(groups.entries());
   }, [ga4Properties]);
 
+  const suggestedGa4Item = useMemo(() => {
+    if (!discovery?.suggested.ga4PropertyId) return null;
+    return (
+      discovery.ga4.find((p) => p.propertyId === discovery.suggested.ga4PropertyId) ?? null
+    );
+  }, [discovery]);
+
+  const suggestedScItem = useMemo(() => {
+    if (!discovery?.suggested.searchConsoleSiteUrl) return null;
+    return (
+      discovery.searchConsole.find(
+        (s) => s.siteUrl === discovery.suggested.searchConsoleSiteUrl
+      ) ?? null
+    );
+  }, [discovery]);
+
+  const hasAnySuggestion = Boolean(suggestedGa4Item || suggestedScItem);
+  const noSuggestionsFound = Boolean(discovery && !discovering && !hasAnySuggestion);
+
+  const handleFindByDomain = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetDomain = domainInput.trim();
+    if (!targetDomain) return;
+    setManualMode(false);
+    await discoverSources(targetDomain);
+  };
+
+  const handleCheckAgain = async () => {
+    setManualMode(false);
+    setCheckingAgain(true);
+    const targetDomain = projectDomain || domainInput.trim();
+    if (targetDomain) {
+      await discoverSources(targetDomain);
+    }
+  };
+
+  const handleAcceptSuggested = async () => {
+    if (!discovery) return;
+    const payload: {
+      ga4PropertyId?: string | null;
+      searchConsoleSiteUrl?: string | null;
+    } = {};
+    if (discovery.suggested.ga4PropertyId) {
+      payload.ga4PropertyId = discovery.suggested.ga4PropertyId;
+    }
+    if (discovery.suggested.searchConsoleSiteUrl) {
+      payload.searchConsoleSiteUrl = discovery.suggested.searchConsoleSiteUrl;
+    }
+    const ok = await saveSelection(payload);
+    if (ok) {
+      setCheckingAgain(false);
+      setManualMode(false);
+      setBanner({
+        type: 'success',
+        message: 'Your Google Analytics and Search Console choices have been saved.',
+      });
+    }
+  };
+
   const handleSaveSelection = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await saveSelection({
@@ -123,9 +218,11 @@ export const ConnectionsPage: React.FC = () => {
       searchConsoleSiteUrl: selectedGscUrl || null,
     });
     if (ok) {
+      setCheckingAgain(false);
+      setManualMode(false);
       setBanner({
         type: 'success',
-        message: 'Google Analytics 4 property and Search Console site selection saved to your encrypted session.',
+        message: 'Your Google Analytics and Search Console choices have been saved.',
       });
     }
   };
@@ -135,12 +232,18 @@ export const ConnectionsPage: React.FC = () => {
     if (ok) {
       setSelectedGa4Id('');
       setSelectedGscUrl('');
+      setManualMode(false);
+      setCheckingAgain(false);
+      autoDiscoveredRef.current = null;
       setBanner({
         type: 'success',
-        message: 'Google account disconnected and token revoked.',
+        message: 'Google account disconnected.',
       });
     }
   };
+
+  const showDiscoveryFlow = googleConnected && (!hasSavedSelection || checkingAgain);
+  const showManualForm = googleConnected && (manualMode || noSuggestionsFound);
 
   return (
     <div className="space-y-6">
@@ -149,8 +252,7 @@ export const ConnectionsPage: React.FC = () => {
           Data Source Connections
         </h1>
         <p className="text-xs sm:text-sm text-fg-muted mt-0.5">
-          Manage OAuth credentials and property bindings powering {APP_NAME} for {TRACKED_SITE.name} (
-          {TRACKED_SITE.domain})
+          Connect your website and advertising accounts for {TRACKED_SITE.name} ({TRACKED_SITE.domain})
         </p>
       </div>
 
@@ -188,7 +290,7 @@ export const ConnectionsPage: React.FC = () => {
       {!loading && !googleConfigured && (
         <div
           role="region"
-          aria-label="Google OAuth Setup Notice"
+          aria-label="Google Setup Notice"
           data-testid="google-unconfigured-notice"
           className="p-5 rounded-xl border border-warning-line bg-warning-soft space-y-3"
         >
@@ -198,10 +300,10 @@ export const ConnectionsPage: React.FC = () => {
             </div>
             <div className="space-y-1.5">
               <h2 className="text-sm font-semibold text-warning">
-                Google OAuth Environment Configuration Required
+                Google Environment Configuration Required
               </h2>
               <p className="text-xs text-warning leading-relaxed">
-                To enable Google sign-in for Google Analytics 4 and Google Search Console, configure the following missing environment secrets:
+                To enable Google sign-in for Google Analytics and Search Console, configure the following missing environment secrets:
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 {(missingSecrets.length > 0
@@ -237,11 +339,11 @@ export const ConnectionsPage: React.FC = () => {
               <div className="space-y-1">
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-base font-bold text-fg">
-                    Google Marketing Platform (GA4 & Search Console)
+                    Google Analytics & Search Console
                   </h2>
                 </div>
                 <p className="text-xs text-fg-muted">
-                  Single Google OAuth 2.0 connection authorizing read-only access to Google Analytics 4 and Google Search Console.
+                  Connect once with your Google account to see your website traffic and Google search results.
                 </p>
               </div>
 
@@ -263,66 +365,327 @@ export const ConnectionsPage: React.FC = () => {
               )}
             </div>
 
-            {/* Source Status Summary Rows */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-line py-1">
-              {/* GA4 Status Column */}
-              <div className="pb-4 sm:pb-0 sm:pr-6 space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-semibold text-fg">
-                  <BarChart3 className="w-4 h-4 text-accent-text shrink-0" />
-                  <span>Google Analytics 4</span>
-                </div>
-                <div
-                  data-testid="ga4-connection-status"
-                  className={`text-xs font-medium ${
-                    googleConnected && connections?.google.ga4Property
-                      ? 'text-success'
-                      : 'text-warning'
-                  }`}
-                >
-                  {googleConnected
-                    ? connections?.google.ga4Property
-                      ? 'Connected — Live data active'
-                      : 'Connected — select a GA4 property below'
-                    : 'Mock data'}
-                </div>
-                {googleConnected && connections?.google.ga4Property && (
-                  <div className="text-[11px] font-mono text-fg-muted truncate">
-                    Selected: {connections.google.ga4Property.name} ({connections.google.ga4Property.id})
-                  </div>
+            {/* NOT connected: ONE large primary button + plain sentence */}
+            {!googleConnected && (
+              <div className="py-2 space-y-2.5" data-testid="google-not-connected-cta">
+                {connections?.google.needsReconnect && (
+                  <p className="text-xs font-medium text-warning">
+                    Your Google access expired
+                    {connections.google.email ? ` (${connections.google.email})` : ''}. Please connect again.
+                  </p>
                 )}
-              </div>
-
-              {/* Search Console Status Column */}
-              <div className="pt-4 sm:pt-0 sm:pl-6 space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-semibold text-fg">
-                  <Search className="w-4 h-4 text-accent-text shrink-0" />
-                  <span>Google Search Console</span>
-                </div>
-                <div
-                  data-testid="gsc-connection-status"
-                  className={`text-xs font-medium ${
-                    googleConnected && connections?.google.searchConsoleSite
-                      ? 'text-success'
-                      : 'text-warning'
-                  }`}
+                <button
+                  type="button"
+                  onClick={connectGoogle}
+                  disabled={!googleConfigured || loading}
+                  data-testid="connect-google-button"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:bg-fill-3 disabled:text-fg-muted disabled:cursor-not-allowed"
                 >
-                  {googleConnected
-                    ? connections?.google.searchConsoleSite
-                      ? 'Connected — Live data active'
-                      : 'Connected — select a verified site below'
-                    : 'Mock data'}
-                </div>
-                {googleConnected && connections?.google.searchConsoleSite && (
-                  <div className="text-[11px] font-mono text-fg-muted truncate">
-                    Selected: {connections.google.searchConsoleSite.url}
-                  </div>
-                )}
+                  <ExternalLink className="w-4 h-4 shrink-0" />
+                  <span>Connect Google Analytics and Search Console</span>
+                </button>
+                <p className="text-xs text-fg-muted">
+                  AdLens only reads your numbers. It can never change anything in your accounts.
+                </p>
               </div>
-            </div>
+            )}
 
-            {/* When Connected: GA4 Property Dropdown & Search Console Site Dropdown */}
+            {/* When Connected: Source Status Summary Rows */}
             {googleConnected && (
-              <form onSubmit={handleSaveSelection} className="space-y-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-line py-1">
+                {/* GA4 Status Column */}
+                <div className="pb-4 sm:pb-0 sm:pr-6 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-fg">
+                    <BarChart3 className="w-4 h-4 text-accent-text shrink-0" />
+                    <span>Google Analytics</span>
+                  </div>
+                  <div
+                    data-testid="ga4-connection-status"
+                    className={`text-xs font-medium ${
+                      connections?.google.ga4Property ? 'text-success' : 'text-warning'
+                    }`}
+                  >
+                    {connections?.google.ga4Property
+                      ? 'Connected — Live data active'
+                      : 'Connected — choose your website below'}
+                  </div>
+                  {connections?.google.ga4Property && (
+                    <div className="text-[11px] font-mono text-fg-muted truncate">
+                      Selected: {connections.google.ga4Property.name} ({connections.google.ga4Property.id})
+                    </div>
+                  )}
+                </div>
+
+                {/* Search Console Status Column */}
+                <div className="pt-4 sm:pt-0 sm:pl-6 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-fg">
+                    <Search className="w-4 h-4 text-accent-text shrink-0" />
+                    <span>Google Search Console</span>
+                  </div>
+                  <div
+                    data-testid="gsc-connection-status"
+                    className={`text-xs font-medium ${
+                      connections?.google.searchConsoleSite ? 'text-success' : 'text-warning'
+                    }`}
+                  >
+                    {connections?.google.searchConsoleSite
+                      ? 'Connected — Live data active'
+                      : 'Connected — choose your website below'}
+                  </div>
+                  {connections?.google.searchConsoleSite && (
+                    <div className="text-[11px] font-mono text-fg-muted truncate">
+                      Selected: {connections.google.searchConsoleSite.url}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Discovery Flow (when just connected / no saved selection / Check again clicked) */}
+            {showDiscoveryFlow && (
+              <div className="space-y-4 pt-2" data-testid="google-discovery-section">
+                {/* Domain box if project has no domain */}
+                {!projectDomain && !discovering && !discovery && (
+                  <form
+                    onSubmit={handleFindByDomain}
+                    className="p-4 rounded-xl border border-line bg-fill-1 space-y-3"
+                    data-testid="discover-domain-form"
+                  >
+                    <label
+                      htmlFor="discover-domain-input"
+                      className="block text-xs font-semibold text-fg"
+                    >
+                      Your website address (example.com)
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        id="discover-domain-input"
+                        type="text"
+                        value={domainInput}
+                        onChange={(e) => setDomainInput(e.target.value)}
+                        placeholder="example.com"
+                        aria-label="Your website address (example.com)"
+                        className="flex-1 px-3 py-2 text-xs rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-focus"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!domainInput.trim() || discovering}
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Find</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* While discovery runs */}
+                {discovering && (
+                  <div
+                    role="status"
+                    data-testid="google-discovering-indicator"
+                    className="flex items-center gap-2.5 p-4 rounded-xl border border-line bg-fill-1 text-xs font-medium text-fg"
+                  >
+                    <Loader2 className="w-4 h-4 text-accent-text animate-spin shrink-0" />
+                    <span>Looking for your website…</span>
+                  </div>
+                )}
+
+                {discoverError && (
+                  <div className="p-3 rounded-lg border border-danger-line bg-danger-soft text-xs text-danger">
+                    {discoverError}
+                  </div>
+                )}
+
+                {/* Result card: "We found your website" */}
+                {!discovering && discovery && hasAnySuggestion && (
+                  <div
+                    data-testid="google-discovered-card"
+                    className="p-4 rounded-xl border border-accent-line bg-accent-soft/40 space-y-4"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-accent-text shrink-0" />
+                      <h3 className="text-sm font-bold text-fg">
+                        We found your website
+                      </h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Suggested Google Analytics */}
+                      <div className="p-3 rounded-lg border border-line bg-surface space-y-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                          Google Analytics
+                        </div>
+                        {suggestedGa4Item ? (
+                          <>
+                            <div className="text-xs font-semibold text-fg">
+                              {suggestedGa4Item.displayName}{' '}
+                              <span className="font-mono text-fg-muted">
+                                ({suggestedGa4Item.propertyId})
+                              </span>
+                            </div>
+                            {suggestedGa4Item.reasons[0] && (
+                              <p className="text-xs text-fg-muted">
+                                {suggestedGa4Item.reasons[0]}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="text-xs font-semibold text-warning">
+                              Google Analytics is missing for this website
+                            </div>
+                            <p className="text-xs text-fg-muted">
+                              {discovery.notes.find((n) => /GA4|Analytics/i.test(n)) ||
+                                'Ask the site owner to give you Viewer access in Google Analytics.'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Suggested Search Console */}
+                      <div className="p-3 rounded-lg border border-line bg-surface space-y-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                          Search Console
+                        </div>
+                        {suggestedScItem ? (
+                          <>
+                            <div className="text-xs font-semibold font-mono text-fg break-all">
+                              {suggestedScItem.siteUrl}
+                            </div>
+                            {suggestedScItem.reasons[0] && (
+                              <p className="text-xs text-fg-muted">
+                                {suggestedScItem.reasons[0]}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="text-xs font-semibold text-warning">
+                              Search Console is missing for this website
+                            </div>
+                            <p className="text-xs text-fg-muted">
+                              {discovery.notes.find((n) => /Search Console/i.test(n)) ||
+                                'Ask the site owner to give you access in Google Search Console.'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {discovery.notes.length > 0 && (
+                      <div className="space-y-1">
+                        {discovery.notes.map((note, idx) => (
+                          <p key={idx} className="text-xs text-fg-muted">
+                            {note}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleAcceptSuggested}
+                        disabled={saving}
+                        data-testid="accept-suggested-sources-button"
+                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>{saving ? 'Saving...' : 'Yes, use these'}</span>
+                      </button>
+
+                      {!manualMode && (
+                        <button
+                          type="button"
+                          onClick={() => setManualMode(true)}
+                          data-testid="choose-manually-link"
+                          className="text-xs font-medium text-accent-text hover:underline cursor-pointer"
+                        >
+                          Not right? Choose manually
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Nothing was suggested */}
+                {noSuggestionsFound && (
+                  <div
+                    data-testid="google-no-match-notice"
+                    className="p-4 rounded-xl border border-warning-line bg-warning-soft space-y-1.5"
+                  >
+                    <div className="text-xs font-semibold text-warning">
+                      {"We couldn't find a match automatically"}
+                    </div>
+                    {discovery?.notes.map((note, idx) => (
+                      <p key={idx} className="text-xs text-warning">
+                        {note}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Link to open manual mode when not yet shown */}
+                {!manualMode && !noSuggestionsFound && !hasAnySuggestion && !discovering && (
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setManualMode(true)}
+                      data-testid="choose-manually-link"
+                      className="text-xs font-medium text-accent-text hover:underline cursor-pointer"
+                    >
+                      Not right? Choose manually
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Already-saved project controls (when not in manual mode) */}
+            {googleConnected && hasSavedSelection && !showManualForm && (
+              <div className="pt-3 border-t border-line flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCheckAgain}
+                    disabled={discovering}
+                    data-testid="check-again-button"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-line bg-fill-1 text-fg hover:bg-fill-2 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${discovering ? 'animate-spin' : ''}`} />
+                    <span>Check again</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setManualMode(true)}
+                    data-testid="choose-manually-link"
+                    className="text-xs font-medium text-accent-text hover:underline cursor-pointer"
+                  >
+                    Not right? Choose manually
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-danger bg-danger-soft hover:bg-danger-soft border border-danger-line transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
+                </button>
+              </div>
+            )}
+
+            {/* Manual Choice Dropdown Form */}
+            {showManualForm && (
+              <form
+                onSubmit={handleSaveSelection}
+                data-testid="google-manual-selection-form"
+                className="space-y-4 pt-2"
+              >
                 {optionsError && (
                   <div className="p-3 rounded-lg border border-danger-line bg-danger-soft text-xs text-danger">
                     {optionsError}
@@ -330,13 +693,13 @@ export const ConnectionsPage: React.FC = () => {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* GA4 Property Selector */}
+                  {/* GA4 Selector */}
                   <div className="space-y-1.5">
                     <label
                       htmlFor="ga4-property-select"
                       className="block text-xs font-semibold text-fg"
                     >
-                      GA4 Property (grouped by account)
+                      Google Analytics Website
                     </label>
                     {loadingOptions ? (
                       <div className="h-9 rounded-lg bg-fill-2 animate-pulse" />
@@ -346,10 +709,10 @@ export const ConnectionsPage: React.FC = () => {
                         className="p-3 rounded-lg border border-dashed border-line-strong bg-fill-1 text-xs text-fg-muted space-y-1"
                       >
                         <div className="font-semibold text-fg">
-                          This Google account has no GA4 properties
+                          This Google account has no Google Analytics websites
                         </div>
                         <p className="text-[11px] text-fg-muted">
-                          Ask your Google Analytics administrator to grant your email Viewer access to the property for {TRACKED_SITE.domain}.
+                          Ask the site owner to give your email Viewer access in Google Analytics for {TRACKED_SITE.domain}.
                         </p>
                       </div>
                     ) : (
@@ -360,7 +723,7 @@ export const ConnectionsPage: React.FC = () => {
                         onChange={(e) => setSelectedGa4Id(e.target.value)}
                         className="w-full px-3 py-2 text-xs rounded-lg border border-line bg-fill-1 text-fg focus:outline-none focus:ring-2 focus:ring-focus"
                       >
-                        <option value="">Select a GA4 property...</option>
+                        <option value="">Choose a Google Analytics website...</option>
                         {groupedGa4Properties.map(([accountName, props]) => (
                           <optgroup key={accountName} label={accountName}>
                             {props.map((p) => (
@@ -393,7 +756,7 @@ export const ConnectionsPage: React.FC = () => {
                           This Google account has no verified Search Console sites
                         </div>
                         <p className="text-[11px] text-fg-muted">
-                          Ask a Search Console administrator to grant Viewer or Full access for {TRACKED_SITE.domain}.
+                          Ask the site owner to grant your email access in Search Console for {TRACKED_SITE.domain}.
                         </p>
                       </div>
                     ) : (
@@ -404,7 +767,7 @@ export const ConnectionsPage: React.FC = () => {
                         onChange={(e) => setSelectedGscUrl(e.target.value)}
                         className="w-full px-3 py-2 text-xs rounded-lg border border-line bg-fill-1 text-fg focus:outline-none focus:ring-2 focus:ring-focus"
                       >
-                        <option value="">Select a verified site...</option>
+                        <option value="">Choose a verified site...</option>
                         {searchConsoleSites.map((s) => (
                           <option key={s.siteUrl} value={s.siteUrl}>
                             {s.siteUrl} ({s.permissionLevel})
@@ -417,15 +780,28 @@ export const ConnectionsPage: React.FC = () => {
 
                 {/* Save & Disconnect Actions */}
                 <div className="pt-3 border-t border-line flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={handleDisconnect}
-                    disabled={disconnecting}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-danger bg-danger-soft hover:bg-danger-soft border border-danger-line transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDisconnect}
+                      disabled={disconnecting}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-danger bg-danger-soft hover:bg-danger-soft border border-danger-line transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCheckAgain}
+                      disabled={discovering}
+                      data-testid="check-again-button"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-line bg-fill-1 text-fg hover:bg-fill-2 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${discovering ? 'animate-spin' : ''}`} />
+                      <span>Check again</span>
+                    </button>
+                  </div>
 
                   <button
                     type="submit"
@@ -438,36 +814,22 @@ export const ConnectionsPage: React.FC = () => {
                 </div>
               </form>
             )}
-          </div>
 
-          {/* When Not Connected: Connect / Reconnect Google CTA */}
-          {!googleConnected && (
-            <div className="pt-4 border-t border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="text-xs text-fg-muted">
-                {connections?.google.needsReconnect ? (
-                  <span className="text-warning font-medium">
-                    Google access expired or was revoked
-                    {connections.google.email ? ` (${connections.google.email})` : ''}. Please reconnect your account.
-                  </span>
-                ) : (
-                  <>
-                    Scopes requested: <code className="font-mono">analytics.readonly</code>,{' '}
-                    <code className="font-mono">webmasters.readonly</code>
-                  </>
-                )}
+            {/* Disconnect button when connected with no saved selection and manual form is closed */}
+            {googleConnected && !hasSavedSelection && !showManualForm && (
+              <div className="pt-3 border-t border-line flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-danger bg-danger-soft hover:bg-danger-soft border border-danger-line transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</span>
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={connectGoogle}
-                disabled={!googleConfigured || loading}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:bg-fill-3 disabled:text-fg-muted disabled:cursor-not-allowed whitespace-nowrap shrink-0"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>{connections?.google.needsReconnect ? 'Reconnect Google' : 'Connect Google'}</span>
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Meta Ads Card (System User configuration or missing secrets notice; no connect button) */}

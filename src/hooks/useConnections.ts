@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import type {
   ConnectionsResponse,
   GA4PropertyOption,
+  GoogleSourceDiscoveryResponse,
   HealthStatusResponse,
   MetaAccountInfo,
   SearchConsoleSiteOption,
@@ -59,6 +60,10 @@ export interface UseConnectionsResult {
   disconnecting: boolean;
   error: string | null;
   optionsError: string | null;
+  discovering: boolean;
+  discovery: GoogleSourceDiscoveryResponse | null;
+  discoverError: string | null;
+  discoverSources: (domain: string) => Promise<GoogleSourceDiscoveryResponse | null>;
   connectGoogle: () => Promise<void>;
   disconnectGoogle: () => Promise<boolean>;
   saveSelection: (selection: {
@@ -85,6 +90,9 @@ export function useConnections(): UseConnectionsResult {
   const [disconnecting, setDisconnecting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [discovering, setDiscovering] = useState<boolean>(false);
+  const [discovery, setDiscovery] = useState<GoogleSourceDiscoveryResponse | null>(null);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -185,6 +193,31 @@ export function useConnections(): UseConnectionsResult {
     };
   }, [loadData]);
 
+  const discoverSources = useCallback(
+    async (domain: string): Promise<GoogleSourceDiscoveryResponse | null> => {
+      const trimmed = domain.trim();
+      if (!trimmed) {
+        setDiscoverError('Enter your website address first.');
+        return null;
+      }
+      setDiscovering(true);
+      setDiscoverError(null);
+      try {
+        const res = await apiClient.discoverGoogleSources(trimmed);
+        setDiscovery(res);
+        return res;
+      } catch (err) {
+        setDiscoverError(
+          err instanceof Error ? err.message : 'Unable to look up your website right now.'
+        );
+        return null;
+      } finally {
+        setDiscovering(false);
+      }
+    },
+    []
+  );
+
   const connectGoogle = useCallback(async () => {
     setError(null);
     try {
@@ -204,6 +237,8 @@ export function useConnections(): UseConnectionsResult {
       await apiClient.disconnectGoogle();
       setSourceLiveMode('ga4', false);
       setSourceLiveMode('search_console', false);
+      setDiscovery(null);
+      setDiscoverError(null);
       await loadData();
       notifyConnectionsChanged();
       return true;
@@ -277,9 +312,14 @@ export function useConnections(): UseConnectionsResult {
     disconnecting,
     error,
     optionsError,
+    discovering,
+    discovery,
+    discoverError,
+    discoverSources,
     connectGoogle,
     disconnectGoogle,
     saveSelection,
     refresh: loadData,
   };
 }
+

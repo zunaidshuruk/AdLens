@@ -19,6 +19,7 @@ import type {
   GA4TrafficBreakdownFilters,
   GA4TrafficBreakdownRow,
   GA4TrafficPoint,
+  GoogleSourceDiscoveryResponse,
   HealthStatusResponse,
   MeResponse,
   MetaAccountInfo,
@@ -447,6 +448,12 @@ export const apiClient = {
 
   getSearchConsoleSites(): Promise<SearchConsoleSiteOption[]> {
     return apiRequest<SearchConsoleSiteOption[]>('/api/google/search-console/sites');
+  },
+
+  discoverGoogleSources(domain: string): Promise<GoogleSourceDiscoveryResponse> {
+    return apiRequest<GoogleSourceDiscoveryResponse>(
+      `/api/google/discover?domain=${encodeURIComponent(domain.trim())}`
+    );
   },
 
   saveGoogleSelection(payload: {

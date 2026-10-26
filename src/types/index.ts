@@ -554,6 +554,39 @@ export interface SearchConsoleSiteOption {
   permissionLevel: string;
 }
 
+export type SourceMatchStrength = 'exact' | 'strong' | 'partial' | 'weak';
+
+export interface DiscoveredGA4Property {
+  propertyId: string;
+  displayName: string;
+  accountName?: string;
+  streamUris?: string[];
+  score: number;
+  strength: SourceMatchStrength;
+  reasons: string[];
+}
+
+export interface DiscoveredSearchConsoleSite {
+  siteUrl: string;
+  permissionLevel?: string;
+  score: number;
+  strength: SourceMatchStrength;
+  reasons: string[];
+}
+
+export interface GoogleSourceDiscoveryResponse {
+  domain: string;
+  ga4: DiscoveredGA4Property[];
+  searchConsole: DiscoveredSearchConsoleSite[];
+  suggested: {
+    ga4PropertyId: string | null;
+    searchConsoleSiteUrl: string | null;
+  };
+  notes: string[];
+  checkedProperties: number;
+  totalProperties: number;
+}
+
 export interface AskAnalystHistoryMessage {
   role: 'user' | 'assistant';
   content: string;
