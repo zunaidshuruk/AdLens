@@ -22,6 +22,10 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, { status: number; message: string 
     status: 401,
     message: 'The Meta access token is invalid or was revoked — generate a new system user token',
   },
+  META_TOKEN_EXPIRED: {
+    status: 401,
+    message: 'Facebook access has expired. Reconnect Facebook.',
+  },
   META_PERMISSION_DENIED: {
     status: 403,
     message: 'The Meta system user does not have permission to access this ad account',
@@ -55,6 +59,11 @@ export function computeAppSecretProof(accessToken: string, appSecret: string): s
   return crypto.createHmac('sha256', appSecret).update(accessToken, 'utf8').digest('hex');
 }
 
+export interface MetaCredentials {
+  accessToken: string;
+  appSecret: string;
+}
+
 interface GraphErrorPayload {
   error?: {
     code?: number;
@@ -78,15 +87,26 @@ interface GraphPaginatedPayload<Row = unknown> extends GraphErrorPayload {
  */
 export async function metaGet<T = unknown>(
   path: string,
-  params: Record<string, string | number | boolean | undefined> = {}
+  params: Record<string, string | number | boolean | undefined> = {},
+  credentials?: MetaCredentials
 ): Promise<T> {
-  const cfg = getServerConfig();
-  if (!cfg.metaConfigured) {
-    throw new MetaApiError(
-      'META_NOT_CONFIGURED',
-      `Meta Ads integration is not configured. Missing environment variables: ${cfg.metaMissing.join(', ')}`,
-      503
-    );
+  let accessToken: string;
+  let appSecret: string;
+
+  if (credentials) {
+    accessToken = credentials.accessToken;
+    appSecret = credentials.appSecret;
+  } else {
+    const cfg = getServerConfig();
+    if (!cfg.metaConfigured) {
+      throw new MetaApiError(
+        'META_NOT_CONFIGURED',
+        `Meta Ads integration is not configured. Missing environment variables: ${cfg.metaMissing.join(', ')}`,
+        503
+      );
+    }
+    accessToken = cfg.metaAccessToken;
+    appSecret = cfg.metaAppSecret;
   }
 
   const cleanPath = path.replace(/^\/+/, '');
@@ -98,8 +118,8 @@ export async function metaGet<T = unknown>(
     }
   }
 
-  const appSecretProof = computeAppSecretProof(cfg.metaAccessToken, cfg.metaAppSecret);
-  url.searchParams.set('access_token', cfg.metaAccessToken);
+  const appSecretProof = computeAppSecretProof(accessToken, appSecret);
+  url.searchParams.set('access_token', accessToken);
   url.searchParams.set('appsecret_proof', appSecretProof);
 
   const fetchPage = async (targetUrl: string): Promise<GraphPaginatedPayload> => {
@@ -149,7 +169,7 @@ export async function metaGet<T = unknown>(
         break;
       }
       if (!parsedNext.searchParams.has('access_token')) {
-        parsedNext.searchParams.set('access_token', cfg.metaAccessToken);
+        parsedNext.searchParams.set('access_token', accessToken);
       }
       if (!parsedNext.searchParams.has('appsecret_proof')) {
         parsedNext.searchParams.set('appsecret_proof', appSecretProof);

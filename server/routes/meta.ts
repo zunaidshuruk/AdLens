@@ -4,8 +4,8 @@ import {
   getServerConfig,
   isEmailAllowedForMetaSystemUser,
   normalizeMetaAdAccountId,
-  requireMetaConfigured,
 } from '../config.js';
+import { getFirestoreStore, type ProjectDoc } from '../lib/firestore.js';
 import { MetaApiError, metaGet } from '../lib/meta.js';
 import {
   type MetaAdObject,
@@ -18,11 +18,20 @@ import {
   mapMetaOverview,
   mapMetaSpendOverTime,
 } from '../lib/metaAdsMapper.js';
+import { VaultError } from '../lib/tokenVault.js';
+import { getVault } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser } from '../middleware/requireUser.js';
 import { googleRateLimitMiddleware } from './connections.js';
 
 export const metaRouter = Router();
+
+export interface MetaAccessContext {
+  accessToken: string;
+  appSecret: string;
+  accountId: string;
+  source: 'user' | 'system';
+}
 
 // In-memory cache with 10-minute TTL
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -122,17 +131,21 @@ function setCache(key: string, data: unknown): void {
 }
 
 function buildCacheKey(
+  uid: string,
+  source: string,
   accountId: string,
   routeName: string,
   dates: ValidatedDateQuery,
   extra: string = ''
 ): string {
-  return `${accountId}:${routeName}:${dates.startDate}:${dates.endDate}:${dates.compareStartDate ?? ''}:${dates.compareEndDate ?? ''}:${extra}`;
+  return `${uid}:${source}:${accountId}:${routeName}:${dates.startDate}:${dates.endDate}:${dates.compareStartDate ?? ''}:${dates.compareEndDate ?? ''}:${extra}`;
 }
 
 function handleMetaRouteError(res: Response, err: unknown): void {
   if (err instanceof MetaApiError) {
-    res.status(err.status).json({
+    const status =
+      err.code === 'META_TOKEN_INVALID' || err.code === 'META_TOKEN_EXPIRED' ? 401 : err.status;
+    res.status(status).json({
       error: {
         code: err.code,
         message: err.message,
@@ -199,42 +212,149 @@ function buildInsightsParams(
   };
 }
 
-function requireMetaSystemUserAllowlist(
+async function resolveDefaultProjectForUser(uid: string): Promise<ProjectDoc | undefined> {
+  try {
+    const store = getFirestoreStore();
+    const workspaces = await store.listWorkspacesForUser(uid);
+    for (const ws of workspaces) {
+      if (!ws.members?.[uid]) continue;
+      const projects = await store.listProjects(ws.id);
+      const nonDemo = projects.find((p) => !p.isDemo);
+      if (nonDemo) return nonDemo;
+      if (projects[0]) return projects[0];
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+export async function resolveMetaAccess(
   req: Request,
   res: Response,
   next: NextFunction
-): void {
-  if (!isEmailAllowedForMetaSystemUser(req.user?.email)) {
-    res.status(403).json({
+): Promise<void> {
+  const cfg = getServerConfig();
+  const uid = req.user!.uid;
+  const vaultAvailable = cfg.vaultReady;
+
+  if (vaultAvailable) {
+    try {
+      const userAccessToken = await getVault().getAccessToken(uid, 'meta');
+      const activeProject = req.project ?? (await resolveDefaultProjectForUser(uid));
+      const projectAccountId = normalizeMetaAdAccountId(
+        activeProject?.metaAdAccountId ?? undefined
+      );
+
+      if (!projectAccountId) {
+        res.status(409).json({
+          error: {
+            code: 'META_NO_AD_ACCOUNT',
+            message: 'Choose a Facebook ad account first.',
+          },
+        });
+        return;
+      }
+
+      const metaAccess: MetaAccessContext = {
+        accessToken: userAccessToken,
+        appSecret: cfg.metaAppSecret,
+        accountId: projectAccountId,
+        source: 'user',
+      };
+      res.locals.metaAccess = metaAccess;
+      next();
+      return;
+    } catch (err) {
+      if (err instanceof VaultError) {
+        if (err.code === 'VAULT_REAUTH_REQUIRED' || err.code === 'VAULT_DECRYPT_FAILED') {
+          res.status(401).json({
+            error: {
+              code: 'META_REAUTH_REQUIRED',
+              message: 'Facebook access has expired. Reconnect Facebook.',
+            },
+          });
+          return;
+        }
+        if (err.code !== 'VAULT_NOT_CONNECTED') {
+          res.status(err.status).json({
+            error: {
+              code: err.code,
+              message: err.message,
+            },
+          });
+          return;
+        }
+      } else {
+        res.status(502).json({
+          error: {
+            code: 'META_REQUEST_FAILED',
+            message: 'Failed to fetch data from Meta Marketing API',
+          },
+        });
+        return;
+      }
+    }
+  }
+
+  // Fallback to shared system token ONLY when cfg.metaConfigured and user's email is allowlisted
+  const metaAllowed = isEmailAllowedForMetaSystemUser(req.user?.email);
+  if (cfg.metaConfigured && metaAllowed) {
+    const accountId =
+      normalizeMetaAdAccountId(req.project?.metaAdAccountId ?? undefined) || cfg.metaAdAccountId;
+    const metaAccess: MetaAccessContext = {
+      accessToken: cfg.metaAccessToken,
+      appSecret: cfg.metaAppSecret,
+      accountId,
+      source: 'system',
+    };
+    res.locals.metaAccess = metaAccess;
+    next();
+    return;
+  }
+
+  if (!vaultAvailable) {
+    if (!metaAllowed) {
+      res.status(403).json({
+        error: {
+          code: 'META_NOT_AVAILABLE',
+          message: 'Connecting your own Facebook account is coming soon',
+        },
+      });
+      return;
+    }
+    res.status(503).json({
       error: {
-        code: 'META_NOT_AVAILABLE',
-        message: 'Connecting your own Facebook account is coming soon',
+        code: 'META_NOT_CONFIGURED',
+        message: `Meta Ads integration is not configured. Missing environment variables: ${cfg.metaMissing.join(', ')}`,
       },
     });
     return;
   }
-  next();
+
+  res.status(404).json({
+    error: {
+      code: 'NOT_CONNECTED',
+      message: 'Facebook account is not connected.',
+    },
+  });
 }
 
-function resolveMetaAccountId(req: Request): string {
-  const cfg = getServerConfig();
-  if (req.project?.metaAdAccountId) {
-    return normalizeMetaAdAccountId(req.project.metaAdAccountId) || cfg.metaAdAccountId;
-  }
-  return cfg.metaAdAccountId;
+function getMetaAccess(res: Response): MetaAccessContext {
+  return res.locals.metaAccess as MetaAccessContext;
 }
 
-// Apply rate limiter, requireUser, loadProject, Meta allowlist safeguard, and Meta configuration check to all /api/meta/* routes
+// Apply rate limiter, requireUser, loadProject, and resolveMetaAccess to all /api/meta/* routes
 metaRouter.use(googleRateLimitMiddleware);
 metaRouter.use(requireUser);
 metaRouter.use(loadProject);
-metaRouter.use(requireMetaSystemUserAllowlist);
-metaRouter.use(requireMetaConfigured);
+metaRouter.use(resolveMetaAccess);
 
 // GET /api/meta/account -> MetaAccountInfo
 metaRouter.get('/account', async (req: Request, res: Response) => {
-  const accountId = resolveMetaAccountId(req);
-  const cacheKey = `${accountId}:account`;
+  const { accountId, accessToken, appSecret, source } = getMetaAccess(res);
+  const uid = req.user?.uid ?? 'anon';
+  const cacheKey = `${uid}:${source}:${accountId}:account`;
 
   const cached = getCache<MetaAccountInfo>(cacheKey);
   if (cached) {
@@ -250,9 +370,13 @@ metaRouter.get('/account', async (req: Request, res: Response) => {
       currency?: string;
       timezone_name?: string;
       account_status?: number | string;
-    }>(`act_${accountId}`, {
-      fields: 'name,currency,timezone_name,account_status',
-    });
+    }>(
+      `act_${accountId}`,
+      {
+        fields: 'name,currency,timezone_name,account_status',
+      },
+      { accessToken, appSecret }
+    );
 
     const data: MetaAccountInfo = {
       accountId,
@@ -275,8 +399,10 @@ metaRouter.get('/overview', async (req: Request, res: Response) => {
   const dates = validateDateQuery(req, res);
   if (!dates) return;
 
-  const accountId = resolveMetaAccountId(req);
-  const cacheKey = buildCacheKey(accountId, 'overview', dates);
+  const { accountId, accessToken, appSecret, source } = getMetaAccess(res);
+  const uid = req.user?.uid ?? 'anon';
+  const cacheKey = buildCacheKey(uid, source, accountId, 'overview', dates);
+  const credentials = { accessToken, appSecret };
 
   const cached = getCache(cacheKey);
   if (cached) {
@@ -290,12 +416,14 @@ metaRouter.get('/overview', async (req: Request, res: Response) => {
     const [currentRes, previousRes] = await Promise.all([
       metaGet<{ data?: MetaInsightsRow[] }>(
         `act_${accountId}/insights`,
-        buildInsightsParams(dates.startDate, dates.endDate, 'account')
+        buildInsightsParams(dates.startDate, dates.endDate, 'account'),
+        credentials
       ),
       dates.compareStartDate && dates.compareEndDate
         ? metaGet<{ data?: MetaInsightsRow[] }>(
             `act_${accountId}/insights`,
-            buildInsightsParams(dates.compareStartDate, dates.compareEndDate, 'account')
+            buildInsightsParams(dates.compareStartDate, dates.compareEndDate, 'account'),
+            credentials
           )
         : Promise.resolve({ data: [] as MetaInsightsRow[] }),
     ]);
@@ -318,8 +446,10 @@ metaRouter.get('/spend-over-time', async (req: Request, res: Response) => {
   const dates = validateDateQuery(req, res);
   if (!dates) return;
 
-  const accountId = resolveMetaAccountId(req);
-  const cacheKey = buildCacheKey(accountId, 'spend-over-time', dates);
+  const { accountId, accessToken, appSecret, source } = getMetaAccess(res);
+  const uid = req.user?.uid ?? 'anon';
+  const cacheKey = buildCacheKey(uid, source, accountId, 'spend-over-time', dates);
+  const credentials = { accessToken, appSecret };
 
   const cached = getCache(cacheKey);
   if (cached) {
@@ -334,14 +464,16 @@ metaRouter.get('/spend-over-time', async (req: Request, res: Response) => {
         `act_${accountId}/insights`,
         buildInsightsParams(dates.startDate, dates.endDate, 'account', [], {
           time_increment: 1,
-        })
+        }),
+        credentials
       ),
       dates.compareStartDate && dates.compareEndDate
         ? metaGet<{ data?: MetaInsightsRow[] }>(
             `act_${accountId}/insights`,
             buildInsightsParams(dates.compareStartDate, dates.compareEndDate, 'account', [], {
               time_increment: 1,
-            })
+            }),
+            credentials
           )
         : Promise.resolve({ data: [] as MetaInsightsRow[] }),
     ]);
@@ -368,8 +500,10 @@ metaRouter.get('/campaigns', async (req: Request, res: Response) => {
   const dates = validateDateQuery(req, res);
   if (!dates) return;
 
-  const accountId = resolveMetaAccountId(req);
-  const cacheKey = buildCacheKey(accountId, 'campaigns', dates);
+  const { accountId, accessToken, appSecret, source } = getMetaAccess(res);
+  const uid = req.user?.uid ?? 'anon';
+  const cacheKey = buildCacheKey(uid, source, accountId, 'campaigns', dates);
+  const credentials = { accessToken, appSecret };
 
   const cached = getCache(cacheKey);
   if (cached) {
@@ -380,16 +514,21 @@ metaRouter.get('/campaigns', async (req: Request, res: Response) => {
 
   try {
     const [campaignsRes, insightsRes] = await Promise.all([
-      metaGet<{ data?: MetaCampaignObject[] }>(`act_${accountId}/campaigns`, {
-        fields: 'id,name,objective,effective_status',
-        limit: 500,
-      }),
+      metaGet<{ data?: MetaCampaignObject[] }>(
+        `act_${accountId}/campaigns`,
+        {
+          fields: 'id,name,objective,effective_status',
+          limit: 500,
+        },
+        credentials
+      ),
       metaGet<{ data?: MetaInsightsRow[] }>(
         `act_${accountId}/insights`,
         buildInsightsParams(dates.startDate, dates.endDate, 'campaign', [
           'campaign_id',
           'campaign_name',
-        ])
+        ]),
+        credentials
       ),
     ]);
 
@@ -412,8 +551,10 @@ metaRouter.get('/adsets', async (req: Request, res: Response) => {
       ? req.query.campaignId.trim()
       : undefined;
 
-  const accountId = resolveMetaAccountId(req);
-  const cacheKey = buildCacheKey(accountId, 'adsets', dates, campaignId ?? 'all');
+  const { accountId, accessToken, appSecret, source } = getMetaAccess(res);
+  const uid = req.user?.uid ?? 'anon';
+  const cacheKey = buildCacheKey(uid, source, accountId, 'adsets', dates, campaignId ?? 'all');
+  const credentials = { accessToken, appSecret };
 
   const cached = getCache(cacheKey);
   if (cached) {
@@ -424,14 +565,22 @@ metaRouter.get('/adsets', async (req: Request, res: Response) => {
 
   try {
     const [campaignsRes, adSetsRes, insightsRes] = await Promise.all([
-      metaGet<{ data?: MetaCampaignObject[] }>(`act_${accountId}/campaigns`, {
-        fields: 'id,name',
-        limit: 500,
-      }),
-      metaGet<{ data?: MetaAdSetObject[] }>(`act_${accountId}/adsets`, {
-        fields: 'id,name,campaign_id,effective_status,targeting',
-        limit: 500,
-      }),
+      metaGet<{ data?: MetaCampaignObject[] }>(
+        `act_${accountId}/campaigns`,
+        {
+          fields: 'id,name',
+          limit: 500,
+        },
+        credentials
+      ),
+      metaGet<{ data?: MetaAdSetObject[] }>(
+        `act_${accountId}/adsets`,
+        {
+          fields: 'id,name,campaign_id,effective_status,targeting',
+          limit: 500,
+        },
+        credentials
+      ),
       metaGet<{ data?: MetaInsightsRow[] }>(
         `act_${accountId}/insights`,
         buildInsightsParams(dates.startDate, dates.endDate, 'adset', [
@@ -439,7 +588,8 @@ metaRouter.get('/adsets', async (req: Request, res: Response) => {
           'campaign_name',
           'adset_id',
           'adset_name',
-        ])
+        ]),
+        credentials
       ),
     ]);
 
@@ -474,8 +624,10 @@ metaRouter.get('/ads', async (req: Request, res: Response) => {
       ? req.query.adSetId.trim()
       : undefined;
 
-  const accountId = resolveMetaAccountId(req);
-  const cacheKey = buildCacheKey(accountId, 'ads', dates, adSetId ?? 'all');
+  const { accountId, accessToken, appSecret, source } = getMetaAccess(res);
+  const uid = req.user?.uid ?? 'anon';
+  const cacheKey = buildCacheKey(uid, source, accountId, 'ads', dates, adSetId ?? 'all');
+  const credentials = { accessToken, appSecret };
 
   const cached = getCache(cacheKey);
   if (cached) {
@@ -486,19 +638,31 @@ metaRouter.get('/ads', async (req: Request, res: Response) => {
 
   try {
     const [campaignsRes, adSetsRes, adsRes, insightsRes] = await Promise.all([
-      metaGet<{ data?: MetaCampaignObject[] }>(`act_${accountId}/campaigns`, {
-        fields: 'id,name',
-        limit: 500,
-      }),
-      metaGet<{ data?: MetaAdSetObject[] }>(`act_${accountId}/adsets`, {
-        fields: 'id,name,campaign_id',
-        limit: 500,
-      }),
-      metaGet<{ data?: MetaAdObject[] }>(`act_${accountId}/ads`, {
-        fields:
-          'id,name,adset_id,campaign_id,effective_status,creative{object_type,video_id,object_story_spec,asset_feed_spec}',
-        limit: 500,
-      }),
+      metaGet<{ data?: MetaCampaignObject[] }>(
+        `act_${accountId}/campaigns`,
+        {
+          fields: 'id,name',
+          limit: 500,
+        },
+        credentials
+      ),
+      metaGet<{ data?: MetaAdSetObject[] }>(
+        `act_${accountId}/adsets`,
+        {
+          fields: 'id,name,campaign_id',
+          limit: 500,
+        },
+        credentials
+      ),
+      metaGet<{ data?: MetaAdObject[] }>(
+        `act_${accountId}/ads`,
+        {
+          fields:
+            'id,name,adset_id,campaign_id,effective_status,creative{object_type,video_id,object_story_spec,asset_feed_spec}',
+          limit: 500,
+        },
+        credentials
+      ),
       metaGet<{ data?: MetaInsightsRow[] }>(
         `act_${accountId}/insights`,
         buildInsightsParams(dates.startDate, dates.endDate, 'ad', [
@@ -508,7 +672,8 @@ metaRouter.get('/ads', async (req: Request, res: Response) => {
           'adset_name',
           'ad_id',
           'ad_name',
-        ])
+        ]),
+        credentials
       ),
     ]);
 
