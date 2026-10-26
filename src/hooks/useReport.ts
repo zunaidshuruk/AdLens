@@ -5,7 +5,7 @@ import {
   ensureAdapterRegistryInitialized,
   subscribeAdapterRegistry,
 } from '../adapters';
-import { ApiClientError, apiClient } from '../api/client';
+import { ApiClientError, apiClient, isNetworkDownError, OFFLINE_ERROR_MESSAGE } from '../api/client';
 import { useApp } from '../context/AppContext';
 import type {
   ComputedDateRange,
@@ -61,8 +61,13 @@ export function useReport<T>(
       }
     } catch (err) {
       if (!cancelled) {
-        setError(err instanceof Error ? err.message : 'Failed to load report data');
-        setErrorCode(err instanceof ApiClientError ? err.code : 'REPORT_ERROR');
+        if (isNetworkDownError(err)) {
+          setError(OFFLINE_ERROR_MESSAGE);
+          setErrorCode('NETWORK_OFFLINE');
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to load report data');
+          setErrorCode(err instanceof ApiClientError ? err.code : 'REPORT_ERROR');
+        }
       }
     } finally {
       if (!cancelled) {

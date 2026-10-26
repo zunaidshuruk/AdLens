@@ -86,6 +86,27 @@ function navigateToAuthRoute(targetPath: '/sign-in' | '/verify-email'): void {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
+export const OFFLINE_ERROR_MESSAGE = "You're offline. Check your connection and try again.";
+
+export function isNetworkDownError(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return true;
+  }
+  if (err instanceof ApiClientError && err.code === 'NETWORK_OFFLINE') {
+    return true;
+  }
+  if (err instanceof TypeError) {
+    return true;
+  }
+  if (
+    err instanceof Error &&
+    /failed to fetch|networkerror|network request failed|load failed/i.test(err.message)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 async function performFetch(
   path: string,
   init: RequestInit | undefined,
@@ -107,11 +128,18 @@ async function performFetch(
     headers['X-AdLens-Project'] = activeProjectHeader;
   }
 
-  return fetch(path, {
-    ...init,
-    credentials: 'include',
-    headers,
-  });
+  try {
+    return await fetch(path, {
+      ...init,
+      credentials: 'include',
+      headers,
+    });
+  } catch (err) {
+    if (isNetworkDownError(err)) {
+      throw new ApiClientError(OFFLINE_ERROR_MESSAGE, 0, 'NETWORK_OFFLINE');
+    }
+    throw err;
+  }
 }
 
 async function parseErrorResponse(response: Response): Promise<{ code: string; message: string }> {

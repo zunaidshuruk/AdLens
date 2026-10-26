@@ -39,6 +39,7 @@ import {
   registerAuthTokenGetter,
   type FirebaseInitError,
 } from '../lib/firebase';
+import { clearAppCaches } from '../pwa/updateManager.js';
 import { extractFirebaseErrorCode, mapFirebaseErrorMessage } from '../utils/firebaseErrors';
 
 export function formatFirebaseInitError(err: FirebaseInitError | null): string {
@@ -365,6 +366,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiClient.clearGoogleSession();
     } catch {
       // Ignore if session clear fails (e.g., already expired)
+    }
+    if ('caches' in window) {
+      await clearAppCaches(caches).catch(() => {});
     }
     setSourceLiveMode('ga4', false);
     setSourceLiveMode('search_console', false);

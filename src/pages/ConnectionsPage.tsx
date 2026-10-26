@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { ConnectionStatus } from '../components/ConnectionStatus';
+import { ErrorState } from '../components/ErrorState';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useConnections } from '../hooks';
@@ -57,6 +58,7 @@ export const ConnectionsPage: React.FC = () => {
     connectGoogle,
     disconnectGoogle,
     saveSelection,
+    refresh,
   } = useConnections();
 
   const [banner, setBanner] = useState<{
@@ -224,14 +226,7 @@ export const ConnectionsPage: React.FC = () => {
         </div>
       )}
 
-      {error && (
-        <div
-          role="alert"
-          className="p-4 rounded-xl border border-danger-line bg-danger-soft text-xs text-danger"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorState message={error} onRetry={() => void refresh()} />}
 
       {/* Main Connections Grid: Google Integration Card (spans 2 cols) + Meta Ads Card (1 col) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

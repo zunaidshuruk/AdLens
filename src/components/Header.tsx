@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Settings, Sun, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, LogOut, Menu, Moon, Settings, Sun, WifiOff, X } from 'lucide-react';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { AdLensLogo } from './AdLensLogo';
 import { useAppContext } from '../context/AppContext';
@@ -33,7 +33,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const { avatarUrl } = useAvatar(userProfile);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? !navigator.onLine : false
+  );
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -64,6 +78,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
 
   return (
     <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xs border-b border-line px-4 sm:px-6 py-3 space-y-2">
+      {isOffline && (
+        <div
+          role="status"
+          data-testid="offline-banner"
+          className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg border border-warning-line bg-warning-soft text-xs font-medium text-warning"
+        >
+          <WifiOff className="w-3.5 h-3.5 shrink-0" />
+          <span>{"You're offline"}</span>
+        </div>
+      )}
       {accountLinkNotice && (
         <div
           role="status"

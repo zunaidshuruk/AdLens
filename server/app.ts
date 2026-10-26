@@ -57,20 +57,58 @@ app.use('/api/search-console', searchConsoleRouter);
 app.use('/api/meta', metaRouter);
 app.use('/api/reports', reportsRouter);
 
+const NO_CACHE_FILES = new Set([
+  'sw.js',
+  'version.json',
+  'manifest.webmanifest',
+  'offline.html',
+  'index.html',
+]);
+
+export function configureStatic(targetApp: express.Express, staticDistPath: string): void {
+  const resolvedDist = path.resolve(staticDistPath);
+
+  targetApp.use(
+    express.static(resolvedDist, {
+      setHeaders(res, filePath) {
+        const rel = path.relative(resolvedDist, filePath).split(path.sep).join('/');
+        if (rel.startsWith('assets/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (rel.startsWith('icons/')) {
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+        } else if (NO_CACHE_FILES.has(rel)) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }),
+  );
+
+  targetApp.get('*', (req, res, next) => {
+    if (req.path === '/api' || req.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+    if (req.path === '/assets' || req.path.startsWith('/assets/')) {
+      res.status(404).end();
+      return;
+    }
+    const ext = path.posix.extname(req.path).toLowerCase();
+    if (ext !== '' && ext !== '.html') {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(resolvedDist, 'index.html'));
+  });
+}
+
 // Serve static frontend build in production when running npm start (not needed on Vercel, which serves /dist directly)
 const isProduction = process.env.NODE_ENV === 'production';
 const isVercel = Boolean(process.env.VERCEL);
 const distPath = path.resolve(__dirname, '../dist');
 
 if (isProduction && !isVercel) {
-  app.use(express.static(distPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      next();
-      return;
-    }
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
+  configureStatic(app, distPath);
 }
 
 export default app;
