@@ -5,11 +5,12 @@ import {
   isEmailAllowedForMetaSystemUser,
   normalizeMetaAdAccountId,
 } from '../config.js';
+import { getPlanLimits } from '../config/plans.js';
 import type { AgentSource } from '../lib/agentConfig.js';
 import { createAgentProvider } from '../lib/agentProviders.js';
 import { ToolInputError } from '../lib/agentRunner.js';
 import { askAnalyst, MAX_QUESTION_CHARS, type AnalystDeps } from '../lib/analystService.js';
-import { getFirestoreStore, type ProjectDoc } from '../lib/firestore.js';
+import { getFirestoreStore, getUtcMonthPeriod, type ProjectDoc } from '../lib/firestore.js';
 import { guardedRequest, type RequestFn } from '../lib/ssrfGuard.js';
 import { getVault } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
@@ -162,6 +163,47 @@ aiRouter.use(requireUser);
 aiRouter.use(aiRateLimitMiddleware);
 aiRouter.use(verifyGoogleSessionOwnership);
 aiRouter.use(loadProject);
+
+// GET /api/ai/usage
+aiRouter.get('/usage', async (req: Request, res: Response) => {
+  const uid = req.user!.uid;
+  const store = getFirestoreStore();
+  let project = req.project;
+  let workspaceId = project?.workspaceId ?? '';
+
+  if (!workspaceId) {
+    const workspaces = await store.listWorkspacesForUser(uid);
+    if (workspaces.length > 0) {
+      workspaceId = workspaces[0].id;
+      if (!project) {
+        const projects = await store.listProjects(workspaceId);
+        project = projects[0];
+      }
+    } else {
+      workspaceId = `ws_${uid}`;
+    }
+  }
+
+  const period = getUtcMonthPeriod();
+  const [workspace, usage] = await Promise.all([
+    store.getWorkspace(workspaceId),
+    store.getUsage(workspaceId, period),
+  ]);
+  const limit = getPlanLimits(workspace?.plan).aiQuestionsPerMonth;
+  const rawUsed = usage?.aiQuestions ?? 0;
+  const used =
+    typeof rawUsed === 'number' && Number.isFinite(rawUsed) && rawUsed >= 0
+      ? Math.floor(rawUsed)
+      : 0;
+  const cfg = getServerConfig();
+
+  res.status(200).json({
+    used,
+    limit,
+    period,
+    aiConfigured: cfg.aiConfigured,
+  });
+});
 
 // POST /api/ai/ask
 aiRouter.post('/ask', async (req: Request, res: Response) => {

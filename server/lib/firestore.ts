@@ -226,7 +226,7 @@ export interface FirestoreStoreAdapter {
     period?: string
   ): Promise<{ ok: boolean; used: number; limit: number }>;
   refundAiQuota(wsId: string, period?: string): Promise<void>;
-  getUsage?(wsId: string, period?: string): Promise<UsageDoc | null>;
+  getUsage(wsId: string, period?: string): Promise<UsageDoc | null>;
   setUsage?(wsId: string, period: string, patch: Partial<UsageDoc>): Promise<UsageDoc>;
 }
 
