@@ -8,7 +8,6 @@ import {
   KeyRound,
   Loader2,
   LogOut,
-  Megaphone,
   RefreshCw,
   Save,
   Search,
@@ -17,9 +16,11 @@ import {
 } from 'lucide-react';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { ErrorState } from '../components/ErrorState';
+import { MetaConnectCard } from '../components/MetaConnectCard';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useConnections } from '../hooks';
+import { parseMetaReturnParams } from '../hooks/useConnections';
 import type { GA4PropertyOption } from '../types';
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -51,6 +52,20 @@ export const ConnectionsPage: React.FC = () => {
     metaMissingSecrets,
     metaAccountInfo,
     metaAccountError,
+    metaLoginConfigured,
+    metaUserConnected,
+    metaReconnect,
+    metaExpiresAt,
+    metaAdAccounts,
+    metaAdAccountsLoading,
+    metaAdAccountsError,
+    metaReturnStatus,
+    metaReturnMessage,
+    connectFacebook,
+    loadMetaAdAccounts,
+    chooseMetaAdAccount,
+    disconnectFacebook,
+    clearMetaReturnStatus,
     ga4Properties,
     searchConsoleSites,
     loading,
@@ -91,6 +106,7 @@ export const ConnectionsPage: React.FC = () => {
 
   // Read ?connected and ?error query parameters once, display banner, and clean the URL
   useEffect(() => {
+    if (parseMetaReturnParams(searchParams).status !== null) return; // Facebook return is shown by the Facebook banner
     const connectedParam = searchParams.get('connected');
     const errorParam = searchParams.get('error');
 
@@ -115,6 +131,17 @@ export const ConnectionsPage: React.FC = () => {
       setSearchParams(next, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  // Show the Facebook return message (connected / cancelled / failed) and clean the address bar
+  useEffect(() => {
+    if (!metaReturnStatus || !metaReturnMessage) return;
+    setBanner({ type: metaReturnStatus === 'connected' ? 'success' : 'error', message: metaReturnMessage });
+    const next = new URLSearchParams(searchParams);
+    next.delete('connected');
+    next.delete('error');
+    setSearchParams(next, { replace: true });
+    clearMetaReturnStatus();
+  }, [metaReturnStatus, metaReturnMessage, searchParams, setSearchParams, clearMetaReturnStatus]);
 
   // Synchronize dropdown state with saved selection
   useEffect(() => {
@@ -832,111 +859,30 @@ export const ConnectionsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Meta Ads Card (System User configuration or missing secrets notice; no connect button) */}
-        <div className="p-6 rounded-xl border border-line bg-surface flex flex-col justify-between gap-5">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-accent-soft text-accent-text flex items-center justify-center shrink-0">
-                  <Megaphone className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-semibold text-fg">
-                    Meta Ads
-                  </h2>
-                  <div
-                    data-testid="meta-connection-status"
-                    className={`text-xs font-medium mt-0.5 ${
-                      metaConfigured && !metaNotAvailable
-                        ? 'text-success'
-                        : 'text-warning'
-                    }`}
-                  >
-                    {metaNotAvailable
-                      ? 'Connecting your own Facebook account is coming soon'
-                      : metaConfigured
-                        ? 'Connected via system user'
-                        : 'Mock data'}
-                  </div>
-                </div>
-              </div>
-              {metaConfigured && !metaNotAvailable && (
-                <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-1" />
-              )}
-            </div>
-
-            <p className="text-xs text-fg-muted leading-relaxed">
-              Campaign, Ad Set, and Ad delivery metrics including spend, reach, frequency, clicks, CPC, CPM, and lead generation for {TRACKED_SITE.name}.
-            </p>
-
-            {metaConfigured ? (
-              <div
-                data-testid="meta-account-details"
-                className="p-3.5 rounded-lg border border-line bg-fill-1 space-y-2 text-xs"
-              >
-                {metaAccountError ? (
-                  <div className="text-danger font-medium">
-                    {metaAccountError}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-fg-muted">Account Name</span>
-                      <span className="font-semibold text-fg text-right">
-                        {metaAccountInfo?.name ?? 'Loading...'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-fg-muted">Account ID</span>
-                      <span className="font-mono text-fg">
-                        {metaAccountInfo?.accountId ?? connections?.meta.adAccountId ?? '—'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-fg-muted">Currency</span>
-                      <span className="font-mono font-semibold text-fg">
-                        {metaAccountInfo?.currency ?? '—'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-fg-muted">Time Zone</span>
-                      <span className="font-mono text-fg">
-                        {metaAccountInfo?.timezoneName ?? '—'}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div
-                role="region"
-                aria-label="Meta Marketing API Setup Notice"
-                data-testid="meta-unconfigured-notice"
-                className="p-3.5 rounded-lg border border-warning-line bg-warning-soft space-y-2"
-              >
-                <div className="text-xs font-semibold text-warning">
-                  System User Setup Required
-                </div>
-                <p className="text-[11px] text-warning leading-relaxed">
-                  Configure the following environment variables with a read-only Meta System User token (<code className="font-mono">ads_read</code>):
-                </p>
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {(metaMissingSecrets.length > 0
-                    ? metaMissingSecrets
-                    : ['META_ACCESS_TOKEN', 'META_APP_SECRET', 'META_AD_ACCOUNT_ID']
-                  ).map((secretName) => (
-                    <code
-                      key={secretName}
-                      className="px-2 py-0.5 text-[11px] font-mono font-semibold rounded bg-warning-soft text-warning border border-warning-line"
-                    >
-                      {secretName}
-                    </code>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Facebook / Meta Ads card */}
+        <MetaConnectCard
+          siteName={TRACKED_SITE.name}
+          loginConfigured={metaLoginConfigured}
+          userConnected={metaUserConnected}
+          reconnect={metaReconnect}
+          expiresAt={metaExpiresAt}
+          adAccountId={connections?.meta.adAccountId ?? null}
+          systemConfigured={metaConfigured}
+          notAvailable={metaNotAvailable}
+          missingSecrets={metaMissingSecrets}
+          accountInfo={metaAccountInfo}
+          accountError={metaAccountError}
+          adAccounts={metaAdAccounts}
+          adAccountsLoading={metaAdAccountsLoading}
+          adAccountsError={metaAdAccountsError}
+          busy={loading || saving || disconnecting}
+          onConnect={connectFacebook}
+          onLoadAdAccounts={async () => {
+            await loadMetaAdAccounts();
+          }}
+          onChooseAdAccount={chooseMetaAdAccount}
+          onDisconnect={disconnectFacebook}
+        />
       </div>
 
       {/* Server Status Row from /api/health */}
