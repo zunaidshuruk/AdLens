@@ -1,3 +1,4 @@
+import { InstallAppSection } from '../components/InstallAppSection';
 import {
   AlertTriangle,
   Bell,
@@ -1469,6 +1470,8 @@ export const SettingsPage: React.FC = () => {
           </div>
         </section>
       )}
+
+      {showSection('preferences') && <InstallAppSection />}
 
       {/* ------------------------------------------------------------- */}
       {/* 1. PREFERENCES SECTION (Synced to users/{uid} settings)         */}

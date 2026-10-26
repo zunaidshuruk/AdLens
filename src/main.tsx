@@ -14,7 +14,10 @@ import { createRoot } from 'react-dom/client';
 import { CheckCircle2, X } from 'lucide-react';
 import App from './App.tsx';
 import './index.css';
+import { initInstallPrompt } from './pwa/installPrompt.js';
 import { registerServiceWorker, type SwHandle } from './pwa/register.js';
+
+initInstallPrompt();
 
 type UpdateToastKind = 'ready' | 'elsewhere' | null;
 
