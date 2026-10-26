@@ -9,6 +9,7 @@ import { getPlanLimits } from '../config/plans.js';
 import type { AgentSource } from '../lib/agentConfig.js';
 import { createAgentProvider } from '../lib/agentProviders.js';
 import { ToolInputError } from '../lib/agentRunner.js';
+import { ANALYST_FORMAT_INSTRUCTIONS } from '../lib/analystFormat.js';
 import { askAnalyst, MAX_QUESTION_CHARS, type AnalystDeps } from '../lib/analystService.js';
 import { getFirestoreStore, getUtcMonthPeriod, type ProjectDoc } from '../lib/firestore.js';
 import { guardedRequest, type RequestFn } from '../lib/ssrfGuard.js';
@@ -292,6 +293,7 @@ aiRouter.post('/ask', async (req: Request, res: Response) => {
       createAgentProvider(providerCfg, {
         request: testAiRequestOverride ?? guardedRequest,
       }),
+    cloudInstructions: ANALYST_FORMAT_INSTRUCTIONS,
     cloud: {
       apiKey,
       model: cfg.geminiModel || undefined,

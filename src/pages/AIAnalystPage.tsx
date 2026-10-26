@@ -10,6 +10,7 @@ import {
   User,
 } from 'lucide-react';
 import { ApiClientError, apiClient } from '../api/client';
+import { AnalystMessage } from '../components/AnalystMessage';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -460,19 +461,19 @@ export const AIAnalystPage: React.FC = () => {
                     data-testid="analyst-assistant-bubble"
                     className="flex justify-start"
                   >
-                    <div className="max-w-[90%] sm:max-w-[80%] flex items-start gap-2.5">
+                    <div className="w-full max-w-[96%] sm:max-w-[90%] flex items-start gap-2.5">
                       <div className="w-7 h-7 rounded-lg bg-fill-2 border border-line text-accent-text flex items-center justify-center shrink-0 mt-0.5">
                         <Bot className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1 min-w-0 space-y-2">
                         <div
-                          className={`px-4 py-3 rounded-2xl rounded-tl-sm border text-xs sm:text-sm whitespace-pre-wrap break-words ${
+                          className={`px-4 py-3 rounded-2xl rounded-tl-sm border text-xs sm:text-sm break-words ${
                             msg.isError
-                              ? 'bg-warning-soft border-warning-line text-fg'
+                              ? 'bg-warning-soft border-warning-line text-fg whitespace-pre-wrap'
                               : 'bg-fill-1 border-line text-fg'
                           }`}
                         >
-                          {msg.content}
+                          {msg.isError ? msg.content : <AnalystMessage content={msg.content} />}
                         </div>
 
                         {/* Collapsible "Numbers used" panel (closed by default) */}

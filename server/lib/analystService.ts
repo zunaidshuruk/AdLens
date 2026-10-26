@@ -60,6 +60,8 @@ export interface AnalystDeps {
   makeProvider: (cfg: ProviderConfig) => AgentProvider;
   /** Built-in analyst settings from the server environment. */
   cloud: { apiKey?: string; model?: string };
+  /** Formatting guide for the built-in analyst (custom agents use their own system prompt). */
+  cloudInstructions?: string;
   /** Atomically takes one question from the workspace's monthly allowance (false when none is left). */
   consumeQuota: (workspaceId: string) => Promise<{ ok: boolean; used: number; limit: number }>;
   /** Gives it back when the provider failed. */
@@ -159,7 +161,7 @@ export async function askAnalyst(input: AskInput, deps: AnalystDeps): Promise<As
         question,
         history: sanitizeHistory(input.history),
         systemPrompt: buildSystemPrompt({
-          customPrompt: agent?.settings.systemPrompt,
+          customPrompt: agent ? agent.settings.systemPrompt : deps.cloudInstructions,
           project: input.project,
           dates: input.dates,
           connectedSources: input.connectedSources,
