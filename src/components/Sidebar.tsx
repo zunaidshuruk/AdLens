@@ -119,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
       <aside
         aria-label="Primary Navigation"
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface border-r border-line flex flex-col transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:z-auto ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface border-r border-line flex flex-col transition-transform duration-200 ease-in-out md:translate-x-0 md:sticky md:top-0 md:h-screen md:self-start md:shrink-0 md:z-auto ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
