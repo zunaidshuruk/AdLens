@@ -4,7 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { aiRouter } from './routes/ai.js';
 import { authRouter } from './routes/auth.js';
-import { connectionsRouter, googleApiRouter } from './routes/connections.js';
+import {
+  connectionsRouter,
+  googleApiRouter,
+  metaConnectionRouter,
+} from './routes/connections.js';
 import { ga4Router } from './routes/ga4.js';
 import { healthRouter } from './routes/health.js';
 import { metaRouter } from './routes/meta.js';
@@ -51,6 +55,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/session', sessionRouter);
 app.use('/api/me', meRouter);
 app.use('/api/workspaces', workspacesRouter);
+app.use('/api/connections/meta', metaConnectionRouter);
 app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
 app.use('/api/ga4', ga4Router);

@@ -7,6 +7,7 @@ import {
   buildKeyring,
   createTokenVault,
   parsePreviousSecrets,
+  RefreshRejectedError,
   VaultError,
   type RefreshResult,
   type TokenVault,
@@ -24,6 +25,10 @@ export async function refreshGoogle(refreshToken: string): Promise<RefreshResult
     expiresAt: credentials.expiry_date ?? Date.now() + 3_600_000,
     refreshToken: credentials.refresh_token ?? undefined,
   };
+}
+
+export async function refreshMeta(): Promise<RefreshResult> {
+  throw new RefreshRejectedError('Facebook access has expired. Reconnect Facebook.');
 }
 
 let vaultInstance: TokenVault | null = null;
@@ -51,7 +56,7 @@ export function getVault(): TokenVault {
     vaultInstance = createTokenVault({
       store: connectionStore,
       keyring: buildKeyring(cfg.tokenEncryptionKey, parsePreviousSecrets(prevRaw)),
-      refreshers: { google: refreshGoogle },
+      refreshers: { google: refreshGoogle, meta: refreshMeta },
     });
     vaultKeySignature = signature;
   }

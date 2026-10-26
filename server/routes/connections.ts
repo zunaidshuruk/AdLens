@@ -5,7 +5,8 @@ import {
   normalizeMetaAdAccountId,
   requireGoogleConfigured,
 } from '../config.js';
-import { getFirestoreStore } from '../lib/firestore.js';
+import { connectionStore } from '../lib/connectionStore.js';
+import { getFirestoreStore, type ProjectDoc } from '../lib/firestore.js';
 import {
   fetchGA4Properties,
   fetchGA4StreamUris,
@@ -13,17 +14,25 @@ import {
   GoogleApiError,
   type GA4PropertySummaryItem,
 } from '../lib/google.js';
+import { reconnectStatus } from '../lib/metaOAuth.js';
+import {
+  fetchMetaAdAccounts,
+  MetaUserApiError,
+  revokeMetaPermissions,
+} from '../lib/metaUser.js';
 import {
   matchSourcesForDomain,
   normalizeDomain,
   scoreGA4Property,
 } from '../lib/sourceMatcher.js';
+import { connectionIdFor, VaultError } from '../lib/tokenVault.js';
 import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 
 export const connectionsRouter = Router();
 export const googleApiRouter = Router();
+export const metaConnectionRouter = Router();
 
 // Simple in-memory rate limiter: 60 requests per minute per IP on /api/google/*
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -79,6 +88,78 @@ function sendError(res: Response, err: unknown): void {
   });
 }
 
+function sendMetaError(res: Response, err: unknown): void {
+  if (err instanceof VaultError) {
+    if (err.code === 'VAULT_NOT_CONNECTED') {
+      res.status(404).json({
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Facebook account is not connected.',
+        },
+      });
+      return;
+    }
+    if (err.code === 'VAULT_REAUTH_REQUIRED' || err.code === 'VAULT_DECRYPT_FAILED') {
+      res.status(401).json({
+        error: {
+          code: 'META_REAUTH_REQUIRED',
+          message: 'Facebook access has expired. Reconnect Facebook.',
+        },
+      });
+      return;
+    }
+    res.status(err.status).json({
+      error: {
+        code: err.code,
+        message: err.message,
+      },
+    });
+    return;
+  }
+
+  if (err instanceof MetaUserApiError) {
+    res.status(err.status).json({
+      error: {
+        code: err.code,
+        title: err.title,
+        message: err.message,
+        action: err.action,
+      },
+    });
+    return;
+  }
+
+  res.status(500).json({
+    error: {
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'An unexpected server error occurred.',
+    },
+  });
+}
+
+async function resolveActiveProjectForUser(req: Request): Promise<ProjectDoc | undefined> {
+  if (req.project) {
+    return req.project;
+  }
+  const uid = req.user?.uid;
+  if (!uid) return undefined;
+  try {
+    const store = getFirestoreStore();
+    const workspaces = await store.listWorkspacesForUser(uid);
+    for (const ws of workspaces) {
+      const role = ws.members?.[uid];
+      if (!role) continue;
+      const projects = await store.listProjects(ws.id);
+      const nonDemo = projects.find((p) => !p.isDemo);
+      if (nonDemo) return nonDemo;
+      if (projects[0]) return projects[0];
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 // Require authenticated & verified Firebase user and matching Google session uid / lazy migration
 connectionsRouter.use(requireUser);
 connectionsRouter.use(verifyGoogleSessionOwnership);
@@ -93,6 +174,37 @@ connectionsRouter.get('/', async (req: Request, res: Response) => {
     const isConnected = Boolean(cfg.googleConfigured && summary?.connected);
     const needsReconnect = Boolean(summary?.needsReconnect);
     const metaAllowed = isEmailAllowedForMetaSystemUser(req.user?.email);
+
+    const metaSummary = cfg.vaultReady ? await getVault().getSummary(uid, 'meta') : null;
+    const rawMetaRecord = cfg.vaultReady
+      ? await connectionStore.get(connectionIdFor(uid, 'meta'))
+      : null;
+    const metaRecord =
+      rawMetaRecord && rawMetaRecord.userId === uid && rawMetaRecord.provider === 'meta'
+        ? rawMetaRecord
+        : null;
+    const hasUserMeta = Boolean(metaSummary || metaRecord);
+
+    const metaConnectedAt = metaRecord
+      ? new Date(metaRecord.createdAt).toISOString()
+      : metaSummary
+        ? new Date(metaSummary.updatedAt).toISOString()
+        : null;
+    const metaExpiresAt =
+      metaRecord?.accessTokenExpiresAt !== null && metaRecord?.accessTokenExpiresAt !== undefined
+        ? new Date(metaRecord.accessTokenExpiresAt).toISOString()
+        : null;
+    const metaReconnect =
+      hasUserMeta && (metaSummary?.needsReconnect || (metaRecord && metaRecord.status !== 'active'))
+        ? 'expired'
+        : reconnectStatus(metaExpiresAt).state;
+    const userMetaConnected = Boolean(
+      hasUserMeta &&
+        (metaSummary?.connected ?? metaRecord?.status === 'active') &&
+        metaReconnect !== 'expired'
+    );
+    const systemMetaConnected = Boolean(cfg.metaConfigured && metaAllowed);
+    const metaConnected = hasUserMeta ? userMetaConnected : systemMetaConnected;
 
     const projectGa4 =
       req.project?.ga4PropertyId
@@ -110,10 +222,17 @@ connectionsRouter.get('/', async (req: Request, res: Response) => {
 
     const effectiveGa4 = isConnected ? projectGa4 : null;
     const effectiveSc = isConnected ? projectSc : null;
+
+    const activeProject = req.project ?? (await resolveActiveProjectForUser(req));
+    const projectMetaAdAccountId = activeProject?.metaAdAccountId
+      ? normalizeMetaAdAccountId(activeProject.metaAdAccountId)
+      : '';
     const effectiveMetaAccountId =
-      cfg.metaConfigured && metaAllowed
-        ? normalizeMetaAdAccountId(req.project?.metaAdAccountId || cfg.metaAdAccountId)
-        : null;
+      projectMetaAdAccountId ||
+      (cfg.metaConfigured && metaAllowed
+        ? normalizeMetaAdAccountId(cfg.metaAdAccountId)
+        : '') ||
+      null;
 
     res.json({
       google: {
@@ -129,7 +248,11 @@ connectionsRouter.get('/', async (req: Request, res: Response) => {
       meta: {
         configured: cfg.metaConfigured,
         missing: cfg.metaMissing,
-        connected: Boolean(cfg.metaConfigured && metaAllowed),
+        loginConfigured: cfg.metaLoginConfigured,
+        connected: metaConnected,
+        connectedAt: metaConnectedAt,
+        expiresAt: metaExpiresAt,
+        reconnect: metaReconnect,
         adAccountId: effectiveMetaAccountId,
         notAvailable: !metaAllowed,
       },
@@ -374,6 +497,129 @@ googleApiRouter.post('/selection', async (req: Request, res: Response) => {
     });
   } catch (err) {
     sendError(res, err);
+  }
+});
+
+// Require authenticated user, session ownership, and project loading for /api/connections/meta/*
+metaConnectionRouter.use(requireUser);
+metaConnectionRouter.use(verifyGoogleSessionOwnership);
+metaConnectionRouter.use(loadProject);
+
+// GET /api/connections/meta/ad-accounts
+metaConnectionRouter.get('/ad-accounts', async (req: Request, res: Response) => {
+  try {
+    const cfg = getServerConfig();
+    const accessToken = await getVault().getAccessToken(req.user!.uid, 'meta');
+    const accounts = await fetchMetaAdAccounts(accessToken, cfg.metaAppSecret);
+    res.json({ accounts });
+  } catch (err) {
+    sendMetaError(res, err);
+  }
+});
+
+// POST /api/connections/meta/selection
+metaConnectionRouter.post('/selection', async (req: Request, res: Response) => {
+  try {
+    const cfg = getServerConfig();
+    const uid = req.user!.uid;
+    const accessToken = await getVault().getAccessToken(uid, 'meta');
+
+    const body = (req.body ?? {}) as { adAccountId?: unknown };
+    const rawAdAccountId = typeof body.adAccountId === 'string' ? body.adAccountId.trim() : '';
+    const normalizedTarget = normalizeMetaAdAccountId(rawAdAccountId);
+
+    if (!normalizedTarget) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_AD_ACCOUNT',
+          message: 'A valid Meta ad account ID is required.',
+        },
+      });
+      return;
+    }
+
+    const accounts = await fetchMetaAdAccounts(accessToken, cfg.metaAppSecret);
+    const matched = accounts.find((a) => a.accountId === normalizedTarget);
+
+    if (!matched) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_AD_ACCOUNT',
+          message: 'The selected Meta ad account was not found on this Facebook account.',
+        },
+      });
+      return;
+    }
+
+    const activeProject = req.project ?? (await resolveActiveProjectForUser(req));
+    if (!activeProject) {
+      res.status(404).json({
+        error: {
+          code: 'PROJECT_NOT_FOUND',
+          message: 'No active project found.',
+        },
+      });
+      return;
+    }
+
+    const store = getFirestoreStore();
+    const workspace = await store.getWorkspace(activeProject.workspaceId);
+    const role = workspace?.members?.[uid];
+    if (
+      !workspace ||
+      !Object.prototype.hasOwnProperty.call(workspace.members ?? {}, uid) ||
+      (role !== 'owner' && role !== 'admin' && role !== 'member')
+    ) {
+      res.status(403).json({
+        error: {
+          code: 'NOT_ALLOWED',
+          message: 'You do not have permission to update this project.',
+        },
+      });
+      return;
+    }
+
+    await store.updateProject(activeProject.workspaceId, activeProject.id, {
+      metaAdAccountId: matched.accountId,
+      metaAdAccountName: matched.name,
+    });
+
+    res.json({
+      ok: true,
+      adAccountId: matched.accountId,
+      adAccountName: matched.name,
+    });
+  } catch (err) {
+    sendMetaError(res, err);
+  }
+});
+
+// DELETE /api/connections/meta
+metaConnectionRouter.delete('/', async (req: Request, res: Response) => {
+  try {
+    const cfg = getServerConfig();
+    const uid = req.user!.uid;
+    const vault = getVault();
+
+    let tokenToRevoke: string | undefined;
+    try {
+      tokenToRevoke = await vault.getAccessToken(uid, 'meta');
+    } catch {
+      try {
+        tokenToRevoke = await vault.getRefreshToken(uid, 'meta');
+      } catch {
+        tokenToRevoke = undefined;
+      }
+    }
+
+    if (tokenToRevoke) {
+      await revokeMetaPermissions(tokenToRevoke, cfg.metaAppSecret);
+    }
+
+    await vault.deleteConnection(uid, 'meta');
+    res.status(204).end();
+  } catch (err) {
+    sendMetaError(res, err);
   }
 });
 
