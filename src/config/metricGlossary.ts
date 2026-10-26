@@ -87,41 +87,48 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     definition: 'The proportion of all sessions that came from AI assistants.',
     formula: 'AI assistant sessions ÷ all sessions',
     source: 'adlens', better: 'higher',
-    aliases: ['ai share', 'share of sessions'],
+    aliases: ['ai share', 'share of sessions', 'ai share of all sessions'],
+  },
+  aiKeyEvents: {
+    label: 'Key events from AI',
+    definition: 'Key events (the actions you track as goals, such as a sign-up or a form submission) completed by visitors who arrived from AI assistants.',
+    note: 'Only visits recognised as AI traffic are counted, so the real number may be higher.',
+    source: 'adlens', better: 'higher',
+    aliases: ['key events from ai', 'ai key events', 'ai conversions'],
   },
   searchClicks: {
     label: 'Clicks (Search)',
     definition: 'Times someone clicked through to your site from Google Search results.',
     note: 'Not the same as Meta “link clicks”, which count clicks on your ads.',
     source: 'search_console', better: 'higher',
-    aliases: ['organic search clicks', 'search clicks', 'gsc clicks'],
+    aliases: ['organic search clicks', 'search clicks', 'gsc clicks', 'organic clicks'],
   },
   searchImpressions: {
     label: 'Impressions (Search)',
     definition: 'Times a link to your site appeared in Google Search results, whether or not it was scrolled into view or clicked.',
     source: 'search_console', better: 'higher',
-    aliases: ['search impressions', 'gsc impressions'],
+    aliases: ['search impressions', 'gsc impressions', 'total impressions'],
   },
   searchCtr: {
     label: 'Click-through rate (Search)',
     definition: 'How often people who saw your site in search results clicked it.',
     formula: 'clicks ÷ impressions',
     source: 'search_console', better: 'higher',
-    aliases: ['search ctr', 'organic ctr', 'avg ctr'],
+    aliases: ['search ctr', 'organic ctr', 'avg ctr', 'average ctr'],
   },
   position: {
     label: 'Average position',
     definition: 'Where your site typically ranks in search results. 1 is the top result.',
     note: 'An average across everything people searched, so a few very high or very low rankings can move it. Lower is better.',
     source: 'search_console', better: 'lower',
-    aliases: ['avg position', 'average position', 'avg. position', 'ranking'],
+    aliases: ['avg position', 'average position', 'avg. position', 'ranking', 'avg. search position', 'average search position'],
   },
   spend: {
     label: 'Spend',
     definition: 'Money spent on ads in the period, in the ad account’s currency.',
     source: 'meta', better: 'neutral',
     note: 'Spending more is not good or bad by itself; judge it against results.',
-    aliases: ['ad spend', 'amount spent', 'cost'],
+    aliases: ['ad spend', 'amount spent', 'cost', 'total spend', 'meta ad spend'],
   },
   impressions: {
     label: 'Impressions (Ads)',
@@ -134,7 +141,7 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     definition: 'Distinct people who saw your ads at least once.',
     note: 'Reach cannot be added up across days or campaigns, because the same person may be counted in each.',
     source: 'meta', better: 'higher',
-    aliases: ['people reached'],
+    aliases: ['people reached', 'unique reach'],
   },
   frequency: {
     label: 'Frequency',
@@ -163,20 +170,20 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     definition: 'What each click on an ad link cost you, on average.',
     formula: 'spend ÷ link clicks',
     source: 'meta', better: 'lower',
-    aliases: ['cost per click', 'cpc (link)'],
+    aliases: ['cost per click', 'cpc (link)', 'cost per click (cpc)', 'cpc'],
   },
   cpm: {
     label: 'Cost per 1,000 impressions (CPM)',
     definition: 'What it cost to show your ads 1,000 times.',
     formula: 'spend ÷ impressions × 1,000',
     source: 'meta', better: 'lower',
-    aliases: ['cost per mille', 'cost per 1000 impressions'],
+    aliases: ['cost per mille', 'cost per 1000 impressions', 'cost per 1k impr. (cpm)', 'cpm'],
   },
   leads: {
     label: 'Leads',
     definition: 'People who submitted a lead form on Facebook or Instagram, or a lead event tracked on your website through the Meta Pixel.',
     source: 'meta', better: 'higher',
-    aliases: ['ad leads', 'results'],
+    aliases: ['ad leads', 'results', 'total leads', 'meta qualified leads'],
   },
   cpl: {
     label: 'Cost per lead (CPL)',
@@ -240,12 +247,12 @@ export function findMetricKey(label: string, hint?: MetricSource): string | null
   if (hint === 'search_console') {
     if (n === 'clicks') return 'searchClicks';
     if (n === 'impressions') return 'searchImpressions';
-    if (n === 'ctr') return 'searchCtr';
+    if (n === 'ctr' || n === 'click through rate ctr' || n === 'click through rate') return 'searchCtr';
   }
   if (hint === 'meta') {
     if (n === 'clicks') return 'linkClicks';
     if (n === 'impressions') return 'impressions';
-    if (n === 'ctr') return 'adCtr';
+    if (n === 'ctr' || n === 'click through rate ctr' || n === 'click through rate') return 'adCtr';
   }
   return hit ?? null;
 }

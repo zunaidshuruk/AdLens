@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Minus } from 'lucide-react';
 import type { DataSourceId } from '../types';
 import { evaluateChangeSentiment, formatSignedPercent } from '../utils/formatters';
+import { resolveMetricTip } from '../utils/metricTip.js';
+import { MetricInfoTip } from './MetricInfoTip';
 import { SourceBadge } from './SourceBadge';
 
 interface KpiCardProps {
@@ -16,6 +18,10 @@ interface KpiCardProps {
   subtitle?: string;
   loading?: boolean;
   to?: string;
+  /** Glossary key to explain, when the label alone is not enough. */
+  metricKey?: string;
+  /** Set to hide the "i" explanation button. */
+  hideInfo?: boolean;
 }
 
 export const KpiCard: React.FC<KpiCardProps> = ({
@@ -29,6 +35,8 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   subtitle,
   loading = false,
   to,
+  metricKey,
+  hideInfo = false,
 }) => {
   if (loading) {
     return (
@@ -43,6 +51,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
     );
   }
 
+  const tip = hideInfo ? null : resolveMetricTip(label, source, metricKey);
   const sentiment = evaluateChangeSentiment(changePercent, invertPolarity);
   const isRising = changePercent > 0.05;
   const isFalling = changePercent < -0.05;
@@ -56,7 +65,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
 
   const cardContent = (
     <>
-      <div className="flex items-center justify-between gap-2">
+      <div className={`flex items-center justify-between gap-2 ${tip ? 'pr-6' : ''}`}>
         <span className="text-xs font-medium text-fg-muted truncate">
           {label}
         </span>
@@ -110,20 +119,27 @@ export const KpiCard: React.FC<KpiCardProps> = ({
     </>
   );
 
+  // The "i" button sits outside the link (a button inside a link is not valid and would also navigate).
+  const infoButton = tip ? <MetricInfoTip tip={tip} className="absolute top-3.5 right-3.5 z-10" /> : null;
+
   if (to) {
     return (
-      <Link
-        to={to}
-        className="p-5 rounded-xl border border-line bg-surface hover:border-accent flex flex-col justify-between transition-colors group"
-      >
-        {cardContent}
-      </Link>
+      <div className="relative flex flex-col">
+        <Link
+          to={to}
+          className="p-5 rounded-xl border border-line bg-surface hover:border-accent flex flex-col justify-between flex-1 transition-colors group"
+        >
+          {cardContent}
+        </Link>
+        {infoButton}
+      </div>
     );
   }
 
   return (
-    <div className="p-5 rounded-xl border border-line bg-surface flex flex-col justify-between transition-colors">
+    <div className="relative p-5 rounded-xl border border-line bg-surface flex flex-col justify-between transition-colors">
       {cardContent}
+      {infoButton}
     </div>
   );
 };
