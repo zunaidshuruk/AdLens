@@ -9,6 +9,10 @@ class ReportRegistry {
     return definition;
   }
 
+  unregister(id: string): boolean {
+    return this.definitions.delete(id);
+  }
+
   get<I = unknown, O = unknown>(id: string): ReportDefinition<I, O> | undefined {
     return this.definitions.get(id) as ReportDefinition<I, O> | undefined;
   }

@@ -50,6 +50,9 @@ export interface ServerConfig {
   firebaseServiceAccountJson: string;
   firebaseConfigured: boolean;
   firebaseMissing: RequiredFirebaseEnvVar[];
+  geminiApiKey: string;
+  geminiModel: string;
+  aiConfigured: boolean;
   authProviders: string[];
   isProduction: boolean;
 }
@@ -130,6 +133,10 @@ export function getServerConfig(): ServerConfig {
     }
   }
 
+  const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
+  const geminiModel = (process.env.GEMINI_MODEL || '').trim();
+  const aiConfigured = Boolean(geminiApiKey && geminiModel);
+
   const rawBaseUrl = (process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
   const metaSystemUserAllowedEmails = parseAllowedEmails(
     process.env.META_SYSTEM_USER_ALLOWED_EMAILS
@@ -163,6 +170,9 @@ export function getServerConfig(): ServerConfig {
     firebaseServiceAccountJson,
     firebaseConfigured: firebaseMissing.length === 0,
     firebaseMissing,
+    geminiApiKey,
+    geminiModel,
+    aiConfigured,
     authProviders,
     isProduction: process.env.NODE_ENV === 'production',
   };

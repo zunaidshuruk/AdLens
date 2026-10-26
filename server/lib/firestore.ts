@@ -1,5 +1,12 @@
 import { FieldValue, getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
+import { getPlanLimits } from '../config/plans.js';
 import { getFirebaseAdminApp } from './firebaseAdmin.js';
+
+export function getUtcMonthPeriod(date: Date = new Date()): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member';
 
@@ -214,12 +221,27 @@ export interface FirestoreStoreAdapter {
     }>
   ): Promise<ProjectDoc | null>;
   deleteProject(wsId: string, projectId: string): Promise<boolean>;
+  consumeAiQuota(
+    wsId: string,
+    period?: string
+  ): Promise<{ ok: boolean; used: number; limit: number }>;
+  refundAiQuota(wsId: string, period?: string): Promise<void>;
+  getUsage?(wsId: string, period?: string): Promise<UsageDoc | null>;
+  setUsage?(wsId: string, period: string, patch: Partial<UsageDoc>): Promise<UsageDoc>;
 }
 
 let cachedFirestore: Firestore | null = null;
+let testFirestoreOverride: Firestore | null = null;
 let testStoreOverride: FirestoreStoreAdapter | null = null;
 
+export function setTestAdminFirestore(db: Firestore | null): void {
+  testFirestoreOverride = db;
+}
+
 export function getAdminFirestore(): Firestore {
+  if (testFirestoreOverride) {
+    return testFirestoreOverride;
+  }
   const app = getFirebaseAdminApp();
   if (!cachedFirestore) {
     cachedFirestore = getFirestore(app);
@@ -769,6 +791,104 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     await ref.delete();
     return true;
   },
+
+  async consumeAiQuota(wsId: string, period: string = getUtcMonthPeriod()) {
+    const db = getAdminFirestore();
+    const wsRef = db.collection('workspaces').doc(wsId);
+    const usageRef = wsRef.collection('usage').doc(period);
+
+    return db.runTransaction(async (tx) => {
+      const [wsSnap, usageSnap] = await Promise.all([tx.get(wsRef), tx.get(usageRef)]);
+      const rawPlan = wsSnap.exists ? wsSnap.data()?.plan : undefined;
+      const plan = typeof rawPlan === 'string' ? rawPlan : 'beta';
+      const limit = getPlanLimits(plan).aiQuestionsPerMonth;
+
+      const rawUsed = usageSnap.exists ? usageSnap.data()?.aiQuestions : 0;
+      const currentUsed =
+        typeof rawUsed === 'number' && Number.isFinite(rawUsed) && rawUsed >= 0
+          ? Math.floor(rawUsed)
+          : 0;
+
+      if (currentUsed >= limit) {
+        return { ok: false, used: currentUsed, limit };
+      }
+
+      const nextUsed = currentUsed + 1;
+      tx.set(
+        usageRef,
+        {
+          period,
+          aiQuestions: nextUsed,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return { ok: true, used: nextUsed, limit };
+    });
+  },
+
+  async refundAiQuota(wsId: string, period: string = getUtcMonthPeriod()) {
+    const db = getAdminFirestore();
+    const usageRef = db.collection('workspaces').doc(wsId).collection('usage').doc(period);
+
+    await db.runTransaction(async (tx) => {
+      const usageSnap = await tx.get(usageRef);
+      if (!usageSnap.exists) return;
+      const rawUsed = usageSnap.data()?.aiQuestions;
+      const currentUsed =
+        typeof rawUsed === 'number' && Number.isFinite(rawUsed) && rawUsed > 0
+          ? Math.floor(rawUsed)
+          : 0;
+      const nextUsed = Math.max(0, currentUsed - 1);
+      tx.set(
+        usageRef,
+        {
+          period,
+          aiQuestions: nextUsed,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+  },
+
+  async getUsage(wsId: string, period: string = getUtcMonthPeriod()): Promise<UsageDoc | null> {
+    const db = getAdminFirestore();
+    const snap = await db
+      .collection('workspaces')
+      .doc(wsId)
+      .collection('usage')
+      .doc(period)
+      .get();
+    if (!snap.exists) return null;
+    const d = snap.data() ?? {};
+    return {
+      period: typeof d.period === 'string' ? d.period : period,
+      aiQuestions: typeof d.aiQuestions === 'number' ? d.aiQuestions : 0,
+      apiCalls: typeof d.apiCalls === 'number' ? d.apiCalls : 0,
+    };
+  },
+
+  async setUsage(wsId: string, period: string, patch: Partial<UsageDoc>): Promise<UsageDoc> {
+    const db = getAdminFirestore();
+    const usageRef = db.collection('workspaces').doc(wsId).collection('usage').doc(period);
+    await usageRef.set(
+      {
+        period,
+        ...(patch.aiQuestions !== undefined ? { aiQuestions: patch.aiQuestions } : {}),
+        ...(patch.apiCalls !== undefined ? { apiCalls: patch.apiCalls } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    const updated = await usageRef.get();
+    const d = updated.data() ?? {};
+    return {
+      period,
+      aiQuestions: typeof d.aiQuestions === 'number' ? d.aiQuestions : 0,
+      apiCalls: typeof d.apiCalls === 'number' ? d.apiCalls : 0,
+    };
+  },
 };
 
 export function getFirestoreStore(): FirestoreStoreAdapter {
@@ -785,7 +905,18 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
   const workspaces = new Map<string, WorkspaceDoc>();
   const workspaceLogos = new Map<string, ImageAssetDoc>();
   const projectsByWs = new Map<string, Map<string, ProjectDoc>>();
+  const usageByWs = new Map<string, Map<string, UsageDoc>>();
+  let txLock: Promise<unknown> = Promise.resolve();
   let seq = 1;
+
+  function runAtomic<T>(fn: () => Promise<T> | T): Promise<T> {
+    const next = txLock.then(fn, fn);
+    txLock = next.then(
+      () => undefined,
+      () => undefined
+    );
+    return next;
+  }
 
   return {
     async bootstrapUserAndWorkspace({ uid, email, displayName, photoURL }) {
@@ -1068,6 +1199,70 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       if (!map || !map.has(projectId)) return false;
       map.delete(projectId);
       return true;
+    },
+
+    async consumeAiQuota(wsId, period = getUtcMonthPeriod()) {
+      return runAtomic(async () => {
+        const ws = workspaces.get(wsId);
+        const limit = getPlanLimits(ws?.plan).aiQuestionsPerMonth;
+        let map = usageByWs.get(wsId);
+        if (!map) {
+          map = new Map();
+          usageByWs.set(wsId, map);
+        }
+        const existing = map.get(period);
+        const currentUsed = Math.max(0, Math.floor(existing?.aiQuestions ?? 0));
+        if (currentUsed >= limit) {
+          return { ok: false, used: currentUsed, limit };
+        }
+        const nextUsed = currentUsed + 1;
+        map.set(period, {
+          period,
+          aiQuestions: nextUsed,
+          apiCalls: existing?.apiCalls ?? 0,
+        });
+        return { ok: true, used: nextUsed, limit };
+      });
+    },
+
+    async refundAiQuota(wsId, period = getUtcMonthPeriod()) {
+      await runAtomic(async () => {
+        const map = usageByWs.get(wsId);
+        const existing = map?.get(period);
+        if (!map || !existing) return;
+        const nextUsed = Math.max(0, Math.floor(existing.aiQuestions) - 1);
+        map.set(period, {
+          ...existing,
+          aiQuestions: nextUsed,
+        });
+      });
+    },
+
+    async getUsage(wsId, period = getUtcMonthPeriod()) {
+      const u = usageByWs.get(wsId)?.get(period);
+      return u ? structuredClone(u) : null;
+    },
+
+    async setUsage(wsId, period, patch) {
+      return runAtomic(async () => {
+        let map = usageByWs.get(wsId);
+        if (!map) {
+          map = new Map();
+          usageByWs.set(wsId, map);
+        }
+        const existing = map.get(period) ?? {
+          period,
+          aiQuestions: 0,
+          apiCalls: 0,
+        };
+        const updated: UsageDoc = {
+          period,
+          aiQuestions: patch.aiQuestions !== undefined ? patch.aiQuestions : existing.aiQuestions,
+          apiCalls: patch.apiCalls !== undefined ? patch.apiCalls : existing.apiCalls,
+        };
+        map.set(period, updated);
+        return structuredClone(updated);
+      });
     },
   };
 }

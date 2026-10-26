@@ -1,10 +1,12 @@
 export interface PlanLimits {
   maxProjects: number;
+  aiQuestionsPerMonth: number;
 }
 
 export const PLANS: Record<string, PlanLimits> = {
   beta: {
     maxProjects: 3,
+    aiQuestionsPerMonth: 100,
   },
 };
 

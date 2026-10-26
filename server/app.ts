@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { aiRouter } from './routes/ai.js';
 import { authRouter } from './routes/auth.js';
 import { connectionsRouter, googleApiRouter } from './routes/connections.js';
 import { ga4Router } from './routes/ga4.js';
@@ -56,6 +57,7 @@ app.use('/api/ga4', ga4Router);
 app.use('/api/search-console', searchConsoleRouter);
 app.use('/api/meta', metaRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/ai', aiRouter);
 
 const NO_CACHE_FILES = new Set([
   'sw.js',

@@ -1932,11 +1932,11 @@ test('initFirebase records lastInitError and resets initPromise so subsequent ca
 
 test('Sprint 7B: plans config returns beta limits and falls back to beta for unknown plans', async () => {
   const { PLANS, getPlanLimits } = await import('../../server/config/plans.js');
-  assert.deepEqual(PLANS.beta, { maxProjects: 3 });
-  assert.deepEqual(getPlanLimits('beta'), { maxProjects: 3 });
-  assert.deepEqual(getPlanLimits('unknown_plan'), { maxProjects: 3 });
-  assert.deepEqual(getPlanLimits(undefined), { maxProjects: 3 });
-  assert.deepEqual(getPlanLimits(null), { maxProjects: 3 });
+  assert.deepEqual(PLANS.beta, { maxProjects: 3, aiQuestionsPerMonth: 100 });
+  assert.deepEqual(getPlanLimits('beta'), { maxProjects: 3, aiQuestionsPerMonth: 100 });
+  assert.deepEqual(getPlanLimits('unknown_plan'), { maxProjects: 3, aiQuestionsPerMonth: 100 });
+  assert.deepEqual(getPlanLimits(undefined), { maxProjects: 3, aiQuestionsPerMonth: 100 });
+  assert.deepEqual(getPlanLimits(null), { maxProjects: 3, aiQuestionsPerMonth: 100 });
 });
 
 test('Sprint 7B: /api/me/bootstrap, /api/me, projects CRUD, plan limits, and X-AdLens-Project scoping', async () => {
@@ -2012,7 +2012,7 @@ test('Sprint 7B: /api/me/bootstrap, /api/me, projects CRUD, plan limits, and X-A
     assert.equal(boot1Json.workspaces[0].name, 'My workspace');
     assert.equal(boot1Json.workspaces[0].role, 'owner');
     assert.equal(boot1Json.workspaces[0].plan, 'beta');
-    assert.deepEqual(boot1Json.workspaces[0].limits, { maxProjects: 3 });
+    assert.deepEqual(boot1Json.workspaces[0].limits, { maxProjects: 3, aiQuestionsPerMonth: 100 });
 
     const wsId = boot1Json.workspaces[0].id;
 
@@ -2641,5 +2641,439 @@ test('Sprint 7C-1 & 7C-2: token vault wiring, error mapping, lazy cookie migrati
     server.close();
   }
 });
+
+test('Sprint 15a-1: /api/health aiConfigured, POST /api/ai/ask validation, ToolInputError from zod, unconnected sources excluded, and atomic parallel quota at limit-1', async () => {
+  const { z } = await import('zod');
+  const { app } = await import('../../server/app.js');
+  const { PLANS } = await import('../../server/config/plans.js');
+  const { ToolInputError } = await import('../../server/lib/agentRunner.js');
+  const { setTestTokenVerifier } = await import('../../server/lib/firebaseAdmin.js');
+  const {
+    createInMemoryFirestoreStore,
+    getFirestoreStore,
+    getUtcMonthPeriod,
+    setTestAdminFirestore,
+    setTestFirestoreStore,
+  } = await import('../../server/lib/firestore.js');
+  const { createInMemoryVaultStore, setTestConnectionStore } = await import(
+    '../../server/lib/connectionStore.js'
+  );
+  const { getVault, resetVaultSingleton } = await import('../../server/lib/vault.js');
+  const { reportRegistry } = await import('../../server/reports/registry.js');
+  const {
+    clearAiRateLimit,
+    executeRegisteredReportTool,
+    setTestAiRequest,
+  } = await import('../../server/routes/ai.js');
+
+  assert.equal(PLANS.beta.aiQuestionsPerMonth, 100);
+
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-15a1-32ch!';
+  process.env.APP_BASE_URL = 'http://localhost:3000';
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_MODEL;
+  delete process.env.META_ACCESS_TOKEN;
+  delete process.env.META_APP_SECRET;
+  delete process.env.META_AD_ACCOUNT_ID;
+
+  const store = createInMemoryFirestoreStore();
+  setTestFirestoreStore(store);
+  const connStore = createInMemoryVaultStore();
+  setTestConnectionStore(connStore);
+  resetVaultSingleton();
+  clearAiRateLimit();
+
+  const { workspace } = await store.bootstrapUserAndWorkspace({
+    uid: 'uid_ai_user',
+    email: 'analyst@acme.com',
+    displayName: 'AI Analyst User',
+  });
+  const wsId = workspace.id;
+
+  // Connect Google and select ONLY GA4 on the project (Search Console and Meta not connected)
+  const project = await store.createProject(wsId, {
+    name: 'Acme Store',
+    domain: 'acme.com',
+    ga4PropertyId: '44981234',
+    ga4PropertyName: 'Acme GA4',
+    searchConsoleSite: null,
+    metaAdAccountId: null,
+    timezone: 'UTC',
+    currency: 'USD',
+    createdBy: 'uid_ai_user',
+  });
+
+  await getVault().saveConnection({
+    uid: 'uid_ai_user',
+    provider: 'google',
+    accountLabel: 'analyst@acme.com',
+    scopes: ['openid', 'email'],
+    refreshToken: 'rt-ai-1',
+    accessToken: 'at-ai-1',
+    accessTokenExpiresAt: Date.now() + 3_600_000,
+  });
+
+  setTestTokenVerifier(async () => ({
+    uid: 'uid_ai_user',
+    email: 'analyst@acme.com',
+    email_verified: true,
+    firebase: { identities: { 'google.com': ['g-ai'] }, sign_in_provider: 'google.com' },
+  }) as never);
+
+  // Register mocked reports across ga4, search_console, and meta in reportRegistry
+  reportRegistry.register({
+    id: 'test.ga4Strict',
+    title: 'Test GA4 Strict Report',
+    description: 'Strict schema test report for GA4.',
+    source: 'ga4',
+    input: z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+      metric: z.enum(['sessions', 'users'], {
+        message: 'Metric must be either sessions or users.',
+      }),
+    }),
+    async run(_ctx, input) {
+      return { metric: input.metric, value: 42 };
+    },
+  });
+
+  reportRegistry.register({
+    id: 'test.scMock',
+    title: 'Test Search Console Report',
+    description: 'Search Console mock report.',
+    source: 'search_console',
+    input: z.object({ startDate: z.string(), endDate: z.string() }),
+    async run() {
+      return { clicks: 10 };
+    },
+  });
+
+  reportRegistry.register({
+    id: 'test.metaMock',
+    title: 'Test Meta Report',
+    description: 'Meta mock report.',
+    source: 'meta',
+    input: z.object({ startDate: z.string(), endDate: z.string() }),
+    async run() {
+      return { spend: 100 };
+    },
+  });
+
+  const server = app.listen(0);
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const headers = {
+    Authorization: 'Bearer token-ai-user',
+    'Content-Type': 'application/json',
+    'X-AdLens-Project': `${wsId}/${project.id}`,
+  };
+
+  try {
+    // 1. /api/health reports aiConfigured false when either GEMINI_API_KEY or GEMINI_MODEL is missing (no default model in code)
+    const healthUnconfig = (await (await fetch(`${baseUrl}/api/health`)).json()) as {
+      aiConfigured: boolean;
+    };
+    assert.equal(healthUnconfig.aiConfigured, false);
+
+    process.env.GEMINI_API_KEY = 'AIzaSecretTestKey999';
+    const healthNoModel = (await (await fetch(`${baseUrl}/api/health`)).json()) as {
+      aiConfigured: boolean;
+    };
+    assert.equal(healthNoModel.aiConfigured, false);
+
+    process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+    const healthConfigRaw = await (await fetch(`${baseUrl}/api/health`)).text();
+    const healthConfig = JSON.parse(healthConfigRaw) as { aiConfigured: boolean };
+    assert.equal(healthConfig.aiConfigured, true);
+    assert.ok(!healthConfigRaw.includes('AIzaSecretTestKey999'));
+    assert.ok(!healthConfigRaw.includes('gemini-2.5-flash'));
+
+    // 2. Body validation & agentId rejection (400 AGENTS_NOT_ENABLED)
+    const agentRes = await fetch(`${baseUrl}/api/ai/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: 'How is traffic?',
+        startDate: '2026-10-01',
+        endDate: '2026-10-07',
+        agentId: 'custom_agent_1',
+      }),
+    });
+    assert.equal(agentRes.status, 400);
+    const agentBody = (await agentRes.json()) as { error: { code: string } };
+    assert.equal(agentBody.error.code, 'AGENTS_NOT_ENABLED');
+
+    const badDateRes = await fetch(`${baseUrl}/api/ai/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: 'How is traffic?',
+        startDate: '2026-10-10',
+        endDate: '2026-10-01',
+      }),
+    });
+    assert.equal(badDateRes.status, 400);
+    const badDateBody = (await badDateRes.json()) as { error: { code: string } };
+    assert.equal(badDateBody.error.code, 'INVALID_DATE_RANGE');
+
+    const badHistRes = await fetch(`${baseUrl}/api/ai/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: 'How is traffic?',
+        history: Array.from({ length: 21 }, (_, i) => ({ role: 'user', content: `msg ${i}` })),
+        startDate: '2026-10-01',
+        endDate: '2026-10-07',
+      }),
+    });
+    assert.equal(badHistRes.status, 400);
+
+    // 3. Zod validation errors in executeTool become ToolInputError with the first issue's message
+    await assert.rejects(
+      () =>
+        executeRegisteredReportTool(
+          'test.ga4Strict',
+          { startDate: '2026-10-01', endDate: '2026-10-07', metric: 'invalid_metric' },
+          { getAccessToken: async () => 'at-ai-1', project }
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof ToolInputError);
+        assert.equal(err.message, 'Metric must be either sessions or users.');
+        return true;
+      }
+    );
+
+    // 4. End-to-end ask: unconnected sources (search_console, meta) are never offered; zod errors in tool call become ToolInputError returned to the model
+    const offeredToolLists: string[][] = [];
+    const sentPayloads: Record<string, unknown>[] = [];
+    let callTurn = 0;
+    setTestAiRequest(async (_url, opts) => {
+      const payload = JSON.parse(opts.body ?? '{}') as {
+        tools?: { functionDeclarations?: { name: string }[] }[];
+        contents?: unknown[];
+      };
+      sentPayloads.push(payload);
+      const decls = payload.tools?.[0]?.functionDeclarations ?? [];
+      offeredToolLists.push(decls.map((d) => d.name));
+
+      callTurn += 1;
+      if (callTurn === 1) {
+        return {
+          status: 200,
+          headers: {},
+          text: JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      functionCall: {
+                        name: 'test.ga4Strict',
+                        args: { metric: 'wrong_metric' },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return {
+        status: 200,
+        headers: {},
+        text: JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: 'Traffic looks steady at 42 sessions.' }],
+              },
+            },
+          ],
+          usageMetadata: { promptTokenCount: 25, candidatesTokenCount: 8 },
+        }),
+      };
+    });
+
+    const askRes1 = await fetch(`${baseUrl}/api/ai/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        question: 'Check strict metric',
+        history: [{ role: 'user', content: 'Previous question' }],
+        startDate: '2026-10-01',
+        endDate: '2026-10-07',
+      }),
+    });
+    assert.equal(askRes1.status, 200);
+    const askJson1 = (await askRes1.json()) as {
+      ok: boolean;
+      answer: string;
+      toolsUsed: { id: string; args: Record<string, unknown> }[];
+      quota: { used: number; limit: number };
+      messages?: unknown;
+    };
+    assert.equal(askJson1.ok, true);
+    assert.equal(askJson1.answer, 'Traffic looks steady at 42 sessions.');
+    assert.deepEqual(askJson1.toolsUsed, []);
+    assert.ok(
+      JSON.stringify(sentPayloads[1]).includes('Error: Metric must be either sessions or users.'),
+      'Expected ToolInputError with first zod issue message to be sent back to model'
+    );
+    assert.equal(askJson1.messages, undefined, 'Never return history/messages in AskResult JSON');
+    assert.ok(!JSON.stringify(askJson1).includes('AIzaSecretTestKey999'));
+
+    // Verify unconnected sources (test.scMock, test.metaMock) were never offered to the provider
+    assert.ok(offeredToolLists.length > 0);
+    assert.ok(offeredToolLists[0].includes('test.ga4Strict'));
+    assert.ok(!offeredToolLists[0].includes('test.scMock'));
+    assert.ok(!offeredToolLists[0].includes('test.metaMock'));
+
+    // 5. Two parallel asks at limit - 1 (99 of 100) -> exactly one succeeds (200) and one returns 429 QUOTA_EXCEEDED
+    const period = getUtcMonthPeriod();
+    await store.setUsage!(wsId, period, { aiQuestions: 99 });
+
+    setTestAiRequest(async () => ({
+      status: 200,
+      headers: {},
+      text: JSON.stringify({
+        candidates: [{ content: { parts: [{ text: 'Quota test answer.' }] } }],
+      }),
+    }));
+
+    const [pRes1, pRes2] = await Promise.all([
+      fetch(`${baseUrl}/api/ai/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: 'Parallel question 1',
+          startDate: '2026-10-01',
+          endDate: '2026-10-07',
+        }),
+      }),
+      fetch(`${baseUrl}/api/ai/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: 'Parallel question 2',
+          startDate: '2026-10-01',
+          endDate: '2026-10-07',
+        }),
+      }),
+    ]);
+
+    const statuses = [pRes1.status, pRes2.status].sort((a, b) => a - b);
+    assert.deepEqual(statuses, [200, 429]);
+
+    const [pBody1, pBody2] = (await Promise.all([pRes1.json(), pRes2.json()])) as {
+      ok: boolean;
+      error?: { code: string };
+      quota: { used: number; limit: number };
+    }[];
+    const winners = [pBody1, pBody2].filter((b) => b.ok);
+    const losers = [pBody1, pBody2].filter((b) => !b.ok);
+    assert.equal(winners.length, 1);
+    assert.equal(losers.length, 1);
+    assert.equal(losers[0].error?.code, 'QUOTA_EXCEEDED');
+    assert.deepEqual(winners[0].quota, { used: 100, limit: 100 });
+    assert.deepEqual(losers[0].quota, { used: 100, limit: 100 });
+
+    // 6. Verify adminFirestoreStore transaction directly against a mocked Firestore db (parallel at limit-1 & refund floor at 0)
+    const docs = new Map<string, Record<string, unknown>>([
+      [`workspaces/${wsId}`, { plan: 'beta' }],
+      [`workspaces/${wsId}/usage/${period}`, { period, aiQuestions: 99 }],
+    ]);
+    let txChain = Promise.resolve();
+    const mockDb = {
+      collection(colName: string) {
+        return {
+          doc(docId: string) {
+            const path1 = `${colName}/${docId}`;
+            return {
+              path: path1,
+              collection(subCol: string) {
+                return {
+                  doc(subId: string) {
+                    return { path: `${path1}/${subCol}/${subId}` };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+      runTransaction<T>(updateFn: (tx: unknown) => Promise<T>): Promise<T> {
+        const run = txChain.then(async () => {
+          const staged = new Map<string, Record<string, unknown>>();
+          const tx = {
+            async get(ref: { path: string }) {
+              await Promise.resolve();
+              const data = docs.get(ref.path);
+              return {
+                exists: data !== undefined,
+                data: () => (data ? { ...data } : undefined),
+              };
+            },
+            set(ref: { path: string }, data: Record<string, unknown>, opts?: { merge?: boolean }) {
+              const prev = opts?.merge ? (docs.get(ref.path) ?? {}) : {};
+              staged.set(ref.path, { ...prev, ...data });
+            },
+          };
+          const out = await updateFn(tx);
+          for (const [k, v] of staged.entries()) {
+            docs.set(k, v);
+          }
+          return out;
+        });
+        txChain = run.then(
+          () => undefined,
+          () => undefined
+        );
+        return run;
+      },
+    };
+
+    setTestFirestoreStore(null);
+    setTestAdminFirestore(mockDb as never);
+    const realAdapter = getFirestoreStore();
+    const [q1, q2] = await Promise.all([
+      realAdapter.consumeAiQuota(wsId, period),
+      realAdapter.consumeAiQuota(wsId, period),
+    ]);
+    assert.equal([q1, q2].filter((q) => q.ok).length, 1);
+    assert.equal([q1, q2].filter((q) => !q.ok).length, 1);
+    assert.equal(docs.get(`workspaces/${wsId}/usage/${period}`)?.aiQuestions, 100);
+
+    // Refund decrements but never below 0
+    docs.set(`workspaces/${wsId}/usage/${period}`, { period, aiQuestions: 1 });
+    await realAdapter.refundAiQuota(wsId, period);
+    assert.equal(docs.get(`workspaces/${wsId}/usage/${period}`)?.aiQuestions, 0);
+    await realAdapter.refundAiQuota(wsId, period);
+    assert.equal(docs.get(`workspaces/${wsId}/usage/${period}`)?.aiQuestions, 0);
+  } finally {
+    reportRegistry.unregister('test.ga4Strict');
+    reportRegistry.unregister('test.scMock');
+    reportRegistry.unregister('test.metaMock');
+    setTestAiRequest(null);
+    setTestAdminFirestore(null);
+    setTestFirestoreStore(null);
+    setTestConnectionStore(null);
+    setTestTokenVerifier(null);
+    resetVaultSingleton();
+    clearAiRateLimit();
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.APP_BASE_URL;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_MODEL;
+    server.close();
+  }
+});
+
 
 
