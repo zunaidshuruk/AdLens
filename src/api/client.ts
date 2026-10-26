@@ -23,6 +23,7 @@ import type {
   HealthStatusResponse,
   MeResponse,
   MetaAccountInfo,
+  MetaAdAccountOption,
   MetaAdRow,
   MetaAdSetRow,
   MetaAdsOverview,
@@ -167,6 +168,17 @@ async function parseErrorResponse(response: Response): Promise<{ code: string; m
   return { code: errorCode, message: errorMessage };
 }
 
+async function parseSuccessResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
+}
+
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit,
@@ -208,7 +220,7 @@ export async function apiRequest<T>(
       if (refreshedToken) {
         response = await performFetch(path, init, true);
         if (response.ok) {
-          return (await response.json()) as T;
+          return parseSuccessResponse<T>(response);
         }
         parsedErr = await parseErrorResponse(response);
       }
@@ -223,7 +235,7 @@ export async function apiRequest<T>(
     if (response.status === 401 && parsedErr.code === 'GOOGLE_SESSION_MISMATCH') {
       response = await performFetch(path, init, false);
       if (response.ok) {
-        return (await response.json()) as T;
+        return parseSuccessResponse<T>(response);
       }
       parsedErr = await parseErrorResponse(response);
     }
@@ -236,7 +248,7 @@ export async function apiRequest<T>(
     throw new ApiClientError(parsedErr.message, response.status, parsedErr.code);
   }
 
-  return (await response.json()) as T;
+  return parseSuccessResponse<T>(response);
 }
 
 function buildDateRangeParams(range: ComputedDateRange): string {
@@ -249,6 +261,13 @@ function buildDateRangeParams(range: ComputedDateRange): string {
     params.set('compareEndDate', range.compareEndDate);
   }
   return params.toString();
+}
+
+export async function startMetaLogin(): Promise<void> {
+  const { linkToken } = await apiClient.createGoogleLinkToken();
+  if (typeof window !== 'undefined') {
+    window.location.href = `/api/auth/meta/start?lt=${encodeURIComponent(linkToken)}`;
+  }
 }
 
 export const apiClient = {
@@ -474,6 +493,31 @@ export const apiClient = {
     return apiRequest<{ ok: boolean }>('/api/auth/google/disconnect', {
       method: 'POST',
     });
+  },
+
+  getMetaAdAccounts(): Promise<{ accounts: MetaAdAccountOption[] }> {
+    return apiRequest<{ accounts: MetaAdAccountOption[] }>('/api/connections/meta/ad-accounts');
+  },
+
+  selectMetaAdAccount(adAccountId: string): Promise<{
+    ok: boolean;
+    adAccountId: string;
+    adAccountName?: string;
+  }> {
+    return apiRequest('/api/connections/meta/selection', {
+      method: 'POST',
+      body: JSON.stringify({ adAccountId }),
+    });
+  },
+
+  disconnectMeta(): Promise<void> {
+    return apiRequest<void>('/api/connections/meta', {
+      method: 'DELETE',
+    });
+  },
+
+  startMetaLogin(): Promise<void> {
+    return startMetaLogin();
   },
 
   // Live GA4 Data API routes (/api/ga4/*)

@@ -522,6 +522,19 @@ export interface VaultConnectionSummary {
   needsReconnect: boolean;
 }
 
+export type MetaReconnectState = 'ok' | 'due_soon' | 'expired' | 'no_expiry';
+export type MetaReturnStatus = 'connected' | 'denied' | 'failed';
+
+export interface MetaAdAccountOption {
+  accountId: string;
+  name: string;
+  currency?: string;
+  timezoneName?: string;
+  status?: string;
+  usable?: boolean;
+  businessName?: string | null;
+}
+
 export interface ConnectionsResponse {
   google: {
     configured: boolean;
@@ -536,10 +549,15 @@ export interface ConnectionsResponse {
   meta: {
     configured?: boolean;
     missing?: string[];
-    connected: boolean;
-    adAccountId?: string | null;
     notAvailable?: boolean;
     availableIn?: string;
+    loginConfigured: boolean;
+    connected: boolean;
+    connectedAt: string | null;
+    expiresAt: string | null;
+    reconnect: MetaReconnectState;
+    adAccountId: string | null;
+    adAccountName?: string | null;
   };
 }
 
