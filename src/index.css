@@ -58,6 +58,27 @@
     font-family: var(--font-sans);
   }
 
+  /* Phone and installed-app polish */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  button,
+  a,
+  select,
+  [role='button'] {
+    touch-action: manipulation; /* no double-tap zoom delay */
+  }
+
+  /* In the installed app, stop an accidental pull-down from reloading the page or bouncing the whole screen. */
+  @media (display-mode: standalone), (display-mode: window-controls-overlay), (display-mode: minimal-ui) {
+    html,
+    body {
+      overscroll-behavior-y: none;
+    }
+  }
+
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }

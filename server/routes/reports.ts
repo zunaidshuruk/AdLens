@@ -3,11 +3,13 @@ import { z } from 'zod';
 import { withDateDefaults } from '../../src/utils/aiTools.js';
 import { requireGoogleConfigured } from '../config.js';
 import { GoogleApiError } from '../lib/google.js';
-import { getVault, mapVaultError } from '../lib/vault.js';
+import { buildReportContext } from '../lib/reportContext.js';
+import { mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import '../reports/ga4Reports.js';
 import '../reports/exploreReports.js';
+import '../reports/intelligenceReports.js';
 import { reportRegistry } from '../reports/registry.js';
 import type { ReportContext } from '../reports/types.js';
 import { googleRateLimitMiddleware } from './connections.js';
@@ -15,14 +17,7 @@ import { googleRateLimitMiddleware } from './connections.js';
 export const reportsRouter = Router();
 
 export function createReportContext(req: Request): ReportContext {
-  const uid = req.user!.uid;
-  return {
-    getAccessToken: () => getVault().getAccessToken(uid, 'google'),
-    ga4PropertyId: req.project?.ga4PropertyId ?? undefined,
-    ga4PropertyName: req.project?.ga4PropertyName ?? req.project?.ga4PropertyId ?? undefined,
-    searchConsoleSite: req.project?.searchConsoleSite ?? undefined,
-    ...(req.project ? { project: req.project } : {}),
-  };
+  return buildReportContext(req.user!.uid, req.project);
 }
 
 reportsRouter.use(googleRateLimitMiddleware);

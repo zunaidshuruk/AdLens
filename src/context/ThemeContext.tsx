@@ -1,3 +1,4 @@
+import { syncThemeColorMeta } from '../utils/themeColorMeta.js';
 import React, {
   createContext,
   useCallback,
@@ -190,6 +191,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     applyThemeToDocument(theme, resolvedOptions.mode);
+    // Phone status bar / window colour follows the page colour of the chosen theme.
+    syncThemeColorMeta(typeof document !== 'undefined' ? document : null, theme.vars['--color-page']);
   }, [theme, resolvedOptions.mode]);
 
   const previewAppearance = useCallback((next: unknown): AppearanceSettings => {

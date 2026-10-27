@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import { APP_NAME } from '../config/app';
+import { pageTitleFor } from '../utils/pageTitle.js';
 import { Header } from './Header';
 import { CommandPalette } from './CommandPalette';
 import { InstallBanner } from './InstallBanner';
@@ -9,6 +11,11 @@ import { Sidebar } from './Sidebar';
 
 export const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    document.title = pageTitleFor(pathname, APP_NAME);
+  }, [pathname]);
 
   return (
     <div className="min-h-screen flex bg-page text-fg">
@@ -17,7 +24,7 @@ export const Layout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
 
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 max-w-[1600px] w-full mx-auto">
+        <main className="flex-1 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:px-6 lg:px-8 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 max-w-[1600px] w-full mx-auto">
           <InstallBanner />
           <Outlet />
         </main>

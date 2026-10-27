@@ -1,3 +1,4 @@
+import { cacheClear, cacheGet, cacheSet } from '../lib/responseCache.js';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { MetaAccountInfo } from '../../src/types/index.js';
 import {
@@ -35,10 +36,9 @@ export interface MetaAccessContext {
 
 // In-memory cache with 10-minute TTL
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const metaCache = new Map<string, { expiresAt: number; data: unknown }>();
 
 export function clearMetaCache(): void {
-  metaCache.clear();
+  cacheClear('meta');
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -113,21 +113,12 @@ function validateDateQuery(req: Request, res: Response): ValidatedDateQuery | nu
   };
 }
 
-function getCache<T>(key: string): T | null {
-  const hit = metaCache.get(key);
-  if (!hit) return null;
-  if (Date.now() >= hit.expiresAt) {
-    metaCache.delete(key);
-    return null;
-  }
-  return hit.data as T;
+async function getCache<T>(key: string): Promise<T | null> {
+  return cacheGet<T>('meta', key);
 }
 
 function setCache(key: string, data: unknown): void {
-  metaCache.set(key, {
-    expiresAt: Date.now() + CACHE_TTL_MS,
-    data,
-  });
+  void cacheSet('meta', key, data, CACHE_TTL_MS);
 }
 
 function buildCacheKey(
@@ -356,7 +347,7 @@ metaRouter.get('/account', async (req: Request, res: Response) => {
   const uid = req.user?.uid ?? 'anon';
   const cacheKey = `${uid}:${source}:${accountId}:account`;
 
-  const cached = getCache<MetaAccountInfo>(cacheKey);
+  const cached = await getCache<MetaAccountInfo>(cacheKey);
   if (cached) {
     res.setHeader('X-AdLens-Cache', 'true');
     res.json(cached);
@@ -404,7 +395,7 @@ metaRouter.get('/overview', async (req: Request, res: Response) => {
   const cacheKey = buildCacheKey(uid, source, accountId, 'overview', dates);
   const credentials = { accessToken, appSecret };
 
-  const cached = getCache(cacheKey);
+  const cached = await getCache(cacheKey);
   if (cached) {
     res.setHeader('X-AdLens-Cache', 'true');
     res.json(cached);
@@ -451,7 +442,7 @@ metaRouter.get('/spend-over-time', async (req: Request, res: Response) => {
   const cacheKey = buildCacheKey(uid, source, accountId, 'spend-over-time', dates);
   const credentials = { accessToken, appSecret };
 
-  const cached = getCache(cacheKey);
+  const cached = await getCache(cacheKey);
   if (cached) {
     res.setHeader('X-AdLens-Cache', 'true');
     res.json(cached);
@@ -505,7 +496,7 @@ metaRouter.get('/campaigns', async (req: Request, res: Response) => {
   const cacheKey = buildCacheKey(uid, source, accountId, 'campaigns', dates);
   const credentials = { accessToken, appSecret };
 
-  const cached = getCache(cacheKey);
+  const cached = await getCache(cacheKey);
   if (cached) {
     res.setHeader('X-AdLens-Cache', 'true');
     res.json(cached);
@@ -556,7 +547,7 @@ metaRouter.get('/adsets', async (req: Request, res: Response) => {
   const cacheKey = buildCacheKey(uid, source, accountId, 'adsets', dates, campaignId ?? 'all');
   const credentials = { accessToken, appSecret };
 
-  const cached = getCache(cacheKey);
+  const cached = await getCache(cacheKey);
   if (cached) {
     res.setHeader('X-AdLens-Cache', 'true');
     res.json(cached);
@@ -629,7 +620,7 @@ metaRouter.get('/ads', async (req: Request, res: Response) => {
   const cacheKey = buildCacheKey(uid, source, accountId, 'ads', dates, adSetId ?? 'all');
   const credentials = { accessToken, appSecret };
 
-  const cached = getCache(cacheKey);
+  const cached = await getCache(cacheKey);
   if (cached) {
     res.setHeader('X-AdLens-Cache', 'true');
     res.json(cached);

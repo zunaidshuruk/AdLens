@@ -1,3 +1,4 @@
+import { cacheClear, cacheGet, cacheSet } from '../lib/responseCache.js';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { SearchConsoleSiteInfo } from '../../src/types/index.js';
 import { requireGoogleConfigured } from '../config.js';
@@ -21,10 +22,9 @@ export const searchConsoleRouter = Router();
 
 // In-memory cache with 10-minute TTL
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const scCache = new Map<string, { expiresAt: number; data: unknown }>();
 
 export function clearSearchConsoleCache(): void {
-  scCache.clear();
+  cacheClear('sc');
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -100,23 +100,14 @@ function buildCacheKey(siteUrl: string, routeName: string, dates?: ValidatedDate
 
 function sendWithCache<T>(res: Response, cacheKey: string, data: T, fromCache: boolean): void {
   if (!fromCache) {
-    scCache.set(cacheKey, {
-      expiresAt: Date.now() + CACHE_TTL_MS,
-      data,
-    });
+    void cacheSet('sc', cacheKey, data, CACHE_TTL_MS);
   }
   res.setHeader('X-AdLens-Cache', fromCache ? 'true' : 'false');
   res.json(data);
 }
 
-function getCached<T>(cacheKey: string): T | null {
-  const entry = scCache.get(cacheKey);
-  if (!entry) return null;
-  if (Date.now() >= entry.expiresAt) {
-    scCache.delete(cacheKey);
-    return null;
-  }
-  return entry.data as T;
+async function getCached<T>(cacheKey: string): Promise<T | null> {
+  return cacheGet<T>('sc', cacheKey);
 }
 
 function handleSearchConsoleError(res: Response, err: unknown): void {
@@ -183,7 +174,7 @@ searchConsoleRouter.get('/overview', async (req: Request, res: Response) => {
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'overview', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -220,7 +211,7 @@ searchConsoleRouter.get('/performance-over-time', async (req: Request, res: Resp
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'performance-over-time', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -268,7 +259,7 @@ searchConsoleRouter.get('/top-queries', async (req: Request, res: Response) => {
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'top-queries', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -309,7 +300,7 @@ searchConsoleRouter.get('/top-pages', async (req: Request, res: Response) => {
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'top-pages', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -339,7 +330,7 @@ searchConsoleRouter.get('/countries', async (req: Request, res: Response) => {
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'countries', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -369,7 +360,7 @@ searchConsoleRouter.get('/devices', async (req: Request, res: Response) => {
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'devices', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -399,7 +390,7 @@ searchConsoleRouter.get('/site-info', async (req: Request, res: Response) => {
   const accessToken = String(res.locals.googleAccessToken);
   const cacheKey = buildCacheKey(siteUrl, 'site-info', dates ?? undefined);
 
-  const cached = getCached<SearchConsoleSiteInfo>(cacheKey);
+  const cached = await getCached<SearchConsoleSiteInfo>(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;

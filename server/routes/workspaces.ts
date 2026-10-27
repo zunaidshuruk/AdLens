@@ -1,3 +1,5 @@
+import { getDigestStore } from '../lib/digestStore.js';
+import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getPlanLimits } from '../config/plans.js';
@@ -10,6 +12,7 @@ import {
 } from '../lib/firestore.js';
 import { clearOAuthState, clearSession } from '../lib/session.js';
 import { normalizeDomain } from '../lib/sourceMatcher.js';
+import { getMetaDeletionStore } from '../lib/metaDeletion.js';
 import { getVault } from '../lib/vault.js';
 import { requireUser } from '../middleware/requireUser.js';
 import { validateAsset } from '../../src/utils/imageAssets.js';
@@ -488,6 +491,11 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
 
     await vault.deleteConnection(uid, 'google');
     await vault.deleteConnection(uid, 'meta');
+    try {
+      await getMetaDeletionStore().unlinkUid(uid);
+    } catch {
+      // best effort
+    }
 
     // Step 2b: Clean up workspaces where user is a member
     console.info('[delete-account]', { uid, step: 'cleanup_workspaces' });
@@ -511,6 +519,8 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
 
     // Step 3: Clear oauth-state cookie and session cookie
     console.info('[delete-account]', { uid, step: 'clear_cookies_and_complete' });
+    try { await getDigestStore().deleteForUid(uid); } catch { /* best effort */ }
+    await recordAccountDeletion(uid);
     clearOAuthState(res);
     clearSession(res);
     res.json({ ok: true });
@@ -877,6 +887,7 @@ workspacesRouter.delete('/:wsId/projects/:id', async (req: Request, res: Respons
       return;
     }
 
+    void recordAudit({ uid, workspaceId: wsId, action: 'project.deleted', detail: `project ${projectId}` });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({
