@@ -27,7 +27,7 @@ test('Sprint 20 — team: add by email, pending invites, same-company offers, ro
   setTestTokenVerifier(async (token: string) => {
     const p = people[token.replace('token-', '')];
     if (!p) throw new Error('bad token');
-    return { uid: p.uid, email: p.email, name: token, email_verified: p.verified, firebase: p.verified ? { identities: { 'google.com': ['g'] }, sign_in_provider: 'google.com' } : { identities: { email: [p.email] }, sign_in_provider: 'password' } } as never;
+    return { uid: p.uid, email: p.email, name: token, auth_time: Math.floor(Date.now() / 1000), email_verified: p.verified, firebase: p.verified ? { identities: { 'google.com': ['g'] }, sign_in_provider: 'google.com' } : { identities: { email: [p.email] }, sign_in_provider: 'password' } } as never;
   });
   const { workspace: ws } = await fs.bootstrapUserAndWorkspace({ uid: 'uid_boss', email: people.boss.email, displayName: 'Boss' });
   for (const k of ['mate', 'gmail', 'outsider'] as const) await fs.bootstrapUserAndWorkspace({ uid: people[k].uid, email: people[k].email, displayName: k });

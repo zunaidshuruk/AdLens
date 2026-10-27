@@ -249,6 +249,11 @@ export async function apiRequest<T>(
       navigateToAuthRoute(`/sign-in-blocked?reason=${parsedErr.code}`);
     }
 
+    // Admin panel: the one-hour admin session is over, so ask for the password again on the separate admin login page.
+    if (response.status === 403 && parsedErr.code === 'ADMIN_REAUTH' && typeof window !== 'undefined' && window.location.pathname !== '/admin-login') {
+      window.location.assign('/admin-login?expired=1');
+    }
+
     // On 403 EMAIL_NOT_VERIFIED go to /verify-email
     if (response.status === 403 && parsedErr.code === 'EMAIL_NOT_VERIFIED') {
       navigateToAuthRoute('/verify-email');
@@ -287,6 +292,25 @@ export interface TeamView { members: TeamMember[]; invites: TeamInvite[]; limit:
 export interface JoinOffer { workspaceId: string; workspaceName: string; ownerName: string; domain: string }
 
 export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; members: number; plan: string; storedPlan: string; planExpiresAt: string | null; status: 'none' | 'active' | 'grace' | 'expired' }
+export interface AdminPlan {
+  id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
+  limits: { maxProjects: number; aiQuestionsPerMonth: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxAgents: number };
+  features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
+}
+export interface AdminFlags {
+  signupsOpen: boolean; maintenanceMode: boolean; maintenanceMessage: string;
+  explore: boolean; dashboards: boolean; agents: boolean; mcp: boolean; aiAnalyst: boolean; team: boolean;
+}
+export interface AdminSettingsView {
+  plans: AdminPlan[];
+  saved: Record<string, unknown>;
+  flags: AdminFlags;
+  operators: { email: string; locked: boolean }[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+export interface AdminSession { operator: boolean; secondsLeft: number; sessionMinutes: number; email: string | null }
 export interface AdminCheck { id: string; title: string; status: 'pass' | 'fail' | 'warn'; detail: string }
 export interface AdminOverview {
   counts: { workspaces: number; openRequests: number; endingSoon: number };
@@ -844,6 +868,21 @@ export const apiClient = {
     return apiRequest(`/api/team/offers/${encodeURIComponent(wsId)}/accept`, { method: 'POST', body: '{}' });
   },
 
+  adminSession(): Promise<AdminSession> {
+    return apiRequest('/api/admin/session');
+  },
+  adminSettings(): Promise<AdminSettingsView> {
+    return apiRequest('/api/admin/settings');
+  },
+  adminSavePlans(plans: Record<string, unknown>): Promise<AdminSettingsView> {
+    return apiRequest('/api/admin/plans', { method: 'PUT', body: JSON.stringify({ plans }) });
+  },
+  adminSaveFlags(flags: Partial<AdminFlags>): Promise<AdminSettingsView> {
+    return apiRequest('/api/admin/flags', { method: 'PUT', body: JSON.stringify({ flags }) });
+  },
+  adminSaveOperators(operators: string[]): Promise<AdminSettingsView> {
+    return apiRequest('/api/admin/operators', { method: 'PUT', body: JSON.stringify({ operators }) });
+  },
   billingWhoAmI(): Promise<{ isOperator: boolean }> {
     return apiRequest('/api/billing/whoami');
   },
@@ -859,7 +898,7 @@ export const apiClient = {
   adminSetPlan(body: { workspaceId: string; plan: string; endsOn: string | null; note: string }): Promise<unknown> {
     return apiRequest('/api/billing/admin/set-plan', { method: 'POST', body: JSON.stringify(body) });
   },
-  adminRecordInvoice(body: { workspaceId: string; number: string; amount: number; currency: 'USD' | 'BDT'; plan: 'pro' | 'business'; periodStart: string; periodEnd: string; note: string }): Promise<unknown> {
+  adminRecordInvoice(body: { workspaceId: string; number: string; amount: number; currency: 'USD' | 'BDT'; plan: string; periodStart: string; periodEnd: string; note: string }): Promise<unknown> {
     return apiRequest('/api/billing/admin/invoices', { method: 'POST', body: JSON.stringify(body) });
   },
   adminRequests(): Promise<{ requests: AdminRequest[] }> {

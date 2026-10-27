@@ -64,6 +64,8 @@ There is no payment provider yet. A customer asks for an upgrade, pays you direc
 4. When `endsOn` passes there are 7 days of grace, then the workspace behaves as Free. Nothing is deleted: the workspace simply cannot add more than Free allows. Setting the plan again restores everything.
 5. New workspaces start on `DEFAULT_NEW_WORKSPACE_PLAN` (currently `beta`, so nothing changes for anyone yet). Switch it to `free` when the plan screens are live.
 
-The Admin page (`/admin`, sidebar "Admin", operators only) wraps these calls. To give another trusted person the Admin page, add their email to `OPERATOR_EMAILS` (comma-separated) and publish.
+The admin panel has its own address, `/admin-login` (it is not in the customer menu). Sign in there with an operator email and password (or Google). That opens a one-hour admin session; after an hour it asks for a fresh sign-in. Operators are the emails in `OPERATOR_EMAILS` (owners, cannot be removed from the screen) plus emails added on the panel's Operators tab.
+
+On the panel, without touching code or Secrets: **Plans and prices** (every limit, USD and BDT price, history days, email summaries; "Put back the shipped numbers"; private plans for one customer, for example "Convay team"), **Switches** (pause new sign-ups, maintenance mode with a message, turn Explore, Dashboards, AI agents, AI tools, AI Analyst or Teams off), **Operators**, **Workspaces** (set plan and end date, record payments, people), **Upgrade requests**, **Users**, **Activity**. Settings live in the server-only Firestore document `adminSettings/config` and reach every server within 30 seconds. Every change is written to the activity log.
 
 Team: Settings → Workspace → Team lets an owner add people by email, set roles (owner / admin / member) and offer colleagues with the same company email the chance to join. Each person uses their own Google and Meta connections. Refund policy: no refunds after 3 days.

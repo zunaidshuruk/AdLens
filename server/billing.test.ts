@@ -86,7 +86,7 @@ test('Sprint 20 — billing, operator plan changes, limits in routes and history
   const project = await fs.createProject(wsA.id, { name: 'P', domain: 'a.com', ga4PropertyId: '1001', timezone: 'UTC', currency: 'USD', createdBy: 'uid_alice' });
   setTestTokenVerifier(async (token: string) => {
     const who = token.replace('token-', '');
-    return { uid: `uid_${who}`, email: who === 'op' ? 'owner@op.com' : `${who}@acme.com`, name: who, email_verified: true, firebase: { identities: { 'google.com': ['g'] }, sign_in_provider: 'google.com' } } as never;
+    return { uid: `uid_${who}`, email: who === 'op' ? 'owner@op.com' : `${who}@acme.com`, name: who, auth_time: Math.floor(Date.now() / 1000), email_verified: true, firebase: { identities: { 'google.com': ['g'] }, sign_in_provider: 'google.com' } } as never;
   });
   await getVault().saveConnection({ uid: 'uid_alice', provider: 'google', accountLabel: 'alice@acme.com', scopes: ['x'], refreshToken: 'rt', accessToken: 'tok', accessTokenExpiresAt: Date.now() + 3_600_000 });
 

@@ -1,15 +1,21 @@
-import { AlertTriangle, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, LogOut, ShieldCheck, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { OperatorsEditor, PlansEditor, SwitchesEditor } from './AdminSettings';
 import {
-  apiClient, type AdminAuditEvent, type AdminOverview, type AdminRequest, type AdminUser, type AdminWorkspaceDetail, type AdminWorkspaceRow,
+  apiClient, type AdminSession, type AdminAuditEvent, type AdminOverview, type AdminRequest, type AdminUser, type AdminWorkspaceDetail, type AdminWorkspaceRow,
 } from '../api/client';
 
-type Tab = 'overview' | 'workspaces' | 'requests' | 'users' | 'audit';
+type Tab = 'overview' | 'workspaces' | 'requests' | 'plans' | 'switches' | 'users' | 'operators' | 'audit';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'workspaces', label: 'Workspaces' },
   { id: 'requests', label: 'Upgrade requests' },
+  { id: 'plans', label: 'Plans and prices' },
+  { id: 'switches', label: 'Switches' },
   { id: 'users', label: 'Users' },
+  { id: 'operators', label: 'Operators' },
   { id: 'audit', label: 'Activity' },
 ];
 
@@ -92,9 +98,13 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState('pro');
+  const [planList, setPlanList] = useState<{ id: string; label: string; custom: boolean }[]>([
+    { id: 'free', label: 'Free', custom: false }, { id: 'pro', label: 'Pro', custom: false }, { id: 'business', label: 'Business', custom: false }, { id: 'beta', label: 'Beta (old test plan)', custom: false },
+  ]);
+  useEffect(() => { apiClient.adminSettings().then((v) => setPlanList(v.plans.map((p) => ({ id: p.id, label: p.id === 'beta' ? 'Beta (old test plan)' : p.label, custom: p.custom })))).catch(() => undefined); }, []);
   const [endsOn, setEndsOn] = useState(ymd(30));
   const [note, setNote] = useState('');
-  const [inv, setInv] = useState({ number: '', amount: '', currency: 'BDT' as 'USD' | 'BDT', plan: 'pro' as 'pro' | 'business', periodStart: ymd(0), periodEnd: ymd(30), note: '' });
+  const [inv, setInv] = useState({ number: '', amount: '', currency: 'BDT' as 'USD' | 'BDT', plan: 'pro', periodStart: ymd(0), periodEnd: ymd(30), note: '' });
 
   const load = useCallback(async () => {
     try {
@@ -112,7 +122,8 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
   };
 
   if (!d) return <div className="space-y-3"><button className={btn} onClick={onBack}>← Back</button>{error ? <p role="alert" className="text-sm text-danger">{error}</p> : <p className="text-sm text-fg-muted">Loading…</p>}</div>;
-  const paid = plan === 'pro' || plan === 'business';
+  const paid = plan !== 'free' && plan !== 'beta';
+  const endRequired = plan === 'pro' || plan === 'business';
 
   return (
     <div className="space-y-4">
@@ -139,16 +150,16 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <p className="text-xs text-fg-muted">Used this month: {d.usage.aiQuestions} AI questions · {d.usage.projects} projects.</p>
         <form
           className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => { e.preventDefault(); void run(() => apiClient.adminSetPlan({ workspaceId: id, plan, endsOn: paid ? endsOn : null, note }), 'Plan saved.'); }}
+          onSubmit={(e) => { e.preventDefault(); void run(() => apiClient.adminSetPlan({ workspaceId: id, plan, endsOn: paid && endsOn ? endsOn : null, note }), 'Plan saved.'); }}
         >
           <label className="space-y-1"><span className="text-xs text-fg-muted">Plan</span>
             <select value={plan} onChange={(e) => setPlan(e.target.value)} className={`${field} block`}>
-              <option value="free">Free</option><option value="pro">Pro</option><option value="business">Business</option><option value="beta">Beta (old test plan)</option>
+              {planList.map((p) => <option key={p.id} value={p.id}>{p.label}{p.custom ? ' (private)' : ''}</option>)}
             </select>
           </label>
-          {paid && <label className="space-y-1"><span className="text-xs text-fg-muted">Last paid day</span><input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} className={`${field} block`} /></label>}
+          {paid && <label className="space-y-1"><span className="text-xs text-fg-muted">Last paid day{endRequired ? '' : ' (optional)'}</span><input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} className={`${field} block`} /></label>}
           <label className="flex-1 min-w-[160px] space-y-1"><span className="text-xs text-fg-muted">Note for the activity log (optional)</span><input value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="Paid by bKash" className={`${field} w-full`} /></label>
-          <button type="submit" disabled={busy || (paid && !endsOn)} className={primary}>Save plan</button>
+          <button type="submit" disabled={busy || (endRequired && !endsOn)} className={primary}>Save plan</button>
         </form>
       </div>
 
@@ -165,7 +176,7 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <label className="space-y-1"><span className="text-xs text-fg-muted">Invoice number</span><input required value={inv.number} onChange={(e) => setInv({ ...inv, number: e.target.value })} placeholder="AL-2026-001" className={`${field} w-full`} /></label>
           <label className="space-y-1"><span className="text-xs text-fg-muted">Amount</span><input required type="number" min="1" step="any" value={inv.amount} onChange={(e) => setInv({ ...inv, amount: e.target.value })} className={`${field} w-full`} /></label>
           <label className="space-y-1"><span className="text-xs text-fg-muted">Currency</span><select value={inv.currency} onChange={(e) => setInv({ ...inv, currency: e.target.value as 'USD' | 'BDT' })} className={`${field} w-full`}><option>BDT</option><option>USD</option></select></label>
-          <label className="space-y-1"><span className="text-xs text-fg-muted">Plan</span><select value={inv.plan} onChange={(e) => setInv({ ...inv, plan: e.target.value as 'pro' | 'business' })} className={`${field} w-full`}><option value="pro">Pro</option><option value="business">Business</option></select></label>
+          <label className="space-y-1"><span className="text-xs text-fg-muted">Plan</span><select value={inv.plan} onChange={(e) => setInv({ ...inv, plan: e.target.value })} className={`${field} w-full`}>{planList.filter((p) => p.id !== 'free' && p.id !== 'beta').map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
           <label className="space-y-1"><span className="text-xs text-fg-muted">Period starts</span><input required type="date" value={inv.periodStart} onChange={(e) => setInv({ ...inv, periodStart: e.target.value })} className={`${field} w-full`} /></label>
           <label className="space-y-1"><span className="text-xs text-fg-muted">Period ends</span><input required type="date" value={inv.periodEnd} onChange={(e) => setInv({ ...inv, periodEnd: e.target.value })} className={`${field} w-full`} /></label>
           <label className="space-y-1 col-span-2"><span className="text-xs text-fg-muted">Note (optional)</span><input value={inv.note} maxLength={200} onChange={(e) => setInv({ ...inv, note: e.target.value })} className={`${field} w-full`} /></label>
@@ -335,45 +346,70 @@ function Audit() {
   );
 }
 
-/** Admin panel (operators only: emails listed in OPERATOR_EMAILS). */
+const fmtLeft = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
+/** The admin panel. Its own page (no customer sidebar), reached only through /admin-login. */
 export const AdminPage: React.FC = () => {
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const { user, loading, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [session, setSession] = useState<AdminSession | null>(null);
+  const [left, setLeft] = useState(0);
   const [tab, setTab] = useState<Tab>('overview');
   const [focus, setFocus] = useState<string | null>(null);
 
-  useEffect(() => { apiClient.billingWhoAmI().then((r) => setAllowed(r.isOperator)).catch(() => setAllowed(false)); }, []);
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { navigate('/admin-login', { replace: true }); return; }
+    apiClient.adminSession().then((s) => {
+      if (!s.operator || s.secondsLeft <= 0) { navigate(`/admin-login${s.operator ? '?expired=1' : ''}`, { replace: true }); return; }
+      setSession(s); setLeft(s.secondsLeft);
+    }).catch(() => navigate('/admin-login', { replace: true }));
+  }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (!session) return undefined;
+    const t = window.setInterval(() => setLeft((n) => { if (n <= 1) { navigate('/admin-login?expired=1', { replace: true }); return 0; } return n - 1; }), 1000);
+    return () => window.clearInterval(t);
+  }, [session, navigate]);
 
   const openWorkspace = (id: string) => { setFocus(id); setTab('workspaces'); };
 
-  if (allowed === null) return <p className="text-sm text-fg-muted">Loading…</p>;
-  if (!allowed) {
-    return (
-      <div className="max-w-xl rounded-xl border border-line bg-surface p-6 space-y-2">
-        <h1 className="text-lg font-semibold text-fg">Admin</h1>
-        <p className="text-sm text-fg-muted">This page is only for the owner of this AdLens installation. If that is you, add your sign-in email to the OPERATOR_EMAILS setting and publish again.</p>
-      </div>
-    );
-  }
+  if (!session) return <div className="min-h-screen bg-page text-fg p-8 text-sm text-fg-muted" role="status">Checking your admin session…</div>;
   return (
-    <div className="space-y-5 max-w-5xl">
-      <div className="flex items-center gap-2.5">
-        <ShieldCheck className="w-5 h-5 text-accent-text" />
-        <div><h1 className="text-lg font-semibold text-fg">Admin</h1><p className="text-xs text-fg-muted">Plans, payments, people and health across every workspace. Everything you change here is written to the activity log.</p></div>
-      </div>
-      <div role="tablist" className="flex flex-wrap gap-1 border-b border-line">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} type="button"
-            onClick={() => { setTab(t.id); if (t.id !== 'workspaces') setFocus(null); }}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t.id ? 'border-accent text-accent-text' : 'border-transparent text-fg-muted hover:text-fg'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {tab === 'overview' && <Overview onOpenWorkspaces={() => setTab('workspaces')} />}
-      {tab === 'workspaces' && <Workspaces key={focus ?? 'list'} initialId={focus} />}
-      {tab === 'requests' && <Requests onOpen={openWorkspace} />}
-      {tab === 'users' && <Users onOpen={openWorkspace} />}
-      {tab === 'audit' && <Audit />}
+    <div className="min-h-screen bg-page text-fg">
+      <header className="border-b border-line bg-surface">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-accent-text" />
+            <div><h1 className="text-base font-semibold text-fg">AdLens Admin</h1><p className="text-xs text-fg-muted">Everything you change here is written to the activity log.</p></div>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-fg-muted">
+            <span className="break-all">{session.email}</span>
+            <span aria-label="Admin session time left" className={left < 300 ? 'text-warning font-medium' : ''}>Session {fmtLeft(left)}</span>
+            <Link to="/" className="underline">Open AdLens</Link>
+            <button type="button" onClick={() => void signOut().then(() => navigate('/admin-login', { replace: true }))} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-fg min-h-[36px]"><LogOut className="w-3.5 h-3.5" />Sign out</button>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-5xl mx-auto px-4 py-5 space-y-5">
+        <div role="tablist" className="flex flex-wrap gap-1 border-b border-line">
+          {TABS.map((t) => (
+            <button key={t.id} role="tab" aria-selected={tab === t.id} type="button"
+              onClick={() => { setTab(t.id); if (t.id !== 'workspaces') setFocus(null); }}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t.id ? 'border-accent text-accent-text' : 'border-transparent text-fg-muted hover:text-fg'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab === 'overview' && <Overview onOpenWorkspaces={() => setTab('workspaces')} />}
+        {tab === 'workspaces' && <Workspaces key={focus ?? 'list'} initialId={focus} />}
+        {tab === 'requests' && <Requests onOpen={openWorkspace} />}
+        {tab === 'plans' && <PlansEditor />}
+        {tab === 'switches' && <SwitchesEditor />}
+        {tab === 'users' && <Users onOpen={openWorkspace} />}
+        {tab === 'operators' && <OperatorsEditor />}
+        {tab === 'audit' && <Audit />}
+      </main>
     </div>
   );
 };

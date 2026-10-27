@@ -1,4 +1,7 @@
 import { acceptPendingInvites } from './team.js';
+import { getFlags } from '../lib/adminSettings.js';
+import { getInviteStore } from '../lib/inviteStore.js';
+import { isOperator } from './ops.js';
 import { getBillingStore } from '../lib/billingStore.js';
 import { getDigestStore } from '../lib/digestStore.js';
 import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
@@ -200,6 +203,16 @@ function getMemberRole(ws: WorkspaceDoc, uid: string): WorkspaceRole | null {
   return ws.members[uid] ?? null;
 }
 
+/** When sign-ups are closed in the admin panel, only people who already have an account, invited people and operators get in. */
+async function signupAllowed(uid: string, email: string | null): Promise<boolean> {
+  if (getFlags().signupsOpen) return true;
+  if (await getFirestoreStore().getUser(uid)) return true;
+  if (isOperator(email)) return true;
+  return email ? (await getInviteStore().listForEmail(email)).length > 0 : false;
+}
+
+const SIGNUPS_CLOSED = { error: { code: 'SIGNUPS_CLOSED', message: 'New sign-ups are paused right now. If you were invited, sign in with the email that received the invitation.' } };
+
 async function buildMePayload(
   uid: string,
   fallbackEmail: string | null,
@@ -262,6 +275,7 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
     const displayName = deriveDisplayName(bodyName, email);
     const photoURL = req.user!.picture ?? null;
 
+    if (!(await signupAllowed(uid, email))) { res.status(403).json(SIGNUPS_CLOSED); return; }
     const store = getFirestoreStore();
     await store.bootstrapUserAndWorkspace({
       uid,
@@ -287,6 +301,7 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
 meRouter.get('/', async (req: Request, res: Response) => {
   try {
     const uid = req.user!.uid;
+    if (!(await signupAllowed(uid, req.user!.email))) { res.status(403).json(SIGNUPS_CLOSED); return; }
     const payload = await buildMePayload(
       uid,
       req.user!.email,

@@ -676,7 +676,7 @@ Adopts #30.
 - MFA (authenticator app / SMS); admin audit log; session management.
 - Tied to an Enterprise subscription plan (pricing parked).
 
-## Sprint 20 — Billing and plan limits 🧩 (20a–20c in `stage-7-billing-20abc` · 20e admin panel + Team in `stage-8-admin-team` · 20d and 20f not started)
+## Sprint 20 — Billing and plan limits 🧩 (20a–20c in `stage-7-billing-20abc` · 20e admin panel + Team in `stage-8-admin-team` · 20e-2 separate admin login and settings in `stage-9-admin-controls` · 20d and 20f not started)
 
 **Decisions (27 Oct 2026):** manual invoicing first (no payment provider yet); customers in Bangladesh and overseas (prices in BDT and USD); three plans: Free, Pro, Business. Limits that change by plan: projects, AI questions, dashboards, saved reports, AI agents, team members, email summaries, plus the extras below.
 
@@ -724,6 +724,8 @@ Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves
 - **Same-company offer:** the owner ticks "Offer colleagues with my company email the chance to join". Anyone verified with the same company email domain sees a popup and may accept ("Not now" hides it). Free-mail domains (Gmail, Outlook...) never match.
 - Everyone uses their own Google and Meta connections, so a teammate needs access to the same GA4 property and Search Console in their own Google account.
 
+**Admin controls (20e-2, 463 tests, 27 Oct 2026):** the admin panel moved to its own address `/admin-login` with a separate sign-in (email and password or Google) that opens a one-hour admin session; after that it asks again. The "Admin" link is no longer in the customer menu. New tabs: **Plans and prices** (edit every limit and the USD/BDT prices, put back shipped numbers, private plans for one customer such as "Convay team" with its own limits, a plan in use cannot be deleted), **Switches** (pause sign-ups, maintenance mode with message, turn Explore / Dashboards / AI agents / AI tools / AI Analyst / Teams off), **Operators** (add or remove operators; those in `OPERATOR_EMAILS` are locked owners; you cannot remove your own access). Settings are stored in Firestore `adminSettings/config` (server-only) and reach all servers within 30 seconds. Not visually tested yet.
+
 **Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
 
 ---
@@ -742,6 +744,7 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
 | 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
 | 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 9 | `stage-9-admin-controls` | Sprint 20e-2: separate admin login, plan/price editor, switches, operators (also repeats stage-7 and stage-8 files) | Sprint 20e-2: admin login and controls |
 | 8 | `stage-8-admin-team` | Sprint 20e admin panel, Team, same-company join offers (also repeats stage-7 files) | Sprint 20e: admin panel and team |
 
 Deviations from the original plan: dashboards use inline report specs and button-based move/resize; 4 templates (plan said 8), no workspace templates or pin-to-dashboard; agents UI lives at `/agents` (not Settings); engine bar sits on the analyst page; on-device mode shortlists reports by keyword and compacts them (no model tool-calling); added `POST /api/reports/run`; content limits live in `CONTENT_LIMITS` (beta: 10 dashboards, 12 widgets each, 50 saved reports, 3 agents).

@@ -23,6 +23,7 @@ import { SignInBlockedPage } from './pages/SignInBlockedPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 
 // Each screen is loaded when first opened, so the first page a visitor sees downloads far less code (Sprint 18).
+const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage').then((m) => ({ default: m.AdminLoginPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const AgentDeveloperPage = lazy(() => import('./pages/AgentDeveloperPage').then((m) => ({ default: m.AgentDeveloperPage })));
 const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })));
@@ -74,12 +75,15 @@ export default function App() {
               <Route path="/privacy" element={<LegalPage kind="privacy" />} />
               <Route path="/data-deletion" element={<DataDeletionPage />} />
 
+              {/* Admin: its own login and its own page, outside the customer app */}
+              <Route path="/admin-login" element={<AdminLoginPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+
               {/* Protected application routes */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/mcp-access/authorize" element={<McpAuthorizePage />} />
                 <Route element={<Layout />}>
                   <Route path="/mcp-access" element={<McpAccessPage />} />
-                  <Route path="/admin" element={<AdminPage />} />
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/ga4" element={<GA4Page />} />
                   <Route path="/ai-traffic" element={<AITrafficPage />} />

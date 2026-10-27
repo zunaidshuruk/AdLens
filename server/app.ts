@@ -1,6 +1,8 @@
 import { securityRouter, ssoRouter } from './routes/sso.js';
 import { billingRouter } from './routes/billing.js';
 import { teamRouter } from './routes/team.js';
+import { adminRouter } from './routes/admin.js';
+import { featureGate } from './middleware/featureGate.js';
 import { digestRouter } from './routes/digest.js';
 import { reportError } from './lib/errorReporter.js';
 import { opsRouter } from './routes/ops.js';
@@ -75,6 +77,7 @@ app.use((req, _res, next) => {
 });
 
 // MCP endpoint and its OAuth documents live at the site root (clients look for /mcp and /.well-known/*)
+app.use(['/mcp', '/api'], featureGate);
 app.use('/mcp', mcpRouter);
 app.use(oauthRouter);
 
@@ -102,6 +105,7 @@ app.use('/api/ops', opsRouter);
 app.use('/api/digest', digestRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/team', teamRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/sso', ssoRouter);
 app.use('/api/security', securityRouter);
 

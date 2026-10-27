@@ -6,7 +6,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
-  PAID_PLAN_IDS, PLAN_IDS, PLAN_INFO, getContentLimits, getPlanFeatures, getPlanLimits, isKnownPlan, planStatus,
+  CUSTOM_PLAN_IDS, PAID_PLAN_IDS, PLAN_IDS, PLAN_INFO, getContentLimits, getPlanFeatures, getPlanLimits, isKnownPlan, isPaidPlan, planStatus,
 } from '../config/plans.js';
 import { listRecentAudit, recordAudit } from '../lib/auditLog.js';
 import { evaluateLaunchReadiness } from '../lib/launchReadiness.js';
@@ -17,6 +17,7 @@ import { getBillingStore, newBillingId, type PlanRequest } from '../lib/billingS
 import { getFirestoreStore, getUtcMonthPeriod, type WorkspaceDoc } from '../lib/firestore.js';
 import { mailConfigured, sendMail } from '../lib/mailer.js';
 import { requireUser } from '../middleware/requireUser.js';
+import { operatorOnly } from '../middleware/operatorOnly.js';
 import { isOperator } from './ops.js';
 
 export const billingRouter = Router();
@@ -46,7 +47,7 @@ function planSummary(ws: WorkspaceDoc, now = new Date()) {
   };
 }
 
-const catalog = () => PLAN_IDS.filter((p) => p !== 'beta').map((id) => ({
+const catalog = () => PLAN_IDS.filter((p) => p !== 'beta' && !CUSTOM_PLAN_IDS.has(p)).map((id) => ({
   id, label: PLAN_INFO[id].label, priceUsd: PLAN_INFO[id].priceUsd, priceBdt: PLAN_INFO[id].priceBdt,
   limits: getPlanLimits(id), content: getContentLimits(id), features: getPlanFeatures(id),
 }));
@@ -143,10 +144,6 @@ billingRouter.post('/upgrade-request', async (req: Request, res: Response) => {
 // Operator only (OPERATOR_EMAILS)
 // ---------------------------------------------------------------------------
 
-const operatorOnly = (req: Request, res: Response, next: () => void) => {
-  if (!isOperator(req.user!.email)) return fail(res, 403, 'NOT_ALLOWED', 'Only the owner of this AdLens installation can do this.');
-  next();
-};
 const admin = Router();
 admin.use(operatorOnly);
 billingRouter.use('/admin', admin);
@@ -179,7 +176,7 @@ admin.post('/requests/:id/close', async (req: Request, res: Response) => {
 const endOfDay = (d: string) => `${d}T23:59:59.000Z`;
 const setPlanSchema = z.object({
   workspaceId: z.string().min(1).max(120),
-  plan: z.enum(PLAN_IDS),
+  plan: z.string().refine((p) => PLAN_IDS.includes(p), 'That plan does not exist.'),
   /** YYYY-MM-DD, the last day the plan is paid for. Required for Pro and Business. */
   endsOn: z.string().regex(DAY_RE).nullable().optional(),
   note: z.string().trim().max(200).optional().default(''),
@@ -189,8 +186,8 @@ admin.post('/set-plan', async (req: Request, res: Response) => {
   const body = setPlanSchema.safeParse(req.body);
   if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', body.error.issues[0]?.message || 'Check the workspace, plan and end date.');
   const { workspaceId, plan, endsOn, note } = body.data;
-  const paid = (PAID_PLAN_IDS as readonly string[]).includes(plan);
-  if (paid && !endsOn) return fail(res, 400, 'END_DATE_REQUIRED', 'Choose the last day this plan is paid for.');
+  const paid = isPaidPlan(plan);
+  if (PAID_PLAN_IDS.includes(plan) && !endsOn) return fail(res, 400, 'END_DATE_REQUIRED', 'Choose the last day this plan is paid for.');
   if (endsOn && Number.isNaN(Date.parse(endOfDay(endsOn)))) return fail(res, 400, 'VALIDATION_ERROR', 'That end date is not a real date.');
   const store = getFirestoreStore();
   const before = await store.getWorkspace(workspaceId);
@@ -210,7 +207,7 @@ const invoiceSchema = z.object({
   number: z.string().trim().min(1).max(40),
   amount: z.number().positive().max(10_000_000),
   currency: z.enum(['USD', 'BDT']),
-  plan: z.enum(['pro', 'business']),
+  plan: z.string().refine((p) => isPaidPlan(p), 'Choose a paid plan.'),
   periodStart: z.string().regex(DAY_RE),
   periodEnd: z.string().regex(DAY_RE),
   note: z.string().trim().max(200).optional().default(''),

@@ -5,14 +5,21 @@ import { runDigests } from '../lib/digestRunner.js';
 import { listAuditForUid } from '../lib/auditLog.js';
 import { getSharedStore } from '../lib/sharedStore.js';
 import { readUsage } from '../lib/usageMeter.js';
+import { extraOperators } from '../lib/adminSettings.js';
 import { requireUser } from '../middleware/requireUser.js';
 
 export const opsRouter = Router();
 
+/** The emails in OPERATOR_EMAILS. They are always operators and cannot be removed from the admin panel. */
+export function ownerEmails(env: Record<string, string | undefined> = process.env): string[] {
+  return (env.OPERATOR_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Owners (OPERATOR_EMAILS) plus operators added in the admin panel. */
 export function isOperator(email: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
   if (!email) return false;
-  const list = (env.OPERATOR_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-  return list.includes(email.trim().toLowerCase());
+  const e = email.trim().toLowerCase();
+  return ownerEmails(env).includes(e) || extraOperators().includes(e);
 }
 
 // Public: for uptime monitors. Proves the server is up and its cache store answers. Reveals nothing else.
