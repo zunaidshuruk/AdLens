@@ -20,6 +20,8 @@ export interface RunDigestsDeps {
   store: DigestStore;
   /** Returns null when the subscription is no longer valid (project deleted, person removed). */
   loadData(sub: DigestSubscription, range: { start7: string; end: string; start29: string }): Promise<DigestData | null>;
+  /** False when the workspace's plan does not include summaries. The subscription is kept, just not served. */
+  allowed?(sub: DigestSubscription): Promise<boolean>;
   projectInfo(sub: DigestSubscription): Promise<{ name: string; domain: string } | null>;
   send(msg: MailMessage): Promise<MailResult>;
   appUrl: string;
@@ -44,6 +46,7 @@ export async function runDigests(deps: RunDigestsDeps): Promise<RunDigestsSummar
     try {
       const weeklyDue = sub.weekly && (!sub.lastWeeklyAt || now.getTime() - Date.parse(sub.lastWeeklyAt) >= 7 * DAY - 60 * 60 * 1000);
       if (!weeklyDue && !sub.alerts) { summary.skipped++; continue; }
+      if (deps.allowed && !(await deps.allowed(sub))) { summary.skipped++; continue; }
       const info = await deps.projectInfo(sub);
       if (!info) { await deps.store.delete(sub.id); summary.removed++; continue; }
       const data = await deps.loadData(sub, range);

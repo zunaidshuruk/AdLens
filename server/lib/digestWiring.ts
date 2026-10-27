@@ -1,6 +1,7 @@
 import type { GA4Overview, GA4TrafficPoint } from '../../src/types/index.js';
 import '../reports/ga4Reports.js';
 import { reportRegistry } from '../reports/registry.js';
+import { getPlanFeatures } from '../config/plans.js';
 import { getServerConfig } from '../config.js';
 import { previousPeriod } from './dateMath.js';
 import type { RunDigestsDeps } from './digestRunner.js';
@@ -24,6 +25,11 @@ export function productionDigestDeps(now?: Date): RunDigestsDeps {
     appUrl: getServerConfig().appBaseUrl,
     now,
     send: (m) => sendMail(m),
+    // A workspace whose plan no longer includes summaries is skipped, not unsubscribed: upgrading brings them back.
+    async allowed(sub) {
+      const ws = await getFirestoreStore().getWorkspace(sub.workspaceId);
+      return !ws || getPlanFeatures(ws.plan).emailSummaries;
+    },
     async projectInfo(sub) {
       const p = await stillValid(sub);
       return p ? { name: p.name, domain: p.domain } : null;

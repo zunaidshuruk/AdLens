@@ -1,3 +1,4 @@
+import { getPlanFeatures } from '../config/plans.js';
 import { Router, type Request, type Response } from 'express';
 import { listAuditForWorkspace, recordAudit } from '../lib/auditLog.js';
 import { revokeUserSessions } from '../lib/firebaseAdmin.js';
@@ -157,6 +158,10 @@ ssoRouter.post('/join', async (req: Request, res: Response) => {
   if (!rule || !rule.autoJoin || req.user!.signInProvider !== rule.providerId) {
     res.json({ joined: false });
     return;
+  }
+  const wsForJoin = await getFirestoreStore().getWorkspace(rule.workspaceId);
+  if (wsForJoin && !Object.prototype.hasOwnProperty.call(wsForJoin.members, req.user!.uid) && Object.keys(wsForJoin.members).length >= getPlanFeatures(wsForJoin.plan).maxMembers) {
+    return err(res, 403, 'PLAN_MEMBER_LIMIT', `This workspace's plan allows ${getPlanFeatures(wsForJoin.plan).maxMembers} members. Ask the workspace owner to upgrade.`);
   }
   const ok = await getFirestoreStore().addWorkspaceMember(rule.workspaceId, req.user!.uid, 'member');
   res.json({ joined: ok, workspaceId: ok ? rule.workspaceId : null });

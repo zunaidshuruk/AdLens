@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { getPlanFeatures } from '../config/plans.js';
 import { getFirestoreStore } from '../lib/firestore.js';
 import { getDigestStore, subscriptionId } from '../lib/digestStore.js';
 import { mailConfigured } from '../lib/mailer.js';
@@ -38,6 +39,10 @@ digestRouter.put('/', async (req: Request, res: Response) => {
   const project = isMember ? await fs.getProject(workspaceId, projectId) : null;
   if (!project || project.isDemo) {
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Project not found.' } });
+    return;
+  }
+  if ((b.weekly || b.alerts) && !getPlanFeatures(ws?.plan).emailSummaries) {
+    res.status(403).json({ error: { code: 'PLAN_FEATURE', message: 'Email summaries and alerts are part of the Pro and Business plans. Upgrade to turn them on.' } });
     return;
   }
   const store = getDigestStore();

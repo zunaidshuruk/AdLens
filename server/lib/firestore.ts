@@ -1,5 +1,5 @@
 import { FieldValue, getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore';
-import { getPlanLimits } from '../config/plans.js';
+import { DEFAULT_NEW_WORKSPACE_PLAN, effectivePlan, getPlanLimits } from '../config/plans.js';
 import { getFirebaseAdminApp } from './firebaseAdmin.js';
 
 export function getUtcMonthPeriod(date: Date = new Date()): string {
@@ -75,7 +75,12 @@ export interface WorkspaceDoc {
   id: string;
   name: string;
   ownerId: string;
+  /** The plan whose limits apply right now (the stored plan, or 'free' once a paid plan has run out). */
   plan: string;
+  /** The plan as it was set by the operator. */
+  storedPlan?: string;
+  /** When the paid plan ends (ISO), or null for no end date. */
+  planExpiresAt?: string | null;
   members: Record<string, WorkspaceRole>;
   memberIds: string[];
   logoURL?: string | null;
@@ -167,6 +172,10 @@ export interface FirestoreStoreAdapter {
       defaults?: WorkspaceDefaults;
     }
   ): Promise<WorkspaceDoc>;
+  /** Operator only: set the plan and its end date. Returns null when the workspace does not exist. */
+  setWorkspacePlan(wsId: string, plan: string, planExpiresAt: string | null): Promise<WorkspaceDoc | null>;
+  /** Operator only: recent workspaces, optionally filtered by id or name. */
+  listWorkspacesForOperator(query: string, limit: number): Promise<WorkspaceDoc[]>;
   deleteWorkspaceRecursive(wsId: string): Promise<void>;
   removeWorkspaceMember(wsId: string, uid: string): Promise<void>;
   /** Adds a member (or leaves an existing member's role alone). Returns false when the workspace does not exist. */
@@ -302,7 +311,9 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     id,
     name: typeof raw.name === 'string' ? raw.name : 'My workspace',
     ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : '',
-    plan: typeof raw.plan === 'string' ? raw.plan : 'beta',
+    plan: effectivePlan(typeof raw.plan === 'string' ? raw.plan : 'beta', mapExpiry(raw.planExpiresAt)),
+    storedPlan: typeof raw.plan === 'string' ? raw.plan : 'beta',
+    planExpiresAt: mapExpiry(raw.planExpiresAt),
     members: membersRaw,
     memberIds: memberIdsRaw,
     logoURL: typeof raw.logoURL === 'string' ? raw.logoURL : null,
@@ -315,6 +326,17 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     createdAt: serializeTimestamp(raw.createdAt, nowIso),
     updatedAt: serializeTimestamp(raw.updatedAt, nowIso),
   };
+}
+
+function withEffectivePlan(ws: WorkspaceDoc): WorkspaceDoc {
+  const stored = ws.storedPlan ?? ws.plan;
+  return { ...structuredClone(ws), storedPlan: stored, plan: effectivePlan(stored, ws.planExpiresAt ?? null) };
+}
+
+function mapExpiry(v: unknown): string | null {
+  if (typeof v === 'string' && Number.isFinite(Date.parse(v))) return v;
+  if (v && typeof (v as { toDate?: () => Date }).toDate === 'function') return (v as { toDate: () => Date }).toDate().toISOString();
+  return null;
 }
 
 function mapRawProject(wsId: string, id: string, raw: Record<string, unknown>): ProjectDoc {
@@ -409,7 +431,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
         const newWsPayload = {
           name: 'My workspace',
           ownerId: uid,
-          plan: 'beta',
+          plan: DEFAULT_NEW_WORKSPACE_PLAN,
           members,
           memberIds,
           hasLogo: false,
@@ -422,7 +444,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
           id: defaultWsId,
           name: 'My workspace',
           ownerId: uid,
-          plan: 'beta',
+          plan: DEFAULT_NEW_WORKSPACE_PLAN,
           members,
           memberIds,
           logoURL: null,
@@ -581,6 +603,29 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     await ref.update(updateData);
     const updated = await ref.get();
     return mapRawWorkspace(updated.id, updated.data() ?? {});
+  },
+
+  async setWorkspacePlan(wsId, plan, planExpiresAt) {
+    const db = getAdminFirestore();
+    const ref = db.collection('workspaces').doc(wsId);
+    const snap = await ref.get();
+    if (!snap.exists) return null;
+    await ref.update({ plan, planExpiresAt, updatedAt: FieldValue.serverTimestamp() });
+    const updated = await ref.get();
+    return mapRawWorkspace(updated.id, updated.data() ?? {});
+  },
+
+  async listWorkspacesForOperator(query, limit) {
+    const db = getAdminFirestore();
+    const q = query.trim().toLowerCase();
+    if (q) {
+      const direct = await db.collection('workspaces').doc(query.trim()).get();
+      if (direct.exists) return [mapRawWorkspace(direct.id, direct.data() ?? {})];
+    }
+    const snap = await db.collection('workspaces').limit(500).get();
+    const all = snap.docs.map((d) => mapRawWorkspace(d.id, d.data() ?? {}));
+    const hits = q ? all.filter((w) => w.id.toLowerCase().includes(q) || w.name.toLowerCase().includes(q)) : all;
+    return hits.slice(0, limit);
   },
 
   async deleteWorkspaceRecursive(wsId: string): Promise<void> {
@@ -819,7 +864,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     return db.runTransaction(async (tx) => {
       const [wsSnap, usageSnap] = await Promise.all([tx.get(wsRef), tx.get(usageRef)]);
       const rawPlan = wsSnap.exists ? wsSnap.data()?.plan : undefined;
-      const plan = typeof rawPlan === 'string' ? rawPlan : 'beta';
+      const plan = effectivePlan(typeof rawPlan === 'string' ? rawPlan : 'beta', mapExpiry(wsSnap.exists ? wsSnap.data()?.planExpiresAt : undefined));
       const limit = getPlanLimits(plan).aiQuestionsPerMonth;
 
       const rawUsed = usageSnap.exists ? usageSnap.data()?.aiQuestions : 0;
@@ -967,7 +1012,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
           id: wsId,
           name: 'My workspace',
           ownerId: uid,
-          plan: 'beta',
+          plan: DEFAULT_NEW_WORKSPACE_PLAN,
           members: { [uid]: 'owner' },
           memberIds: [uid],
           logoURL: null,
@@ -1063,12 +1108,26 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
           (w) =>
             Object.prototype.hasOwnProperty.call(w.members, uid) || w.memberIds.includes(uid)
         )
-        .map((w) => structuredClone(w));
+        .map((w) => withEffectivePlan(w));
     },
 
     async getWorkspace(wsId) {
       const ws = workspaces.get(wsId);
-      return ws ? structuredClone(ws) : null;
+      return ws ? withEffectivePlan(ws) : null;
+    },
+
+    async setWorkspacePlan(wsId, plan, planExpiresAt) {
+      const ws = workspaces.get(wsId);
+      if (!ws) return null;
+      const updated: WorkspaceDoc = { ...ws, plan, storedPlan: plan, planExpiresAt, updatedAt: new Date().toISOString() };
+      workspaces.set(wsId, updated);
+      return withEffectivePlan(updated);
+    },
+
+    async listWorkspacesForOperator(query, limit) {
+      const q = query.trim().toLowerCase();
+      const all = [...workspaces.values()].map(withEffectivePlan);
+      return (q ? all.filter((w) => w.id.toLowerCase().includes(q) || w.name.toLowerCase().includes(q)) : all).slice(0, limit);
     },
 
     async updateWorkspace(wsId, patch) {
@@ -1088,7 +1147,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         updatedAt: new Date().toISOString(),
       };
       workspaces.set(wsId, updated);
-      return structuredClone(updated);
+      return withEffectivePlan(updated);
     },
 
     async deleteWorkspaceRecursive(wsId) {
@@ -1231,7 +1290,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
     async consumeAiQuota(wsId, period = getUtcMonthPeriod()) {
       return runAtomic(async () => {
         const ws = workspaces.get(wsId);
-        const limit = getPlanLimits(ws?.plan).aiQuestionsPerMonth;
+        const limit = getPlanLimits(effectivePlan(ws?.storedPlan ?? ws?.plan, ws?.planExpiresAt)).aiQuestionsPerMonth;
         let map = usageByWs.get(wsId);
         if (!map) {
           map = new Map();

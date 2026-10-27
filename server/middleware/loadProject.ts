@@ -1,10 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
+import { historyViolation } from '../config/plans.js';
 import { getFirestoreStore, type ProjectDoc } from '../lib/firestore.js';
 
 declare global {
   namespace Express {
     interface Request {
       project?: ProjectDoc;
+      /** The plan whose limits apply to the workspace of `project`. */
+      workspacePlan?: string;
     }
   }
 }
@@ -92,7 +95,16 @@ export async function loadProject(
       return;
     }
 
+    // Plan limit: how far back the main date range may start (query string or JSON body).
+    const bodyStart = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>).startDate : undefined;
+    const refused = historyViolation(workspace.plan, req.query?.startDate ?? bodyStart);
+    if (refused) {
+      res.status(403).json({ error: { code: 'PLAN_HISTORY_LIMIT', message: refused } });
+      return;
+    }
+
     req.project = project;
+    req.workspacePlan = workspace.plan;
     next();
   } catch (err) {
     res.status(500).json({

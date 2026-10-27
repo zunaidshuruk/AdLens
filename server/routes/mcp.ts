@@ -1,3 +1,4 @@
+import { getPlanFeatures } from '../config/plans.js';
 import { recordAudit } from '../lib/auditLog.js';
 import express, { Router, type NextFunction, type Request, type Response } from 'express';
 import { getServerConfig } from '../config.js';
@@ -220,11 +221,22 @@ mcpAccountRouter.get('/keys', async (req, res) => {
   });
 });
 
+/** A person's key allowance is the best one among the workspaces they belong to. */
+async function maxKeysFor(uid: string): Promise<number> {
+  try {
+    const list = await getFirestoreStore().listWorkspacesForUser(uid);
+    if (list.length === 0) return getPlanFeatures('free').maxMcpKeys;
+    return Math.max(...list.map((w) => getPlanFeatures(w.plan).maxMcpKeys));
+  } catch {
+    return getPlanFeatures('free').maxMcpKeys;
+  }
+}
+
 mcpAccountRouter.post('/keys', async (req, res) => {
   try {
     const body = (req.body ?? {}) as { name?: unknown; projects?: unknown };
     const projects = await onlyMine(req.user!.uid, cleanProjects(body.projects));
-    const { record, secret } = await createAccessKey(getMcpStore(), req.user!.uid, typeof body.name === 'string' ? body.name : '', projects);
+    const { record, secret } = await createAccessKey(getMcpStore(), req.user!.uid, typeof body.name === 'string' ? body.name : '', projects, new Date(), await maxKeysFor(req.user!.uid));
     void recordAudit({ uid: req.user!.uid, action: 'mcp.key_created', detail: record.name });
     res.status(201).json({ key: { id: record.id, name: record.name, prefix: record.prefix, projects: record.projects, createdAt: record.createdAt, lastUsedAt: null }, secret });
   } catch (e) {

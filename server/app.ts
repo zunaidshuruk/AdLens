@@ -1,4 +1,5 @@
 import { securityRouter, ssoRouter } from './routes/sso.js';
+import { billingRouter } from './routes/billing.js';
 import { digestRouter } from './routes/digest.js';
 import { reportError } from './lib/errorReporter.js';
 import { opsRouter } from './routes/ops.js';
@@ -98,6 +99,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/ops', opsRouter);
 app.use('/api/digest', digestRouter);
+app.use('/api/billing', billingRouter);
 app.use('/api/sso', ssoRouter);
 app.use('/api/security', securityRouter);
 

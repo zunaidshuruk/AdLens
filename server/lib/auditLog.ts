@@ -24,7 +24,10 @@ export type AuditAction =
   | 'sso.configured'
   | 'sso.removed'
   | 'sso.enforcement_changed'
-  | 'sso.signin_blocked';
+  | 'sso.signin_blocked'
+  | 'plan.changed'
+  | 'plan.requested'
+  | 'invoice.recorded';
 
 export interface AuditEvent {
   id: string;

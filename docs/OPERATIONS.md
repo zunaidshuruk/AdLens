@@ -53,3 +53,15 @@ Rules the server enforces: a domain counts only after the DNS proof; public emai
 - Digest dates are UTC, not the project's time zone.
 - An old browser tab that was open during a deploy may need a reload the first time it opens a screen it had not loaded yet (screens now load on demand).
 - Subscription billing and plan limits for Enterprise are parked until the plans are decided.
+
+## Plans and billing (Sprint 20)
+
+There is no payment provider yet. A customer asks for an upgrade, pays you directly (bank, bKash, card link...), and you record it. Plans: Free, Pro, Business (and "Beta" for the early test workspaces). Limits live in `server/config/plans.ts`.
+
+1. Put your own email in `OPERATOR_EMAILS` (the same setting as the usage view). Only those emails may use the operator calls below.
+2. Upgrade requests arrive in the operator list (`GET /api/billing/admin/requests`) and, if `RESEND_API_KEY`, `MAIL_FROM` and `SUPPORT_EMAIL` are set, by email.
+3. After payment: `POST /api/billing/admin/invoices` (invoice number, amount, BDT or USD, plan, period) and `POST /api/billing/admin/set-plan` (`workspaceId`, `plan`, `endsOn` = last paid day, optional `note`). Setting a paid plan closes the workspace's open request.
+4. When `endsOn` passes there are 7 days of grace, then the workspace behaves as Free. Nothing is deleted: the workspace simply cannot add more than Free allows. Setting the plan again restores everything.
+5. New workspaces start on `DEFAULT_NEW_WORKSPACE_PLAN` (currently `beta`, so nothing changes for anyone yet). Switch it to `free` when the plan screens are live.
+
+The operator screens (Sprint 20e) will wrap these calls; until then they are plain API calls. Refund policy: no refunds after 3 days.

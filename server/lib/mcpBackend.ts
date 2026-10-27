@@ -1,3 +1,4 @@
+import { historyViolation } from '../config/plans.js';
 import { z } from 'zod';
 import { compactReport } from '../../src/utils/aiReportCompactor.js';
 import { withDateDefaults } from '../../src/utils/aiTools.js';
@@ -70,6 +71,9 @@ export const mcpBackend: McpBackend = {
     }
     const project = access ? await loadAllowedProject(p, access) : null;
     if (!project) throw new McpToolError('That project is no longer available to this connection.');
+    const wsForPlan = await getFirestoreStore().getWorkspace(project.workspaceId);
+    const tooOld = historyViolation(wsForPlan?.plan, a.start_date);
+    if (tooOld) throw new McpToolError(tooOld);
 
     const parsed = (def.input as z.ZodType).safeParse(
       withDateDefaults(a.args, { startDate: a.start_date, endDate: a.end_date, ...(a.compare_start_date && a.compare_end_date ? { compareStartDate: a.compare_start_date, compareEndDate: a.compare_end_date } : {}) }),

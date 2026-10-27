@@ -121,7 +121,7 @@ agentsRouter.post('/', async (req, res) => {
 
     const store = getAgentStore();
     if ((await store.list(s.ws)).length >= getContentLimits(s.plan).maxAgents) {
-      return fail(res, 409, 'LIMIT_REACHED', `A workspace can have up to ${getContentLimits(s.plan).maxAgents} AI agents. Delete one first.`);
+      return fail(res, 409, 'LIMIT_REACHED', getContentLimits(s.plan).maxAgents === 0 ? 'Your plan does not include your own AI agents. Upgrade to add one.' : `Your plan allows ${getContentLimits(s.plan).maxAgents} AI agents. Delete one or upgrade to add more.`);
     }
 
     const id = newDocId();

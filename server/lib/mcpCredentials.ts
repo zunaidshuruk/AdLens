@@ -172,12 +172,12 @@ export function cleanProjects(input: unknown): ProjectAccess[] {
 // Phase A: access keys
 // ---------------------------------------------------------------------------
 
-export async function createAccessKey(store: McpStore, uid: string, name: string, projects: ProjectAccess[], now = new Date()): Promise<{ record: McpKeyRecord; secret: string }> {
+export async function createAccessKey(store: McpStore, uid: string, name: string, projects: ProjectAccess[], now = new Date(), maxKeys = MAX_KEYS_PER_USER): Promise<{ record: McpKeyRecord; secret: string }> {
   const cleanName = name.trim().slice(0, 60);
   if (!cleanName) throw new McpCredentialError('INVALID_NAME', 'Give the key a name, for example the tool you will use it in.');
   if (projects.length === 0) throw new McpCredentialError('NO_PROJECTS', 'Choose at least one project this key may read.');
   const active = (await store.listKeys(uid)).filter((k) => !k.revokedAt);
-  if (active.length >= MAX_KEYS_PER_USER) throw new McpCredentialError('LIMIT_REACHED', `You can have up to ${MAX_KEYS_PER_USER} active keys. Revoke one first.`, 409);
+  if (active.length >= maxKeys) throw new McpCredentialError('LIMIT_REACHED', maxKeys === 0 ? 'Your plan does not include access keys. Upgrade to add one.' : `Your plan allows ${maxKeys} active ${maxKeys === 1 ? 'key' : 'keys'}. Revoke one or upgrade to add more.`, 409);
   const secret = randomSecret(KEY_PREFIX);
   const record: McpKeyRecord = { id: newId(), uid, name: cleanName, prefix: secret.slice(0, KEY_PREFIX.length + 4), hash: hashSecret(secret), projects, createdAt: now.toISOString(), lastUsedAt: null, revokedAt: null };
   await store.putKey(record);

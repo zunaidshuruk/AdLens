@@ -33,10 +33,10 @@ export async function listSavedReports(store: ProjectDocsStore, ws: string, proj
   return docs.map(toSaved).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function createSavedReport(store: ProjectDocsStore, ws: string, project: string, uid: string, input: SavedReportInput, now = new Date()): Promise<SavedReport> {
+export async function createSavedReport(store: ProjectDocsStore, ws: string, project: string, uid: string, input: SavedReportInput, now = new Date(), maxReports = MAX_SAVED_REPORTS_PER_PROJECT): Promise<SavedReport> {
   const existing = await store.list(ws, project, 'savedReports');
-  if (existing.length >= MAX_SAVED_REPORTS_PER_PROJECT) {
-    throw new SavedReportError('LIMIT_REACHED', `A project can keep up to ${MAX_SAVED_REPORTS_PER_PROJECT} saved reports. Delete one first.`, 409);
+  if (existing.length >= maxReports) {
+    throw new SavedReportError('LIMIT_REACHED', `Your plan allows ${maxReports} saved ${maxReports === 1 ? 'report' : 'reports'} per project. Delete one or upgrade to save more.`, 409);
   }
   const iso = now.toISOString();
   const doc: SavedReport = { id: newDocId(), name: input.name, source: input.source, spec: input.spec, createdBy: uid, createdAt: iso, updatedAt: iso };

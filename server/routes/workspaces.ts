@@ -1,3 +1,4 @@
+import { getBillingStore } from '../lib/billingStore.js';
 import { getDigestStore } from '../lib/digestStore.js';
 import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
 import { Router, type Request, type Response } from 'express';
@@ -520,6 +521,7 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
     // Step 3: Clear oauth-state cookie and session cookie
     console.info('[delete-account]', { uid, step: 'clear_cookies_and_complete' });
     try { await getDigestStore().deleteForUid(uid); } catch { /* best effort */ }
+    try { await getBillingStore().deleteRequestsForUid(uid); } catch { /* best effort */ }
     await recordAccountDeletion(uid);
     clearOAuthState(res);
     clearSession(res);

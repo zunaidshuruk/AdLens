@@ -1,3 +1,4 @@
+import { getContentLimits } from '../config/plans.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { requireGoogleConfigured } from '../config.js';
@@ -98,7 +99,7 @@ exploreRouter.post('/search-console/run', (req, res) => void run(req, res, 'sear
 // Saved reports (per project, stored by the server)
 // ---------------------------------------------------------------------------
 
-async function requireProjectMember(req: Request, res: Response, write: boolean): Promise<{ ws: string; project: string } | null> {
+async function requireProjectMember(req: Request, res: Response, write: boolean): Promise<{ ws: string; project: string; plan: string } | null> {
   const project = req.project;
   if (!project) {
     fail(res, 400, 'PROJECT_REQUIRED', 'Choose a project first.');
@@ -110,7 +111,7 @@ async function requireProjectMember(req: Request, res: Response, write: boolean)
     fail(res, 403, 'NOT_ALLOWED', 'You do not have permission to change reports in this project.');
     return null;
   }
-  return { ws: project.workspaceId, project: project.id };
+  return { ws: project.workspaceId, project: project.id, plan: ws?.plan ?? 'beta' };
 }
 
 exploreRouter.get('/saved', async (req, res) => {
@@ -127,7 +128,7 @@ exploreRouter.post('/saved', async (req, res) => {
     if (!scope) return;
     const parsed = savedReportInputSchema.safeParse(req.body);
     if (!parsed.success) return fail(res, 400, 'INVALID_REPORT', parsed.error.issues[0]?.message || 'The report is not valid.');
-    const report = await createSavedReport(getProjectDocsStore(), scope.ws, scope.project, req.user!.uid, parsed.data);
+    const report = await createSavedReport(getProjectDocsStore(), scope.ws, scope.project, req.user!.uid, parsed.data, new Date(), getContentLimits(scope.plan).maxSavedReports);
     res.status(201).json({ report });
   } catch (err) { handleError(res, err); }
 });
