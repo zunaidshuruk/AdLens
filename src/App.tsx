@@ -15,6 +15,8 @@ import { AIAnalystPage } from './pages/AIAnalystPage';
 import { AITrafficPage } from './pages/AITrafficPage';
 import { AuthActionPage } from './pages/AuthActionPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { DashboardsPage } from './pages/DashboardsPage';
 import { ExplorePage } from './pages/ExplorePage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { GA4Page } from './pages/GA4Page';
@@ -61,6 +63,8 @@ export default function App() {
                   <Route path="/ai-traffic" element={<AITrafficPage />} />
                   <Route path="/search-console" element={<SearchConsolePage />} />
                   <Route path="/meta-ads" element={<MetaAdsPage />} />
+                  <Route path="/dashboards" element={<DashboardsPage />} />
+                  <Route path="/dashboards/:id" element={<DashboardPage />} />
                   <Route path="/explore" element={<ExplorePage />} />
                   <Route path="/ai-analyst" element={<AIAnalystPage />} />
                   <Route path="/connections" element={<ConnectionsPage />} />

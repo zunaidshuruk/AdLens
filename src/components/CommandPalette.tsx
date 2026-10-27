@@ -167,6 +167,14 @@ export const CommandPalette: React.FC = () => {
         run: () => navigate('/ai-traffic'),
       },
       {
+        id: 'nav:dashboards',
+        label: 'Dashboards',
+        group: 'Navigate',
+        keywords: ['dashboard', 'dashboards', 'widgets', 'template', 'present', 'screen'],
+        hint: '/dashboards',
+        run: () => navigate('/dashboards'),
+      },
+      {
         id: 'nav:explore',
         label: 'Explore (build a report)',
         group: 'Navigate',

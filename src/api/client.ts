@@ -1,4 +1,5 @@
 import { getCurrentIdToken } from '../lib/firebase.js';
+import type { Dashboard, DashboardInput } from '../types/dashboard.js';
 import type { ExploreCatalog, ExploreResult, ExploreSource, ExploreSpec, SavedReport } from '../types/explore.js';
 import type {
   AiUsageResponse,
@@ -687,5 +688,29 @@ export const apiClient = {
 
   async deleteSavedReport(id: string): Promise<void> {
     await apiRequest<void>(`/api/explore/saved/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  async listDashboards(): Promise<Dashboard[]> {
+    const res = await apiRequest<{ dashboards: Dashboard[] }>('/api/dashboards');
+    return res.dashboards;
+  },
+
+  async getDashboard(id: string): Promise<Dashboard> {
+    const res = await apiRequest<{ dashboard: Dashboard }>(`/api/dashboards/${encodeURIComponent(id)}`);
+    return res.dashboard;
+  },
+
+  async createDashboard(input: DashboardInput): Promise<Dashboard> {
+    const res = await apiRequest<{ dashboard: Dashboard }>('/api/dashboards', { method: 'POST', body: JSON.stringify(input) });
+    return res.dashboard;
+  },
+
+  async updateDashboard(id: string, input: DashboardInput): Promise<Dashboard> {
+    const res = await apiRequest<{ dashboard: Dashboard }>(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) });
+    return res.dashboard;
+  },
+
+  async deleteDashboard(id: string): Promise<void> {
+    await apiRequest<void>(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };
