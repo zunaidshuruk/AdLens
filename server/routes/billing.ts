@@ -3,6 +3,7 @@
  * receives the payment by hand, then records the invoice and sets the workspace's plan and end date.
  * A future payment webhook only has to do the same two things (record an invoice, set the plan).
  */
+import { createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
@@ -17,6 +18,8 @@ import { getBillingStore, newBillingId, type PlanRequest } from '../lib/billingS
 import { getFirestoreStore, getUtcMonthPeriod, type WorkspaceDoc } from '../lib/firestore.js';
 import { mailConfigured, sendMail } from '../lib/mailer.js';
 import { requireUser } from '../middleware/requireUser.js';
+import { revokeUserSessions, setTwoStepClaim } from '../lib/firebaseAdmin.js';
+import { twoStepStore } from '../lib/twoStep.js';
 import { can, roleDef } from '../lib/permissions.js';
 import { operatorOnly, requirePlatform } from '../middleware/operatorOnly.js';
 import { isOperator } from './ops.js';
@@ -322,6 +325,16 @@ admin.get('/users', requirePlatform('workspaces.view'), async (req: Request, res
     workspaces: (await store.listWorkspacesForUser(u.uid)).map((w) => ({ id: w.id, name: w.name, role: roleDef(w, w.members[u.uid])?.name ?? 'Member', plan: w.plan })),
   })));
   res.json({ users: out });
+});
+
+// Lost phone and no backup codes: staff switch a person's two-step verification off (they sign in again and can set it up anew).
+admin.post('/users/:uid/two-step/reset', requirePlatform('workspaces.members'), async (req: Request, res: Response) => {
+  const uid = String(req.params.uid);
+  await twoStepStore().delete(uid);
+  await setTwoStepClaim(uid, false).catch(() => undefined);
+  await revokeUserSessions(uid).catch(() => undefined);
+  void recordAudit({ uid: req.user!.uid, action: 'twostep.reset_by_staff', detail: `for ${createHash('sha256').update(uid).digest('hex').slice(0, 8)}` });
+  res.status(204).end();
 });
 
 // Who is on which plan: one row per person per workspace, with that workspace's plan.

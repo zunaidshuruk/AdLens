@@ -3,6 +3,7 @@ import { decideSignIn, domainOfEmail, lookupDomainRule } from '../lib/orgSso.js'
 import { getSharedStore } from '../lib/sharedStore.js';
 import { verifyIdToken } from '../lib/firebaseAdmin.js';
 import { clearSession, readSession } from '../lib/session.js';
+import { PROOF_HEADER, proofIsValid } from '../lib/twoStep.js';
 import { ensureVaultFromCookie } from '../lib/vault.js';
 
 export { ensureVaultFromCookie };
@@ -31,10 +32,22 @@ declare global {
 
 const SSO_VERIFIED_PROVIDERS = new Set(['google.com', 'microsoft.com']);
 
-export async function requireUser(
+/**
+ * Signed in, email verified, company rules met. When the person turned on two-step verification (the `twoStep` flag on their
+ * sign-in token), a valid proof of their second step must also come with the request, except on the few calls that
+ * let them give that proof (`skipSecondStep`).
+ */
+function buildRequireUser(skipSecondStep: boolean) {
+  return async function requireUserMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
+    await authenticate(req, res, next, skipSecondStep);
+  };
+}
+
+async function authenticate(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
+  skipSecondStep: boolean
 ): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
@@ -119,6 +132,20 @@ export async function requireUser(
         ? decoded.auth_time
         : undefined;
 
+    if (!skipSecondStep && (decoded as { twoStep?: unknown }).twoStep === true) {
+      const proof = req.headers[PROOF_HEADER];
+      let ok = false;
+      try {
+        ok = proofIsValid(Array.isArray(proof) ? proof[0] : proof, decoded.uid, authTime);
+      } catch {
+        ok = false; // no encryption key configured: treat as not proven
+      }
+      if (!ok) {
+        res.status(403).json({ error: { code: 'TWO_STEP_REQUIRED', message: 'Enter the 6-digit code from your authenticator app to continue.' } });
+        return;
+      }
+    }
+
     req.user = {
       uid: decoded.uid,
       email: typeof decoded.email === 'string' ? decoded.email : null,
@@ -144,6 +171,10 @@ export async function requireUser(
     });
   }
 }
+
+export const requireUser = buildRequireUser(false);
+/** For the two-step calls themselves (status, give the code): everything except the second-step proof. */
+export const requireUserFirstStep = buildRequireUser(true);
 
 /**
  * Ensures that if an encrypted adlens_session cookie has Google data, its bound uid matches req.user.uid.

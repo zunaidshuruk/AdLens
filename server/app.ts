@@ -1,6 +1,7 @@
 import { securityRouter, ssoRouter } from './routes/sso.js';
 import { billingRouter } from './routes/billing.js';
 import { teamRouter } from './routes/team.js';
+import { twoStepRouter } from './routes/twoStep.js';
 import { adminRouter } from './routes/admin.js';
 import { featureGate } from './middleware/featureGate.js';
 import { digestRouter } from './routes/digest.js';
@@ -105,6 +106,7 @@ app.use('/api/ops', opsRouter);
 app.use('/api/digest', digestRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/team', teamRouter);
+app.use('/api/2fa', twoStepRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/sso', ssoRouter);
 app.use('/api/security', securityRouter);

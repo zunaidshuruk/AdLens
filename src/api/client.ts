@@ -1,4 +1,5 @@
 import { getCurrentIdToken } from '../lib/firebase.js';
+import { announceTwoStepRequired, clearProof, getProof } from '../lib/twoStep';
 import type { AgentOptions, AgentTestResult, PublicAgent } from '../types/agents.js';
 import type { Dashboard, DashboardInput } from '../types/dashboard.js';
 import type { ExploreCatalog, ExploreResult, ExploreSource, ExploreSpec, SavedReport } from '../types/explore.js';
@@ -133,6 +134,9 @@ async function performFetch(
     headers.Authorization = `Bearer ${idToken}`;
   }
 
+  const twoStepProof = isPublicEndpoint ? null : getProof();
+  if (twoStepProof) headers['X-AdLens-2FA'] = twoStepProof;
+
   if (!isPublicEndpoint && activeProjectHeader && !headers['X-AdLens-Project']) {
     headers['X-AdLens-Project'] = activeProjectHeader;
   }
@@ -249,8 +253,14 @@ export async function apiRequest<T>(
       navigateToAuthRoute(`/sign-in-blocked?reason=${parsedErr.code}`);
     }
 
+    // Two-step verification (Sprint 22): the saved proof is missing or belongs to an older sign-in, so ask for the code.
+    if (response.status === 403 && parsedErr.code === 'TWO_STEP_REQUIRED') {
+      clearProof();
+      announceTwoStepRequired();
+    }
+
     // Admin panel: the one-hour admin session is over, so ask for the password again on the separate admin login page.
-    if (response.status === 403 && parsedErr.code === 'ADMIN_REAUTH' && typeof window !== 'undefined' && window.location.pathname !== '/admin-login') {
+    if (response.status === 403 && (parsedErr.code === 'ADMIN_REAUTH' || parsedErr.code === 'ADMIN_GOOGLE_ONLY') && typeof window !== 'undefined' && window.location.pathname !== '/admin-login') {
       window.location.assign('/admin-login?expired=1');
     }
 
@@ -340,7 +350,7 @@ export interface AdminSettingsView {
   updatedAt: string | null;
   updatedBy: string | null;
 }
-export interface AdminSession { operator: boolean; secondsLeft: number; sessionMinutes: number; email: string | null; role: string | null; roleName: string | null; permissions: string[] }
+export interface AdminSession { operator: boolean; viaGoogle: boolean; secondsLeft: number; sessionMinutes: number; email: string | null; role: string | null; roleName: string | null; permissions: string[] }
 export interface AdminCheck { id: string; title: string; status: 'pass' | 'fail' | 'warn'; detail: string }
 export interface AdminOverview {
   counts: { workspaces: number; openRequests: number; endingSoon: number };
@@ -1002,6 +1012,27 @@ export const apiClient = {
   },
   workspaceAudit(wsId: string): Promise<{ events: { id: string; at: string; action: string; detail: string | null; by: string }[] }> {
     return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}/audit`);
+  },
+  twoStepStatus(): Promise<{ enabled: boolean; backupCodesLeft: number; enabledAt: string | null; proven: boolean }> {
+    return apiRequest('/api/2fa/status');
+  },
+  twoStepStart(): Promise<{ secret: string; otpauthUri: string }> {
+    return apiRequest('/api/2fa/setup/start', { method: 'POST', body: '{}' });
+  },
+  twoStepConfirm(code: string): Promise<{ backupCodes: string[]; proof: string }> {
+    return apiRequest('/api/2fa/setup/confirm', { method: 'POST', body: JSON.stringify({ code }) });
+  },
+  twoStepVerify(code: string): Promise<{ proof: string; backupCodesLeft: number; usedBackupCode?: boolean }> {
+    return apiRequest('/api/2fa/verify', { method: 'POST', body: JSON.stringify({ code }) });
+  },
+  twoStepNewBackupCodes(code: string): Promise<{ backupCodes: string[] }> {
+    return apiRequest('/api/2fa/backup-codes', { method: 'POST', body: JSON.stringify({ code }) });
+  },
+  twoStepDisable(code: string): Promise<void> {
+    return apiRequest('/api/2fa/disable', { method: 'POST', body: JSON.stringify({ code }) });
+  },
+  adminResetTwoStep(uid: string): Promise<void> {
+    return apiRequest(`/api/billing/admin/users/${encodeURIComponent(uid)}/two-step/reset`, { method: 'POST', body: '{}' });
   },
   signOutEverywhere(): Promise<{ ok: boolean }> {
     return apiRequest('/api/security/sign-out-everywhere', { method: 'POST' });

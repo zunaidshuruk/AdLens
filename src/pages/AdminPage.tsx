@@ -286,10 +286,15 @@ function Requests({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function Users({ onOpen }: { onOpen: (id: string) => void }) {
+function Users({ onOpen, canReset }: { onOpen: (id: string) => void; canReset: boolean }) {
   const [q, setQ] = useState('');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const reset = async (u: AdminUser) => {
+    if (!window.confirm(`Switch off two-step verification for ${u.email}? Only do this after you are sure it is really them (for example a lost phone). They will be signed out on every device.`)) return;
+    try { await apiClient.adminResetTwoStep(u.uid); setNote(`Two-step is off for ${u.email}. They can sign in and set it up again.`); setError(null); } catch (e) { setError(errText(e, 'Could not reset.')); }
+  };
   const search = useCallback((text: string) => { apiClient.adminUsers(text).then((r) => { setUsers(r.users); setError(null); }).catch((e) => setError(errText(e, 'Could not search.'))); }, []);
   useEffect(() => { search(''); }, [search]);
   return (
@@ -299,12 +304,14 @@ function Users({ onOpen }: { onOpen: (id: string) => void }) {
         <button type="submit" className={btn}>Search</button>
       </form>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {note && <p role="status" className="text-sm text-success">{note}</p>}
       <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
         {users.map((u) => (
           <li key={u.uid} className="px-4 py-3 space-y-1">
             <div className="text-sm text-fg">{u.displayName} <span className="text-fg-muted">· {u.email}</span></div>
             <div className="flex flex-wrap gap-2">
               {u.workspaces.map((w) => <button key={w.id} type="button" onClick={() => onOpen(w.id)} className="rounded-full border border-line px-3 py-1 text-xs text-fg hover:bg-fill-2">{w.name} · {w.role} · {w.plan}</button>)}
+              {canReset && <button type="button" onClick={() => void reset(u)} className="rounded-full border border-line px-3 py-1 text-xs text-fg-muted hover:text-danger">Reset two-step</button>}
             </div>
           </li>
         ))}
@@ -315,6 +322,7 @@ function Users({ onOpen }: { onOpen: (id: string) => void }) {
 }
 
 const ACTION_TEXT: Record<string, string> = {
+  'twostep.enabled': 'Two-step turned on', 'twostep.disabled': 'Two-step turned off', 'twostep.backup_regenerated': 'New backup codes', 'twostep.reset_by_staff': 'Two-step reset by staff',
   'plan.changed': 'Plan changed', 'plan.requested': 'Upgrade requested', 'invoice.recorded': 'Payment recorded',
   'member.added': 'Person added', 'member.invited': 'Person invited', 'member.removed': 'Person removed', 'member.role_changed': 'Role changed',
   'connection.google.connected': 'Google connected', 'connection.google.disconnected': 'Google disconnected',
@@ -416,7 +424,7 @@ export const AdminPage: React.FC = () => {
         {tab === 'subs' && perms.includes('workspaces.view') && <Subscriptions onOpen={openWorkspace} />}
         {tab === 'plans' && perms.includes('settings.manage') && <PlansEditor />}
         {tab === 'switches' && perms.includes('settings.manage') && <SwitchesEditor />}
-        {tab === 'users' && perms.includes('workspaces.view') && <Users onOpen={openWorkspace} />}
+        {tab === 'users' && perms.includes('workspaces.view') && <Users onOpen={openWorkspace} canReset={perms.includes('workspaces.members')} />}
         {tab === 'operators' && perms.includes('operators.manage') && <OperatorsEditor />}
         {tab === 'audit' && perms.includes('workspaces.view') && <Audit />}
       </main>

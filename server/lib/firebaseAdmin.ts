@@ -66,6 +66,25 @@ export async function revokeUserSessions(uid: string): Promise<void> {
   await getAuth(getFirebaseAdminApp()).revokeRefreshTokens(uid);
 }
 
+let testClaimSetter: ((uid: string, twoStep: boolean) => Promise<void>) | null = null;
+export function setTestTwoStepClaimSetter(f: ((uid: string, twoStep: boolean) => Promise<void>) | null): void {
+  testClaimSetter = f;
+}
+
+/** Puts (or removes) the `twoStep` flag on the person's sign-in token. Other flags they may have are kept. */
+export async function setTwoStepClaim(uid: string, twoStep: boolean): Promise<void> {
+  if (testClaimSetter) {
+    await testClaimSetter(uid, twoStep);
+    return;
+  }
+  const auth = getAuth(getFirebaseAdminApp());
+  const user = await auth.getUser(uid);
+  const claims: Record<string, unknown> = { ...(user.customClaims ?? {}) };
+  if (twoStep) claims.twoStep = true;
+  else delete claims.twoStep;
+  await auth.setCustomUserClaims(uid, claims);
+}
+
 export function parseServiceAccountJson(rawJson: string): ServiceAccount {
   const trimmed = rawJson.trim();
   if (!trimmed) {

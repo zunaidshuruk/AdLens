@@ -41,6 +41,7 @@ import {
   type FirebaseInitError,
 } from '../lib/firebase';
 import { isMfaRequiredError, toMfaChallenge } from '../lib/mfa';
+import { clearProof } from '../lib/twoStep';
 import { clearAppCaches } from '../pwa/updateManager.js';
 import { extractFirebaseErrorCode, mapFirebaseErrorMessage } from '../utils/firebaseErrors';
 
@@ -396,6 +397,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if ('caches' in window) {
       await clearAppCaches(caches).catch(() => {});
     }
+    clearProof();
     setSourceLiveMode('ga4', false);
     setSourceLiveMode('search_console', false);
     setSourceLiveMode('meta_ads', false);

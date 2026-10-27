@@ -11,13 +11,22 @@ export function adminSecondsLeft(authTime: number | undefined, nowMs = Date.now(
   return Math.max(0, Math.floor(authTime + ADMIN_SESSION_SECONDS - nowMs / 1000));
 }
 
+/** The admin panel only opens for a Google sign-in, so Google's own 2-Step Verification protects it. */
+export function signedInWithGoogle(req: Request): boolean {
+  return req.user?.signInProvider === 'google.com';
+}
+
 /**
- * Only operators, and only within an hour of a fresh sign-in. After that the admin panel asks for the password again.
+ * Only operators, only after a Google sign-in, and only within an hour of a fresh sign-in. After that the admin panel asks for the password again.
  * Uses 403 (not 401) so the normal app does not treat it as "signed out".
  */
 export function operatorOnly(req: Request, res: Response, next: NextFunction): void {
   if (!isOperator(req.user?.email)) {
     res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Only an operator of this AdLens installation can do this.' } });
+    return;
+  }
+  if (!signedInWithGoogle(req)) {
+    res.status(403).json({ error: { code: 'ADMIN_GOOGLE_ONLY', message: 'The admin panel only accepts "Continue with Google". Turn on 2-Step Verification on that Google account.' } });
     return;
   }
   if (adminSecondsLeft(req.user?.authTime) <= 0) {

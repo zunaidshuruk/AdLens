@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { APP_NAME, APP_TAGLINE } from '../config/app';
 import { useAuth } from '../context/AuthContext';
 import { AdLensLogo } from './AdLensLogo';
+import { TwoStepGate } from './TwoStepGate';
 
 export const ProtectedRoute: React.FC = () => {
   const { user, loading, emailVerified } = useAuth();
@@ -42,5 +43,9 @@ export const ProtectedRoute: React.FC = () => {
     return <Navigate to="/verify-email" state={{ from: returnPath }} replace />;
   }
 
-  return <Outlet />;
+  return (
+    <TwoStepGate>
+      <Outlet />
+    </TwoStepGate>
+  );
 };

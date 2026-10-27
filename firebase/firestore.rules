@@ -190,6 +190,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---------- two-step secrets (encrypted) and backup-code hashes: no client access, ever ----------
+    match /twoStep/{uid} {
+      allow read, write: if false;
+    }
+
     // ---------- everything else ----------
     match /{document=**} {
       allow read, write: if false;

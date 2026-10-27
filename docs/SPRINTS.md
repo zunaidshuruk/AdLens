@@ -737,6 +737,14 @@ Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves
 - **AdLens staff roles.** Admin panel → Staff: Super admin, Billing manager, Support, Settings manager. Tabs and actions follow the role. `OPERATOR_EMAILS` are always Super admins. A non-owner Super admin cannot remove their own staff-management access.
 - Not covered yet: per-project roles (roles apply to the whole workspace), AI-tool (MCP) key access, CSV export (still a browser-side action, not a separate permission).
 
+**Two-step verification and Google-only admin (Sprint 22, 27 Oct 2026, 471 tests):**
+- **Why our own.** Firebase's built-in two-step needs the Identity Platform upgrade and the console only offered SMS codes (billed per message, no TOTP switch). So AdLens has its own authenticator-app two-step. It costs nothing and needs no card.
+- **For everyone (optional).** Settings → Security → "Turn on two-step verification": scan the QR with Google Authenticator, Microsoft Authenticator, 1Password or Authy, type the first code, save ten single-use backup codes (shown once). After that every new sign-in shows a code screen before the app. Turning it off or making new backup codes needs a code. Email and password sign-in is unchanged; two-step comes after it.
+- **How it works.** Secret stored encrypted (same key as the token vault) in the server-only Firestore collection `twoStep`; a `twoStep` flag on the sign-in token tells the server to ask; a signed proof (tied to the person and the sign-in, 30 days) travels in the `X-AdLens-2FA` header, so it works across many server copies. A used code cannot be reused; 8 wrong tries in 15 minutes lock the person out for 15 minutes (shared store); changes are in the activity log (never the secret).
+- **Admin panel: Google only.** `/admin-login` has only "Continue with Google". The server refuses any other sign-in method for the panel (`ADMIN_GOOGLE_ONLY`), so Google's 2-Step Verification protects it. Admins must turn on 2-Step Verification in that Google account (the server cannot check that).
+- **Lost phone.** Staff with "people in a workspace" permission can use Admin → Users → "Reset two-step" (switches it off and signs the person out everywhere). Do this only after confirming it is really them.
+- Needs: nothing new to configure. Adds the `qrcode` package. Limits: a sign-in token made before someone turned two-step on stays valid for up to one hour without the flag; the in-app code screen still appears at once.
+
 **Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
 
 ---
@@ -755,6 +763,7 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
 | 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
 | 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 13 | `stage-13-two-step` | Sprint 22: authenticator-app two-step for everyone, Google-only admin login (adds `qrcode`) | Sprint 22: two-step verification and Google-only admin |
 | 12 | `stage-12-roles` | Sprint 21: workspace roles and permissions, custom roles, AdLens staff roles | Sprint 21: roles and permissions |
 | 11 | `stage-11-fonts` | Font choice in Appearance (adds 5 font packages) | Add font choice |
 | 10 | `stage-10-plan-view` | Customer Plan and billing card, admin Subscriptions tab (repeats stage-7 to 9 files) | Sprint 20d: plan view and subscriptions tab |

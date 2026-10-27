@@ -35,7 +35,11 @@ export type AuditAction =
   | 'admin.settings_changed'
   | 'role.created'
   | 'role.updated'
-  | 'role.deleted';
+  | 'role.deleted'
+  | 'twostep.enabled'
+  | 'twostep.disabled'
+  | 'twostep.backup_regenerated'
+  | 'twostep.reset_by_staff';
 
 export interface AuditEvent {
   id: string;

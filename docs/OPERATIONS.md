@@ -36,7 +36,7 @@ People create keys under **Connect AI tools** in the app. The address to give to
 
 1. **Upgrade Firebase Authentication to Identity Platform** (Firebase console → Authentication → "Upgrade"). This is a Google Cloud billing feature; check the current pricing for monthly active users first. It is needed for SAML, OpenID Connect and two-step verification.
 2. In Firebase Authentication → Sign-in method, add the company's provider (SAML or OpenID Connect). The provider ID looks like `saml.okta` or `oidc.acme`. Give the company's administrator the return address shown in AdLens Settings → Security.
-3. For two-step verification: Authentication → Settings → SMS/TOTP multi-factor → enable TOTP.
+3. Two-step verification for customers does not need this: AdLens has its own authenticator-app two-step (Settings → Security), free. Firebase's own SMS/TOTP multi-factor is only needed for company single sign-on rules that demand it.
 4. The workspace owner opens **Settings → Security → Company single sign-on**, enters the domain, provider ID and button name, adds the DNS TXT record shown, and presses "Check the record".
 5. The owner signs out, signs in once with the company button, then switches on "Require single sign-on". (AdLens refuses to switch it on before that, so nobody locks themselves out.)
 
@@ -64,7 +64,7 @@ There is no payment provider yet. A customer asks for an upgrade, pays you direc
 4. When `endsOn` passes there are 7 days of grace, then the workspace behaves as Free. Nothing is deleted: the workspace simply cannot add more than Free allows. Setting the plan again restores everything.
 5. New workspaces start on `DEFAULT_NEW_WORKSPACE_PLAN` (currently `beta`, so nothing changes for anyone yet). Switch it to `free` when the plan screens are live.
 
-The admin panel has its own address, `/admin-login` (it is not in the customer menu). Sign in there with an operator email and password (or Google). That opens a one-hour admin session; after an hour it asks for a fresh sign-in. Operators are the emails in `OPERATOR_EMAILS` (owners, cannot be removed from the screen) plus emails added on the panel's Operators tab.
+The admin panel has its own address, `/admin-login` (it is not in the customer menu). Sign in there with Google only (email and password is refused for the panel); turn on 2-Step Verification in that Google account. That opens a one-hour admin session; after an hour it asks for a fresh sign-in. Operators are the emails in `OPERATOR_EMAILS` (owners, cannot be removed from the screen) plus emails added on the panel's Operators tab.
 
 On the panel, without touching code or Secrets: **Plans and prices** (every limit, USD and BDT price, history days, email summaries; "Put back the shipped numbers"; private plans for one customer, for example "Convay team"), **Switches** (pause new sign-ups, maintenance mode with a message, turn Explore, Dashboards, AI agents, AI tools, AI Analyst or Teams off), **Operators**, **Workspaces** (set plan and end date, record payments, people), **Upgrade requests**, **Users**, **Activity**. Settings live in the server-only Firestore document `adminSettings/config` and reach every server within 30 seconds. Every change is written to the activity log.
 

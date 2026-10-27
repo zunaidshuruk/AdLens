@@ -10,6 +10,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getPlanLimits } from '../config/plans.js';
 import { deleteAuthUser } from '../lib/firebaseAdmin.js';
+import { twoStepStore } from '../lib/twoStep.js';
 import {
   getFirestoreStore,
   type ProjectDoc,
@@ -542,6 +543,7 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
     // Step 3: Clear oauth-state cookie and session cookie
     console.info('[delete-account]', { uid, step: 'clear_cookies_and_complete' });
     try { await getDigestStore().deleteForUid(uid); } catch { /* best effort */ }
+    try { await twoStepStore().delete(uid); } catch { /* best effort */ }
     try { await getBillingStore().deleteRequestsForUid(uid); } catch { /* best effort */ }
     await recordAccountDeletion(uid);
     clearOAuthState(res);

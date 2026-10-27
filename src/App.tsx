@@ -8,6 +8,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { CookieNotice } from './components/CookieNotice';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { TwoStepGate } from './components/TwoStepGate';
 import { APP_NAME, APP_TAGLINE } from './config/app';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
@@ -77,7 +78,7 @@ export default function App() {
 
               {/* Admin: its own login and its own page, outside the customer app */}
               <Route path="/admin-login" element={<AdminLoginPage />} />
-              <Route path="/admin" element={<AdminPage />} />
+              <Route path="/admin" element={<TwoStepGate><AdminPage /></TwoStepGate>} />
 
               {/* Protected application routes */}
               <Route element={<ProtectedRoute />}>

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { PLAN_DEFAULTS, describePlans } from '../config/plans.js';
 import { recordAudit } from '../lib/auditLog.js';
 import { DEFAULT_FLAGS, getAdminSettings, refreshAdminSettings, saveAdminSettings } from '../lib/adminSettings.js';
-import { ADMIN_SESSION_SECONDS, adminSecondsLeft, operatorOnly, requirePlatform } from '../middleware/operatorOnly.js';
+import { ADMIN_SESSION_SECONDS, adminSecondsLeft, operatorOnly, requirePlatform, signedInWithGoogle } from '../middleware/operatorOnly.js';
 import { requireUser } from '../middleware/requireUser.js';
 import { PLATFORM_PERMISSION_INFO, PLATFORM_PERMISSIONS, PLATFORM_ROLES, isPlatformRoleId, type PlatformRoleId } from '../lib/platformRoles.js';
 import { isOperator, ownerEmails, platformCan, platformRoleOf } from './ops.js';
@@ -23,8 +23,9 @@ adminRouter.get('/session', async (req: Request, res: Response) => {
   await refreshAdminSettings();
   const operator = isOperator(req.user!.email);
   const role = platformRoleOf(req.user!.email);
+  const viaGoogle = signedInWithGoogle(req);
   res.json({
-    operator, secondsLeft: operator ? adminSecondsLeft(req.user!.authTime) : 0, sessionMinutes: ADMIN_SESSION_SECONDS / 60, email: req.user!.email,
+    operator, viaGoogle, secondsLeft: operator && viaGoogle ? adminSecondsLeft(req.user!.authTime) : 0, sessionMinutes: ADMIN_SESSION_SECONDS / 60, email: req.user!.email,
     role, roleName: role ? PLATFORM_ROLES[role].name : null, permissions: role ? PLATFORM_ROLES[role].permissions : [],
   });
 });
