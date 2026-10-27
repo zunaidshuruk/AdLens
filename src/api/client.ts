@@ -1,4 +1,5 @@
 import { getCurrentIdToken } from '../lib/firebase.js';
+import type { AgentOptions, AgentTestResult, PublicAgent } from '../types/agents.js';
 import type { Dashboard, DashboardInput } from '../types/dashboard.js';
 import type { ExploreCatalog, ExploreResult, ExploreSource, ExploreSpec, SavedReport } from '../types/explore.js';
 import type {
@@ -712,5 +713,32 @@ export const apiClient = {
 
   async deleteDashboard(id: string): Promise<void> {
     await apiRequest<void>(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  async listAgents(): Promise<{ agents: PublicAgent[]; limit: number }> {
+    return apiRequest<{ agents: PublicAgent[]; limit: number }>('/api/agents');
+  },
+
+  getAgentOptions(): Promise<AgentOptions> {
+    return apiRequest<AgentOptions>('/api/agents/options');
+  },
+
+  createAgent(body: { agent: Record<string, unknown>; apiKey?: string; consent: boolean }): Promise<{ agent: PublicAgent; webhookSecret?: string }> {
+    return apiRequest<{ agent: PublicAgent; webhookSecret?: string }>('/api/agents', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  updateAgent(
+    id: string,
+    body: { agent: Record<string, unknown>; apiKey?: string; removeApiKey?: boolean; consent?: boolean; rotateWebhookSecret?: boolean }
+  ): Promise<{ agent: PublicAgent; webhookSecret?: string }> {
+    return apiRequest<{ agent: PublicAgent; webhookSecret?: string }>(`/api/agents/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) });
+  },
+
+  async deleteAgent(id: string): Promise<void> {
+    await apiRequest<void>(`/api/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  testAgent(id: string): Promise<AgentTestResult> {
+    return apiRequest<AgentTestResult>(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' });
   },
 };

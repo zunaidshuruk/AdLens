@@ -110,7 +110,7 @@ export async function askAnalyst(input: AskInput, deps: AnalystDeps): Promise<As
   let providerConfig: ProviderConfig;
   let engine: NonNullable<AskResult['engine']>;
   if (agent) {
-    if (!agent.settings.enabled) return reject('AGENT_DISABLED', 'This agent is switched off. Turn it on in Settings → AI agents.');
+    if (!agent.settings.enabled) return reject('AGENT_DISABLED', 'This agent is switched off. Turn it on in the AI Agents page.');
     if (!agent.consentedAt) {
       return reject('AGENT_CONSENT_REQUIRED', `Before using this agent, confirm that your analytics numbers may be sent to its provider.`);
     }
@@ -139,7 +139,7 @@ export async function askAnalyst(input: AskInput, deps: AnalystDeps): Promise<As
     input.connectedSources
   );
   if (allowed.length === 0) {
-    return reject('NO_REPORTS_AVAILABLE', agent ? 'This agent has no reports it can use for this project. Check its data sources in Settings → AI agents.' : 'No reports are available for the connected sources.');
+    return reject('NO_REPORTS_AVAILABLE', agent ? 'This agent has no reports it can use for this project. Check its data sources in the AI Agents page.' : 'No reports are available for the connected sources.');
   }
 
   // 4. Monthly allowance (built-in analyst only), taken before the provider is called.

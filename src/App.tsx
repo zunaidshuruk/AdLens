@@ -11,6 +11,8 @@ import { APP_NAME, APP_TAGLINE } from './config/app';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { AgentDeveloperPage } from './pages/AgentDeveloperPage';
+import { AgentsPage } from './pages/AgentsPage';
 import { AIAnalystPage } from './pages/AIAnalystPage';
 import { AITrafficPage } from './pages/AITrafficPage';
 import { AuthActionPage } from './pages/AuthActionPage';
@@ -66,6 +68,8 @@ export default function App() {
                   <Route path="/dashboards" element={<DashboardsPage />} />
                   <Route path="/dashboards/:id" element={<DashboardPage />} />
                   <Route path="/explore" element={<ExplorePage />} />
+                  <Route path="/agents" element={<AgentsPage />} />
+                  <Route path="/agents/developers" element={<AgentDeveloperPage />} />
                   <Route path="/ai-analyst" element={<AIAnalystPage />} />
                   <Route path="/connections" element={<ConnectionsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />

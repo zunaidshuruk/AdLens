@@ -10,10 +10,12 @@ import type { AgentSource } from '../lib/agentConfig.js';
 import { createAgentProvider } from '../lib/agentProviders.js';
 import { ToolInputError } from '../lib/agentRunner.js';
 import { ANALYST_FORMAT_INSTRUCTIONS } from '../lib/analystFormat.js';
+import { getAgentStore } from '../lib/agentStore.js';
+import { openAgentSecret } from '../lib/tokenVault.js';
 import { askAnalyst, MAX_QUESTION_CHARS, type AnalystDeps } from '../lib/analystService.js';
 import { getFirestoreStore, getUtcMonthPeriod, type ProjectDoc } from '../lib/firestore.js';
 import { guardedRequest, type RequestFn } from '../lib/ssrfGuard.js';
-import { getVault } from '../lib/vault.js';
+import { getAgentKeyring, getVault } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import '../reports/ga4Reports.js';
@@ -62,6 +64,10 @@ let testAiRequestOverride: RequestFn | null = null;
 
 export function setTestAiRequest(fn: RequestFn | null): void {
   testAiRequestOverride = fn;
+}
+
+export function getAiRequest(): RequestFn {
+  return testAiRequestOverride ?? guardedRequest;
 }
 
 export const askBodySchema = dateRangeBaseObject
@@ -225,16 +231,6 @@ aiRouter.post('/ask', async (req: Request, res: Response) => {
     return;
   }
 
-  if (parsed.data.agentId !== undefined && parsed.data.agentId !== null && parsed.data.agentId !== '') {
-    res.status(400).json({
-      error: {
-        code: 'AGENTS_NOT_ENABLED',
-        message: 'Custom agents are not enabled yet.',
-      },
-    });
-    return;
-  }
-
   const uid = req.user!.uid;
   const store = getFirestoreStore();
   let project = req.project;
@@ -302,6 +298,51 @@ aiRouter.post('/ask', async (req: Request, res: Response) => {
     consumeQuota: (wsId) => store.consumeAiQuota(wsId),
     refundQuota: (wsId) => store.refundAiQuota(wsId),
   });
+
+  // Your own agent (Sprint 16): runs with the owner's key, never uses the built-in allowance or fallback keys.
+  const rawAgentId = parsed.data.agentId;
+  if (rawAgentId !== undefined && rawAgentId !== null && rawAgentId !== '') {
+    if (typeof rawAgentId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(rawAgentId)) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'agentId is not valid.' } });
+      return;
+    }
+    const ws = await store.getWorkspace(workspaceId);
+    if (!ws?.members?.[uid]) {
+      res.status(404).json({ error: { code: 'AGENT_NOT_FOUND', message: 'AI agent not found.' } });
+      return;
+    }
+    const agentStore = getAgentStore();
+    const rec = await agentStore.get(workspaceId, rawAgentId);
+    if (!rec) {
+      res.status(404).json({ error: { code: 'AGENT_NOT_FOUND', message: 'AI agent not found.' } });
+      return;
+    }
+    if (!cfg.vaultReady) {
+      res.status(503).json({ error: { code: 'VAULT_NOT_READY', message: 'Secure storage is not set up on this server yet.' } });
+      return;
+    }
+    const sealed = await agentStore.getSecrets(workspaceId, rec.id);
+    const ring = getAgentKeyring();
+    let secrets: { apiKey?: string | null; webhookSecret?: string | null };
+    try {
+      secrets = {
+        apiKey: sealed.apiKey ? openAgentSecret(sealed.apiKey, rec.createdBy, rec.id, ring) : null,
+        webhookSecret: sealed.webhookSecret ? openAgentSecret(sealed.webhookSecret, rec.createdBy, rec.id, ring) : null,
+      };
+    } catch {
+      res.status(200).json({
+        ok: false, answer: '', error: { code: 'AGENT_SECRET_UNREADABLE', message: 'This agent\'s saved key could not be read. Open the AI Agents page and enter the key again.' },
+        engine: null, stopReason: 'rejected', numbersUsed: [], toolsUsed: [], quota: null, usage: { inputTokens: 0, outputTokens: 0 },
+      });
+      return;
+    }
+    const agentResult = await askAnalyst(
+      { ...askInput, agent: { id: rec.id, settings: rec.settings, consentedAt: rec.consentedAt, secrets } },
+      makeDeps(undefined)
+    );
+    res.status(200).json(agentResult);
+    return;
+  }
 
   let result = await askAnalyst(askInput, makeDeps(primaryApiKey));
 

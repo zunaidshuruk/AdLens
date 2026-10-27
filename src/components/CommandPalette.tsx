@@ -167,6 +167,14 @@ export const CommandPalette: React.FC = () => {
         run: () => navigate('/ai-traffic'),
       },
       {
+        id: 'nav:agents',
+        label: 'AI Agents',
+        group: 'Navigate',
+        keywords: ['agent', 'agents', 'openai', 'chatgpt', 'gemini', 'key', 'webhook', 'byok', 'own ai'],
+        hint: '/agents',
+        run: () => navigate('/agents'),
+      },
+      {
         id: 'nav:dashboards',
         label: 'Dashboards',
         group: 'Navigate',

@@ -44,6 +44,12 @@ export function resetVaultSingleton(): void {
   vaultKeySignature = '';
 }
 
+/** The encryption keys, for sealing a user's own AI agent secrets. */
+export function getAgentKeyring() {
+  const cfg = getServerConfig();
+  return buildKeyring(cfg.tokenEncryptionKey, parsePreviousSecrets(process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS ?? ''));
+}
+
 export function getVault(): TokenVault {
   if (testVaultOverride) {
     return testVaultOverride;

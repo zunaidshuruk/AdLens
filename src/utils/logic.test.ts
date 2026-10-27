@@ -1,3 +1,4 @@
+import { createInMemoryAgentStore, setTestAgentStore } from '../../server/lib/agentStore.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APP_NAME, TRACKED_SITE } from '../config/app.js';
@@ -2792,7 +2793,8 @@ test('Sprint 15a-1: /api/health aiConfigured, POST /api/ai/ask validation, ToolI
     assert.ok(!healthConfigRaw.includes('AIzaSecretTestKey999'));
     assert.ok(!healthConfigRaw.includes('gemini-2.5-flash'));
 
-    // 2. Body validation & agentId rejection (400 AGENTS_NOT_ENABLED)
+    // 2. Body validation & unknown agentId (404 AGENT_NOT_FOUND)
+    setTestAgentStore(createInMemoryAgentStore());
     const agentRes = await fetch(`${baseUrl}/api/ai/ask`, {
       method: 'POST',
       headers,
@@ -2803,9 +2805,10 @@ test('Sprint 15a-1: /api/health aiConfigured, POST /api/ai/ask validation, ToolI
         agentId: 'custom_agent_1',
       }),
     });
-    assert.equal(agentRes.status, 400);
+    assert.equal(agentRes.status, 404);
     const agentBody = (await agentRes.json()) as { error: { code: string } };
-    assert.equal(agentBody.error.code, 'AGENTS_NOT_ENABLED');
+    assert.equal(agentBody.error.code, 'AGENT_NOT_FOUND');
+    setTestAgentStore(null);
 
     const badDateRes = await fetch(`${baseUrl}/api/ai/ask`, {
       method: 'POST',

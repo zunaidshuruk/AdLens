@@ -22,10 +22,11 @@ export interface ContentLimits {
   maxDashboards: number;
   maxWidgetsPerDashboard: number;
   maxSavedReports: number;
+  maxAgents: number;
 }
 
 export const CONTENT_LIMITS: Record<string, ContentLimits> = {
-  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50 },
+  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxAgents: 3 },
 };
 
 export function getContentLimits(plan: string | undefined | null): ContentLimits {

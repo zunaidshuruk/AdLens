@@ -11,6 +11,7 @@ import {
   googleApiRouter,
   metaConnectionRouter,
 } from './routes/connections.js';
+import { agentsRouter } from './routes/agents.js';
 import { dashboardsRouter } from './routes/dashboards.js';
 import { exploreRouter } from './routes/explore.js';
 import { ga4Router } from './routes/ga4.js';
@@ -77,6 +78,7 @@ app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
 app.use('/api/explore', exploreRouter);
 app.use('/api/dashboards', dashboardsRouter);
+app.use('/api/agents', agentsRouter);
 app.use('/api/ga4', ga4Router);
 app.use('/api/search-console', searchConsoleRouter);
 app.use('/api/meta', metaRouter);

@@ -1,4 +1,5 @@
 import {
+  Bot,
   Check,
   ChevronDown,
   Globe,
@@ -43,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/dashboards', label: 'Dashboards', icon: LayoutGrid },
   { to: '/explore', label: 'Explore', icon: SlidersHorizontal },
   { to: '/ai-analyst', label: 'AI Analyst', icon: Sparkles },
+  { to: '/agents', label: 'AI Agents', icon: Bot },
   { to: '/connections', label: 'Connections', icon: Link2 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

@@ -9,13 +9,16 @@ import {
   Shield,
   User,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { ApiClientError, apiClient } from '../api/client';
 import { AnalystMessage } from '../components/AnalystMessage';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useDateRange } from '../hooks';
+import type { PublicAgent } from '../types/agents.js';
 import type { AskAnalystHistoryMessage, AskAnalystNumberUsed } from '../types';
+import { agentReadiness } from '../utils/agentForm.js';
 import { formatFullDateRange } from '../utils/dateUtils';
 
 export const MAX_ANALYST_QUESTION_LENGTH = 2000;
@@ -33,6 +36,8 @@ export interface ChatTurn {
   content: string;
   isError?: boolean;
   numbersUsed?: AskAnalystNumberUsed[];
+  /** Who answered, e.g. "Gemini (AdLens analyst)" or the name of one of your agents. */
+  engineLabel?: string;
 }
 
 export function getAiConsentStorageKey(uid: string | null | undefined): string {
@@ -160,6 +165,8 @@ export const AIAnalystPage: React.FC = () => {
   const [hasConsented, setHasConsented] = useState<boolean>(() => hasStoredAiConsent(currentUid));
   const [consentDialogOpen, setConsentDialogOpen] = useState<boolean>(false);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [agents, setAgents] = useState<PublicAgent[]>([]);
+  const [agentId, setAgentId] = useState<string>('');
 
   const seqRef = useRef(1);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -188,7 +195,31 @@ export const AIAnalystPage: React.FC = () => {
     };
   }, [activeWorkspace?.id, activeProject?.id]);
 
-  const isQuotaExhausted = usage.limit > 0 && usage.used >= usage.limit;
+  useEffect(() => {
+    let active = true;
+    setAgentId('');
+    apiClient
+      .listAgents()
+      .then((res) => active && setAgents(res.agents))
+      .catch(() => active && setAgents([]));
+    return () => {
+      active = false;
+    };
+  }, [activeWorkspace?.id, activeProject?.id]);
+
+  const selectedAgent = agents.find((a) => a.id === agentId) ?? null;
+  const agentState = selectedAgent ? agentReadiness(selectedAgent) : null;
+  const usingAgent = selectedAgent !== null;
+  // The monthly allowance and the server AI key only matter for the built-in analyst.
+  const isQuotaExhausted = !usingAgent && usage.limit > 0 && usage.used >= usage.limit;
+  const engineConfigured = usingAgent ? Boolean(agentState?.ready) : aiConfigured;
+
+  const changeAgent = (next: string) => {
+    // A different engine means a different company may read the chat, so start a fresh conversation.
+    setAgentId(next);
+    setMessages([]);
+    setOpenNumbersIds({});
+  };
 
   const sampleQuestions = [
     `Which Meta Ads campaign drove the lowest cost per demo_request on ${TRACKED_SITE.domain} during ${formatFullDateRange(dateRange.startDate, dateRange.endDate)}?`,
@@ -229,6 +260,7 @@ export const AIAnalystPage: React.FC = () => {
       const res = await apiClient.askAnalyst({
         question: trimmed,
         history: historyToSend,
+        ...(selectedAgent ? { agentId: selectedAgent.id } : {}),
         startDate: dateRange.startDate,
         endDate: dateRange.endDate,
         ...(hasComparison
@@ -258,6 +290,7 @@ export const AIAnalystPage: React.FC = () => {
         content: assistantContent,
         isError: !isAnswerOk,
         numbersUsed: Array.isArray(res.numbersUsed) ? res.numbersUsed : [],
+        ...(res.engine?.label ? { engineLabel: res.engine.label } : {}),
       };
 
       setMessages((prev) => [...prev, assistantTurn].slice(-MAX_ANALYST_HISTORY_MESSAGES));
@@ -287,12 +320,13 @@ export const AIAnalystPage: React.FC = () => {
       trimmed.length > MAX_ANALYST_QUESTION_LENGTH ||
       isWaiting ||
       isQuotaExhausted ||
-      !aiConfigured
+      !engineConfigured
     ) {
       return;
     }
 
-    const alreadyConsented = hasConsented || hasStoredAiConsent(currentUid);
+    // Your own agents record their own confirmation on the AI Agents page.
+    const alreadyConsented = usingAgent || hasConsented || hasStoredAiConsent(currentUid);
     if (!alreadyConsented) {
       setPendingQuestion(trimmed);
       setConsentDialogOpen(true);
@@ -333,7 +367,7 @@ export const AIAnalystPage: React.FC = () => {
   const canSend =
     !isWaiting &&
     !isQuotaExhausted &&
-    aiConfigured &&
+    engineConfigured &&
     question.trim().length > 0 &&
     question.length <= MAX_ANALYST_QUESTION_LENGTH;
 
@@ -350,6 +384,11 @@ export const AIAnalystPage: React.FC = () => {
           </p>
         </div>
 
+        {usingAgent ? (
+          <div data-testid="analyst-agent-note" className="px-3.5 py-2.5 rounded-xl border border-line bg-surface min-w-[230px] text-xs text-fg-muted">
+            Using your own AI agent. These questions do not use the monthly allowance.
+          </div>
+        ) : (
         <div
           data-testid="analyst-usage-meter"
           className="px-3.5 py-2.5 rounded-xl border border-line bg-surface min-w-[230px] space-y-1.5"
@@ -377,7 +416,33 @@ export const AIAnalystPage: React.FC = () => {
             />
           </div>
         </div>
+        )}
       </div>
+
+      {agents.length > 0 && (
+        <div data-testid="analyst-agent-picker" className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+          <label htmlFor="analyst-agent-select" className="font-medium text-fg">Answer with</label>
+          <select
+            id="analyst-agent-select"
+            value={agentId}
+            onChange={(e) => changeAgent(e.target.value)}
+            className="rounded-lg border border-line bg-surface text-fg text-xs px-2 py-2 min-h-[36px]"
+          >
+            <option value="">AdLens analyst (Gemini)</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}{agentReadiness(a).ready ? '' : ` (${agentReadiness(a).reason?.toLowerCase()})`}</option>
+            ))}
+          </select>
+          <span>Switching starts a new conversation.</span>
+        </div>
+      )}
+
+      {usingAgent && selectedAgent && !agentState?.ready && (
+        <div role="status" data-testid="analyst-agent-not-ready" className="flex items-center gap-2.5 p-3 rounded-lg border border-warning-line bg-warning-soft text-xs text-fg">
+          <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+          <span>{selectedAgent.name} is not ready: {agentState?.reason?.toLowerCase()}. Fix it on the <Link to="/agents" className="text-accent-text underline">AI Agents page</Link>.</span>
+        </div>
+      )}
 
       {/* Chat Console */}
       <div className="rounded-xl border border-line bg-surface flex flex-col min-h-[540px] justify-between overflow-hidden">
@@ -404,7 +469,7 @@ export const AIAnalystPage: React.FC = () => {
           )}
 
           {/* Sample Question Chips */}
-          {aiConfigured && (
+          {engineConfigured && (
             <div className="w-full max-w-3xl mx-auto">
               <div className="text-xs font-semibold text-fg-muted mb-2">
                 Sample questions:
@@ -475,6 +540,10 @@ export const AIAnalystPage: React.FC = () => {
                         >
                           {msg.isError ? msg.content : <AnalystMessage content={msg.content} />}
                         </div>
+
+                        {msg.engineLabel && !msg.isError && (
+                          <p data-testid="analyst-engine-label" className="text-[11px] text-fg-subtle px-1">Answered by {msg.engineLabel}</p>
+                        )}
 
                         {/* Collapsible "Numbers used" panel (closed by default) */}
                         <div className="rounded-lg border border-line bg-surface overflow-hidden">
@@ -568,7 +637,7 @@ export const AIAnalystPage: React.FC = () => {
 
         {/* Chat Composer OR Not Configured Notice */}
         <div className="p-4 border-t border-line bg-page/60">
-          {!aiConfigured ? (
+          {!aiConfigured && !usingAgent ? (
             <div
               role="status"
               data-testid="analyst-not-configured-notice"

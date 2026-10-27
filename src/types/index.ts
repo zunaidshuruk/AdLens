@@ -617,6 +617,8 @@ export interface AskAnalystRequest {
   endDate: string;
   compareStartDate?: string;
   compareEndDate?: string;
+  /** Ask one of your own AI agents instead of the built-in analyst. */
+  agentId?: string;
 }
 
 export interface AskAnalystNumberUsed {
