@@ -11,6 +11,7 @@ import {
   mapSearchConsoleTopPagesResponse,
   mapSearchConsoleTopQueriesResponse,
 } from '../lib/searchConsoleMapper.js';
+import { callSearchConsoleQuery, mapUpstreamSearchConsoleError } from '../lib/searchConsoleApi.js';
 import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
@@ -116,84 +117,6 @@ function getCached<T>(cacheKey: string): T | null {
     return null;
   }
   return entry.data as T;
-}
-
-function mapUpstreamSearchConsoleError(respStatus: number, googleStatus: string): GoogleApiError {
-  if (respStatus === 401) {
-    return new GoogleApiError(
-      'GOOGLE_REAUTH_REQUIRED',
-      'Your Google session has expired or been revoked. Please reconnect your Google account.',
-      401
-    );
-  }
-
-  if (respStatus === 403 || googleStatus === 'PERMISSION_DENIED' || googleStatus === 'forbidden') {
-    return new GoogleApiError(
-      'SC_PERMISSION_DENIED',
-      'This Google account no longer has access to the selected Search Console site.',
-      403
-    );
-  }
-
-  if (
-    respStatus === 429 ||
-    googleStatus === 'RESOURCE_EXHAUSTED' ||
-    googleStatus === 'rateLimitExceeded' ||
-    googleStatus === 'quotaExceeded'
-  ) {
-    return new GoogleApiError(
-      'SC_QUOTA_EXCEEDED',
-      'Google Search Console API quota exceeded. Please wait a moment and retry.',
-      429
-    );
-  }
-
-  return new GoogleApiError(
-    'SC_REQUEST_FAILED',
-    'Unable to retrieve report data from Google Search Console.',
-    502
-  );
-}
-
-async function callSearchConsoleQuery(
-  siteUrl: string,
-  accessToken: string,
-  payload: {
-    startDate: string;
-    endDate: string;
-    dimensions?: string[];
-    rowLimit?: number;
-  }
-): Promise<SearchConsoleQueryResponse> {
-  const encodedSite = encodeURIComponent(siteUrl);
-  const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`;
-
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!resp.ok) {
-    let googleStatus = '';
-    try {
-      const errJson = (await resp.json()) as {
-        error?: { status?: string; errors?: { reason?: string }[] };
-      };
-      googleStatus =
-        errJson?.error?.status || errJson?.error?.errors?.[0]?.reason || '';
-    } catch {
-      // Never forward raw Google error bodies
-    }
-
-    throw mapUpstreamSearchConsoleError(resp.status, googleStatus);
-  }
-
-  return (await resp.json()) as SearchConsoleQueryResponse;
 }
 
 function handleSearchConsoleError(res: Response, err: unknown): void {

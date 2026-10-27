@@ -1,4 +1,5 @@
 import { getCurrentIdToken } from '../lib/firebase.js';
+import type { ExploreCatalog, ExploreResult, ExploreSource, ExploreSpec, SavedReport } from '../types/explore.js';
 import type {
   AiUsageResponse,
   AskAnalystRequest,
@@ -658,5 +659,33 @@ export const apiClient = {
       },
       { allowStatuses: [429] }
     );
+  },
+
+  getExploreCatalog(): Promise<ExploreCatalog> {
+    return apiRequest<ExploreCatalog>('/api/explore/catalog');
+  },
+
+  runExplore(source: ExploreSource, body: Record<string, unknown>): Promise<ExploreResult> {
+    const path = source === 'ga4' ? '/api/explore/ga4/run' : '/api/explore/search-console/run';
+    return apiRequest<ExploreResult>(path, { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  async listSavedReports(): Promise<SavedReport[]> {
+    const res = await apiRequest<{ reports: SavedReport[] }>('/api/explore/saved');
+    return res.reports;
+  },
+
+  async createSavedReport(input: { name: string; source: ExploreSource; spec: ExploreSpec }): Promise<SavedReport> {
+    const res = await apiRequest<{ report: SavedReport }>('/api/explore/saved', { method: 'POST', body: JSON.stringify(input) });
+    return res.report;
+  },
+
+  async updateSavedReport(id: string, input: { name: string; source: ExploreSource; spec: ExploreSpec }): Promise<SavedReport> {
+    const res = await apiRequest<{ report: SavedReport }>(`/api/explore/saved/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) });
+    return res.report;
+  },
+
+  async deleteSavedReport(id: string): Promise<void> {
+    await apiRequest<void>(`/api/explore/saved/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 };

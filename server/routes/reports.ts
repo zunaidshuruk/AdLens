@@ -5,6 +5,7 @@ import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import '../reports/ga4Reports.js';
+import '../reports/exploreReports.js';
 import { reportRegistry } from '../reports/registry.js';
 import type { ReportContext } from '../reports/types.js';
 import { googleRateLimitMiddleware } from './connections.js';

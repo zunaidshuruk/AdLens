@@ -1,3 +1,5 @@
+import { getServerConfig } from './config.js';
+import { registerAuthProxy, upstreamHostFor } from './lib/authProxy.js';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import path from 'path';
@@ -9,6 +11,7 @@ import {
   googleApiRouter,
   metaConnectionRouter,
 } from './routes/connections.js';
+import { exploreRouter } from './routes/explore.js';
 import { ga4Router } from './routes/ga4.js';
 import { healthRouter } from './routes/health.js';
 import { metaRouter } from './routes/meta.js';
@@ -25,6 +28,19 @@ export const app = express();
 
 // Enable Secure cookies behind reverse proxy / Cloud Run / Vercel
 app.set('trust proxy', 1);
+
+// Sign-in helper served from our own address (only when AUTH_PROXY=on). Checked on every request so the switch needs no restart.
+let authProxyApp: express.Express | null = null;
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/__/')) return next();
+  const cfg = getServerConfig();
+  if (!cfg.authProxyEnabled || !cfg.firebaseProjectId) return next();
+  if (!authProxyApp) {
+    authProxyApp = express();
+    registerAuthProxy(authProxyApp, { upstreamHost: upstreamHostFor(cfg.firebaseProjectId) });
+  }
+  return authProxyApp(req, res, next);
+});
 
 app.use(express.json());
 app.use(cookieParser());
@@ -58,6 +74,7 @@ app.use('/api/workspaces', workspacesRouter);
 app.use('/api/connections/meta', metaConnectionRouter);
 app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
+app.use('/api/explore', exploreRouter);
 app.use('/api/ga4', ga4Router);
 app.use('/api/search-console', searchConsoleRouter);
 app.use('/api/meta', metaRouter);
