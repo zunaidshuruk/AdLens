@@ -741,4 +741,16 @@ export const apiClient = {
   testAgent(id: string): Promise<AgentTestResult> {
     return apiRequest<AgentTestResult>(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' });
   },
+
+  suggestWidget(description: string): Promise<{ widget: { title: string; kind: 'kpi' | 'bar' | 'line' | 'table'; source: 'ga4' | 'search_console'; spec: import('../types/explore.js').ExploreSpec }; quota: { used: number; limit: number } }> {
+    return apiRequest('/api/dashboards/suggest-widget', { method: 'POST', body: JSON.stringify({ description }) });
+  },
+
+  listReports(): Promise<{ id: string; title: string; description: string; source: 'ga4' | 'search_console' | 'meta' | 'combined'; input: Record<string, unknown> }[]> {
+    return apiRequest('/api/reports');
+  },
+
+  runReport(body: { id: string; args?: Record<string, unknown>; startDate: string; endDate: string; compareStartDate?: string; compareEndDate?: string }): Promise<{ id: string; result: unknown }> {
+    return apiRequest('/api/reports/run', { method: 'POST', body: JSON.stringify(body) });
+  },
 };

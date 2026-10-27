@@ -85,7 +85,24 @@ function AddWidgetPanel({ saved, count, onAdd, onClose }: { saved: SavedReport[]
   const [reportId, setReportId] = useState(saved[0]?.id ?? '');
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
+  const [describe, setDescribe] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const report = saved.find((s) => s.id === reportId);
+
+  const buildWithAi = async () => {
+    setThinking(true);
+    setAiError(null);
+    try {
+      const { widget } = await apiClient.suggestWidget(describe.trim());
+      onAdd({ id: `w${Date.now().toString(36)}${count}`, ...widget } as never);
+      onClose();
+    } catch (e) {
+      setAiError(errMessage(e));
+    } finally {
+      setThinking(false);
+    }
+  };
   const canAdd = kind === 'text' ? text.trim().length > 0 : Boolean(report);
   const submit = () => {
     const id = `w${Date.now().toString(36)}${count}`;
@@ -102,6 +119,18 @@ function AddWidgetPanel({ saved, count, onAdd, onClose }: { saved: SavedReport[]
         <h3 className="text-sm font-semibold text-fg">Add a widget</h3>
         <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-fg-muted hover:text-fg"><X className="w-4 h-4" /></button>
       </div>
+      <div className="space-y-2 rounded-lg border border-line bg-fill-1 p-3">
+        <label className="block text-xs text-fg-muted space-y-1">
+          <span className="font-medium text-fg">Describe it and let AI build it</span>
+          <textarea aria-label="Describe the widget" value={describe} maxLength={300} onChange={(e) => setDescribe(e.target.value)} rows={2} placeholder="e.g. top 10 countries by users, as a bar chart" className="block w-full rounded-lg border border-line bg-surface text-fg text-sm p-2" />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={!describe.trim() || thinking} onClick={() => void buildWithAi()} className="rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">{thinking ? 'Building…' : 'Build with AI'}</button>
+          <span className="text-[11px] text-fg-subtle">Uses one AI question from your monthly allowance. Only your description is sent, no data.</span>
+        </div>
+        {aiError && <p role="alert" className="text-xs text-danger">{aiError}</p>}
+      </div>
+      <p className="text-xs text-fg-muted">Or build one from a saved report:</p>
       <div className="flex flex-wrap gap-2">
         {(Object.keys(KIND_LABEL) as (WidgetKind | 'text')[]).map((k) => (
           <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={`text-xs rounded-lg border px-3 py-2 min-h-[36px] ${kind === k ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-muted hover:bg-fill-2'}`}>{KIND_LABEL[k]}</button>

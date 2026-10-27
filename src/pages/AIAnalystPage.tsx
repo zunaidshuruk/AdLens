@@ -16,9 +16,13 @@ import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useDateRange } from '../hooks';
+import { AiEngineBar } from '../components/AiEngineBar';
 import type { PublicAgent } from '../types/agents.js';
 import type { AskAnalystHistoryMessage, AskAnalystNumberUsed } from '../types';
 import { agentReadiness } from '../utils/agentForm.js';
+import { chooseEngine, type EngineDecision, type EngineSettings, type OnDeviceStatus } from '../utils/aiEngineRouter.js';
+import type { ToolSource } from '../utils/aiTools.js';
+import { askOnDevice, detectOnDeviceStatus, downloadOnDeviceModel, getLanguageModel, loadEngineSettings, saveEngineSettings } from '../utils/onDeviceEngine.js';
 import { formatFullDateRange } from '../utils/dateUtils';
 
 export const MAX_ANALYST_QUESTION_LENGTH = 2000;
@@ -38,6 +42,8 @@ export interface ChatTurn {
   numbersUsed?: AskAnalystNumberUsed[];
   /** Who answered, e.g. "Gemini (AdLens analyst)" or the name of one of your agents. */
   engineLabel?: string;
+  /** Answered on this device. These turns are never sent to the cloud or to your agents as chat history. */
+  private?: boolean;
 }
 
 export function getAiConsentStorageKey(uid: string | null | undefined): string {
@@ -145,6 +151,11 @@ export function trimHistoryMessages(messages: ChatTurn[]): AskAnalystHistoryMess
     .slice(-MAX_ANALYST_HISTORY_MESSAGES);
 }
 
+/** Chat history that may leave the device: everything except turns from Private (on-device) mode. */
+export function historyForCloud(messages: ChatTurn[]): AskAnalystHistoryMessage[] {
+  return trimHistoryMessages(messages.filter((m) => !m.private));
+}
+
 export const AIAnalystPage: React.FC = () => {
   const { dateRange, compareEnabled } = useDateRange();
   const { activeProject, activeWorkspace, userProfile } = useAppContext();
@@ -167,6 +178,11 @@ export const AIAnalystPage: React.FC = () => {
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [agents, setAgents] = useState<PublicAgent[]>([]);
   const [agentId, setAgentId] = useState<string>('');
+  const [engineSettings, setEngineSettings] = useState<EngineSettings>(() => loadEngineSettings());
+  const [onDeviceStatus, setOnDeviceStatus] = useState<OnDeviceStatus>('unsupported');
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<{ decision: EngineDecision; question: string } | null>(null);
 
   const seqRef = useRef(1);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -207,12 +223,41 @@ export const AIAnalystPage: React.FC = () => {
     };
   }, [activeWorkspace?.id, activeProject?.id]);
 
+  useEffect(() => {
+    let active = true;
+    void detectOnDeviceStatus().then((st) => active && setOnDeviceStatus(st));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const changeEngineSettings = (next: EngineSettings) => {
+    setEngineSettings(next);
+    saveEngineSettings(next);
+    setBlocked(null);
+  };
+
+  const startModelDownload = async () => {
+    setDownloadError(null);
+    setDownloadProgress(0);
+    setOnDeviceStatus('downloading');
+    try {
+      await downloadOnDeviceModel((f) => setDownloadProgress(f));
+    } catch {
+      setDownloadError('The download did not finish. Check your connection and free disk space, then try again.');
+    } finally {
+      setDownloadProgress(null);
+      setOnDeviceStatus(await detectOnDeviceStatus());
+    }
+  };
+
   const selectedAgent = agents.find((a) => a.id === agentId) ?? null;
   const agentState = selectedAgent ? agentReadiness(selectedAgent) : null;
   const usingAgent = selectedAgent !== null;
   // The monthly allowance and the server AI key only matter for the built-in analyst.
-  const isQuotaExhausted = !usingAgent && usage.limit > 0 && usage.used >= usage.limit;
-  const engineConfigured = usingAgent ? Boolean(agentState?.ready) : aiConfigured;
+  const privateReady = engineSettings.preference === 'on-device' || onDeviceStatus === 'available';
+  const isQuotaExhausted = !usingAgent && !privateReady && usage.limit > 0 && usage.used >= usage.limit;
+  const engineConfigured = usingAgent ? Boolean(agentState?.ready) : aiConfigured || privateReady;
 
   const changeAgent = (next: string) => {
     // A different engine means a different company may read the chat, so start a fresh conversation.
@@ -241,7 +286,7 @@ export const AIAnalystPage: React.FC = () => {
   };
 
   const executeQuestionSend = async (trimmed: string) => {
-    const historyToSend = trimHistoryMessages(messages);
+    const historyToSend = historyForCloud(messages);
     const userTurn: ChatTurn = {
       id: `turn_${seqRef.current++}`,
       role: 'user',
@@ -313,8 +358,51 @@ export const AIAnalystPage: React.FC = () => {
     }
   };
 
-  const handleSend = async () => {
-    const trimmed = question.trim();
+  const engineEnv = () => ({
+    onDevice: onDeviceStatus,
+    online: typeof navigator === 'undefined' ? true : navigator.onLine,
+    cloudConfigured: aiConfigured,
+    cloudQuotaRemaining: usage.limit > 0 ? Math.max(0, usage.limit - usage.used) : null,
+  });
+
+  const executeOnDeviceSend = async (trimmed: string) => {
+    const historyToSend = trimHistoryMessages(messages);
+    const userTurn: ChatTurn = { id: `turn_${seqRef.current++}`, role: 'user', content: trimmed, private: true };
+    setQuestion('');
+    setIsWaiting(true);
+    setMessages((prev) => [...prev, userTurn].slice(-MAX_ANALYST_HISTORY_MESSAGES));
+
+    const sources: ToolSource[] = [];
+    if (activeProject?.ga4PropertyId) sources.push('ga4');
+    if (activeProject?.searchConsoleSite) sources.push('search_console');
+    if (activeProject?.metaAdAccountId) sources.push('meta');
+    const hasComparison = Boolean(compareEnabled && dateRange.compareStartDate && dateRange.compareEndDate);
+    const dates = {
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      ...(hasComparison ? { compareStartDate: dateRange.compareStartDate, compareEndDate: dateRange.compareEndDate } : {}),
+    };
+
+    try {
+      const res = await askOnDevice(
+        { question: trimmed, history: historyToSend, project: { name: TRACKED_SITE.name, domain: TRACKED_SITE.domain }, dates, availableSources: sources },
+        {
+          lm: getLanguageModel(),
+          listTools: async () => (await apiClient.listReports()).map((r) => ({ id: r.id, title: r.title, description: r.description, source: r.source, input: r.input })),
+          runReport: async (id, args) => (await apiClient.runReport({ id, args, ...dates })).result,
+        }
+      );
+      const turn: ChatTurn = res.ok
+        ? { id: `turn_${seqRef.current++}`, role: 'assistant', content: res.answer, numbersUsed: res.numbersUsed, engineLabel: 'Chrome built-in AI (on this device)', private: true }
+        : { id: `turn_${seqRef.current++}`, role: 'assistant', content: res.message, isError: true, numbersUsed: [], private: true };
+      setMessages((prev) => [...prev, turn].slice(-MAX_ANALYST_HISTORY_MESSAGES));
+    } finally {
+      setIsWaiting(false);
+    }
+  };
+
+  const handleSend = async (opts: { forceCloudOnce?: boolean; text?: string } = {}) => {
+    const trimmed = (opts.text ?? question).trim();
     if (
       !trimmed ||
       trimmed.length > MAX_ANALYST_QUESTION_LENGTH ||
@@ -324,9 +412,26 @@ export const AIAnalystPage: React.FC = () => {
     ) {
       return;
     }
+    setBlocked(null);
 
     // Your own agents record their own confirmation on the AI Agents page.
-    const alreadyConsented = usingAgent || hasConsented || hasStoredAiConsent(currentUid);
+    if (usingAgent) {
+      await executeQuestionSend(trimmed);
+      return;
+    }
+
+    // Private mode: the router decides, and never sends a question to the cloud unless allowed.
+    const decision = chooseEngine(engineSettings, engineEnv(), trimmed, { forceCloudOnce: opts.forceCloudOnce });
+    if (decision.engine === 'none') {
+      setBlocked({ decision, question: trimmed });
+      return;
+    }
+    if (decision.engine === 'on-device') {
+      await executeOnDeviceSend(trimmed);
+      return;
+    }
+
+    const alreadyConsented = hasConsented || hasStoredAiConsent(currentUid);
     if (!alreadyConsented) {
       setPendingQuestion(trimmed);
       setConsentDialogOpen(true);
@@ -418,6 +523,17 @@ export const AIAnalystPage: React.FC = () => {
         </div>
         )}
       </div>
+
+      {!usingAgent && (
+        <AiEngineBar
+          settings={engineSettings}
+          onChange={changeEngineSettings}
+          status={onDeviceStatus}
+          downloadProgress={downloadProgress}
+          onDownload={() => void startModelDownload()}
+          downloadError={downloadError}
+        />
+      )}
 
       {agents.length > 0 && (
         <div data-testid="analyst-agent-picker" className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
@@ -634,6 +750,23 @@ export const AIAnalystPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {blocked && (
+          <div role="status" data-testid="analyst-engine-blocked" className="px-4 pt-4">
+            <div className="max-w-3xl mx-auto flex flex-col gap-2 p-3 rounded-lg border border-warning-line bg-warning-soft text-xs text-fg">
+              <span>{blocked.decision.message}</span>
+              <div className="flex flex-wrap gap-2">
+                {blocked.decision.offer === 'download-model' && (
+                  <button type="button" onClick={() => void startModelDownload()} className="rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px]">Download the on-device model</button>
+                )}
+                {blocked.decision.offer === 'ask-cloud-once' && (
+                  <button type="button" onClick={() => void handleSend({ forceCloudOnce: true, text: blocked.question })} className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2">Ask the cloud model this once</button>
+                )}
+                <button type="button" onClick={() => setBlocked(null)} className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2">Dismiss</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Chat Composer OR Not Configured Notice */}
         <div className="p-4 border-t border-line bg-page/60">
