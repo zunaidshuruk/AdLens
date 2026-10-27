@@ -7,6 +7,7 @@ import { CommandPalette } from './CommandPalette';
 import { InstallBanner } from './InstallBanner';
 import { MobileNav } from './MobileNav';
 import { ProjectOnboardingModal } from './ProjectOnboardingModal';
+import { JoinOfferPrompt } from './JoinOfferPrompt';
 import { Sidebar } from './Sidebar';
 
 export const Layout: React.FC = () => {
@@ -33,6 +34,7 @@ export const Layout: React.FC = () => {
       <MobileNav onOpenMenu={() => setSidebarOpen(true)} />
       <ProjectOnboardingModal />
       <CommandPalette />
+      <JoinOfferPrompt />
     </div>
   );
 };

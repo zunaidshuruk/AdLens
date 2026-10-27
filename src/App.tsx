@@ -23,6 +23,7 @@ import { SignInBlockedPage } from './pages/SignInBlockedPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 
 // Each screen is loaded when first opened, so the first page a visitor sees downloads far less code (Sprint 18).
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const AgentDeveloperPage = lazy(() => import('./pages/AgentDeveloperPage').then((m) => ({ default: m.AgentDeveloperPage })));
 const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })));
 const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage').then((m) => ({ default: m.AIAnalystPage })));
@@ -78,6 +79,7 @@ export default function App() {
                 <Route path="/mcp-access/authorize" element={<McpAuthorizePage />} />
                 <Route element={<Layout />}>
                   <Route path="/mcp-access" element={<McpAccessPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/ga4" element={<GA4Page />} />
                   <Route path="/ai-traffic" element={<AITrafficPage />} />

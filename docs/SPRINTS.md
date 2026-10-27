@@ -34,6 +34,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 16.5 | **Installable app (PWA)** | 🔄 PWA-1/2/3 on main · PWA-4 (phone polish) and PWA-5 code (sign-in proxy, `AUTH_PROXY` off by default) zipped as `stage-1-phone-polish-and-signin-proxy` · PWA-5 rollout needs a domain | — |
 | 17 | MCP endpoint | 🧩 Phase A (access keys) and Phase B (OAuth 2.1) built, with `/mcp-access` screens; zipped in `stage-6-sprints-10-to-19` | — |
 | 18 | Scale & hardening (shared cache, audit log, usage meter, error reporting, email summaries and alerts, code-splitting, load test) | 🧩 Built, zipped in `stage-6-sprints-10-to-19`. Billing parked; usage status is an API only (no page) | — |
+| 20 | Billing and plan limits (manual invoicing; Free, Pro, Business) | 🧩 20a–20c built (server), zipped as `stage-7-billing-20abc` · 20d–20f (screens, legal) next | — |
 | 19 | Enterprise: SAML/OIDC single sign-on, MFA, audit log | 🧩 Built, zipped in `stage-6-sprints-10-to-19` · needs the Firebase Identity Platform upgrade to work live | — |
 
 **Long-lead track (runs alongside sprints, starts after Sprint 10):** Google OAuth verification, Meta Business Verification and Meta App Review. These take weeks and gate public sign-ups.
@@ -675,6 +676,56 @@ Adopts #30.
 - MFA (authenticator app / SMS); admin audit log; session management.
 - Tied to an Enterprise subscription plan (pricing parked).
 
+## Sprint 20 — Billing and plan limits 🧩 (20a–20c in `stage-7-billing-20abc` · 20e admin panel + Team in `stage-8-admin-team` · 20d and 20f not started)
+
+**Decisions (27 Oct 2026):** manual invoicing first (no payment provider yet); customers in Bangladesh and overseas (prices in BDT and USD); three plans: Free, Pro, Business. Limits that change by plan: projects, AI questions, dashboards, saved reports, AI agents, team members, email summaries, plus the extras below.
+
+**Plan limits (draft, to be edited by Zunaid before building):**
+
+| Limit | Free | Pro | Business |
+|---|---|---|---|
+| Projects (sites) | 1 | 5 | 25 |
+| AI questions per month | 10 | 300 | 1,500 |
+| Dashboards / widgets each | 2 / 8 | 10 / 12 | 30 / 20 |
+| Saved reports (per project) | 2 | 50 | 200 |
+| Your own AI agents | 0 | 3 | 10 |
+| Team members | 1 | 3 | 15 |
+| Weekly email summary / unusual-day alerts | no | yes | yes |
+| Connect AI tools (MCP keys) | 1 | 5 | 10 |
+| Report history range (main date range start) | 10 days | 16 months | 16 months |
+| CSV export | yes | yes | yes |
+| Price (draft) | 0 | USD 19 / BDT 1,500 per month | USD 79 / BDT 6,500 per month |
+
+Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves them.
+
+**How it works without a payment provider:**
+- A workspace's plan, `planExpiresAt` and a private note live on the workspace (server-only fields; already protected by the rules).
+- **Operator admin page** (operators only, `OPERATOR_EMAILS`): find a workspace, set plan and expiry, record "paid" with an invoice number and amount, see history. Every change goes to the audit log.
+- **Billing page** (Settings → Plan and billing): current plan, usage against each limit, "Request upgrade" (saves a request and emails SUPPORT_EMAIL when Resend is set), list of invoices Zunaid recorded.
+- **Enforcement on the server:** one `checkLimit` helper used by projects, dashboards, saved reports, agents, members, MCP keys, AI questions, and the summaries job. Friendly "Your plan allows N; upgrade to add more" errors with the limit and the plan name.
+- **Expiry:** 7-day grace after `planExpiresAt`, then the workspace drops to Free. Nothing is deleted: extra items become read-only and the owner is told which to remove or re-upgrade.
+- **Later, when a provider is chosen** (Paddle or Lemon Squeezy for overseas cards, SSLCommerz for local): a webhook only has to set the same plan fields, so nothing above changes.
+
+**Small prompts (about 10 minutes each):**
+- **20a** server: plan table, `checkLimit`, plan fields, expiry logic, tests (no screens).
+- **20b** server: enforce limits in the existing routes, with error messages.
+- **20c** server: operator plan admin API, invoice records, upgrade requests, audit entries.
+- **20d** screens: Plan and billing page, usage bars, upgrade request, friendly limit messages.
+- **20e** screens: operator admin page.
+- **20f** legal pages (refund and cancellation wording), Pricing section on the landing page.
+
+**Confirmed by Zunaid (27 Oct 2026):** Free = 10 AI questions, 2 saved reports, 10-day history. Refund policy: no refunds after 3 days (shown on the billing page; legal wording is 20f).
+
+**Built so far (20a–20c, 460 tests):** `server/config/plans.ts` (limits, features, 7-day grace, history cutoff); plan end date stored on the workspace; limit checks for projects, AI questions, dashboards, widgets, saved reports, agents, AI-tool keys, email summaries (skipped, not deleted, when the plan lacks them), members (company-sign-in join) and report history (in `loadProject` and the MCP endpoint); `/api/billing` (customer view, upgrade request) and `/api/billing/admin/*` (operator: find workspaces, set plan and end date, record invoices, close requests, all audited). Safe by default: new workspaces still start on `beta` (`DEFAULT_NEW_WORKSPACE_PLAN`) until 20d, so nothing changes for anyone until you set a plan. The history limit checks only the main range start, not the comparison range, so "last 7 days vs previous 7" works on Free. Free users who pick "Last 28 days" get a friendly refusal until 20d clamps the presets in the UI.
+
+**Built after that (20e + Team, 461 tests, 27 Oct 2026):**
+- **Admin page** at `/admin` (sidebar "Admin", only for emails in `OPERATOR_EMAILS`): Overview (launch-readiness checks, health, usage), Workspaces (set plan and end date, record payment, people, projects), Upgrade requests, Users, Activity (audit trail). Not visually tested yet, only typechecked and built.
+- **Team** (Settings → Workspace): add a person by email (existing account joins at once; unknown email becomes a pending invite accepted on first verified sign-in). Roles owner / admin / member (no read-only viewer yet). Only the owner grants admin; admins can remove members; the owner cannot be removed. Member count follows the plan (Free 1, Pro 3, Business 15, Beta 10).
+- **Same-company offer:** the owner ticks "Offer colleagues with my company email the chance to join". Anyone verified with the same company email domain sees a popup and may accept ("Not now" hides it). Free-mail domains (Gmail, Outlook...) never match.
+- Everyone uses their own Google and Meta connections, so a teammate needs access to the same GA4 property and Search Console in their own Google account.
+
+**Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
+
 ---
 
 ## Delivery log — 26 Oct 2026 (built by Claude, 371/371 tests, tsc, colour check and build all clean)
@@ -689,6 +740,9 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 4 | `stage-4-ai-agents` | Sprint 16a–d: bring-your-own agents, webhook signing | Sprint 16: bring-your-own AI agents |
 | 5 | `stage-5-ai-analyst-15` | Sprint 15a-3 describe-a-widget, 15b Private mode | Sprint 15: describe-a-widget and on-device private mode |
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
+| 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
+| 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 8 | `stage-8-admin-team` | Sprint 20e admin panel, Team, same-company join offers (also repeats stage-7 files) | Sprint 20e: admin panel and team |
 
 Deviations from the original plan: dashboards use inline report specs and button-based move/resize; 4 templates (plan said 8), no workspace templates or pin-to-dashboard; agents UI lives at `/agents` (not Settings); engine bar sits on the analyst page; on-device mode shortlists reports by keyword and compacts them (no model tool-calling); added `POST /api/reports/run`; content limits live in `CONTENT_LIMITS` (beta: 10 dashboards, 12 widgets each, 50 saved reports, 3 agents).
 
@@ -765,7 +819,7 @@ Deviations from the original plan: dashboards use inline report specs and button
 - **Subscription details (parked):** plans, prices, limits per plan and payment provider. Revisit before Sprint 18.
 - **MCP auth (Sprint 17):** decided and built: Phase A and Phase B both in.
 - **Ops secrets (Sprint 18, optional):** Upstash, `ERROR_WEBHOOK_URL`, `OPERATOR_EMAILS`, `RESEND_API_KEY` + `MAIL_FROM`, `CRON_SECRET` + a daily scheduler call, `VITE_WEBLLM_MODULE_URL`. See `docs/OPERATIONS.md`.
-- **Firebase Identity Platform upgrade (Sprint 19):** needed for company sign-in and MFA; TOTP must be enabled.
+- **Sprint 19 (27 Oct 2026):** Firebase upgraded to Identity Platform. Company sign-in (SAML) and two-step codes are **skipped for now**: the console showed only SMS multi-factor (billed per message), no TOTP switch. Revisit when a company customer needs it. Stage 1 and 6 uploads were completed with `stage-6b-missing-files.zip` (GitHub web upload stops at 100 files); repo verified green at 933549a (456 tests).
 
 ## Known issues and backlog
 

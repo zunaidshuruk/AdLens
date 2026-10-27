@@ -26,7 +26,7 @@ test('audit log: records, lists newest first, trims long details, and anonymises
 });
 
 test('audit log never throws when the store fails', async () => {
-  const broken = { put: async () => { throw new Error('down'); }, listForUid: async () => [], listForWorkspace: async () => [], deleteForUid: async () => { throw new Error('down'); } };
+  const broken = { put: async () => { throw new Error('down'); }, listForUid: async () => [], listForWorkspace: async () => [], listRecent: async () => [], deleteForUid: async () => { throw new Error('down'); } };
   await recordAudit({ uid: 'u', action: 'project.deleted' }, broken);
   await recordAccountDeletion('u', broken);
 });

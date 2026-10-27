@@ -19,10 +19,12 @@ import {
   Sparkles,
   TrendingUp,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { APP_NAME, APP_TAGLINE, DEMO_PROJECT } from '../config/app';
+import { apiClient } from '../api/client';
 import { useAppContext } from '../context/AppContext';
 import { useAdapterStatus } from '../hooks/useReport';
 import { useWorkspaceLogo } from '../hooks/useWorkspaceLogo';
@@ -73,6 +75,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { logoUrl } = useWorkspaceLogo(activeWorkspace);
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [isOperator, setIsOperator] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.billingWhoAmI().then((r) => { if (!cancelled) setIsOperator(r.isOperator); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const switcherRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -299,7 +307,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* Navigation Links */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
+          {(isOperator ? [...NAV_ITEMS, { to: '/admin', label: 'Admin', icon: ShieldCheck } as NavItem] : NAV_ITEMS).map((item) => {
             const Icon = item.icon;
             const statusDotClass = getStatusDotClass(item.to);
             return (

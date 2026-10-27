@@ -8,7 +8,11 @@ import { z } from 'zod';
 import {
   PAID_PLAN_IDS, PLAN_IDS, PLAN_INFO, getContentLimits, getPlanFeatures, getPlanLimits, isKnownPlan, planStatus,
 } from '../config/plans.js';
-import { recordAudit } from '../lib/auditLog.js';
+import { listRecentAudit, recordAudit } from '../lib/auditLog.js';
+import { evaluateLaunchReadiness } from '../lib/launchReadiness.js';
+import { getInviteStore } from '../lib/inviteStore.js';
+import { readUsage } from '../lib/usageMeter.js';
+import { removeMember } from './team.js';
 import { getBillingStore, newBillingId, type PlanRequest } from '../lib/billingStore.js';
 import { getFirestoreStore, getUtcMonthPeriod, type WorkspaceDoc } from '../lib/firestore.js';
 import { mailConfigured, sendMail } from '../lib/mailer.js';
@@ -64,6 +68,11 @@ async function pickWorkspace(req: Request, res: Response): Promise<WorkspaceDoc 
   if (!owned) { fail(res, 404, 'NOT_FOUND', 'No workspace found.'); return null; }
   return owned;
 }
+
+// Lightweight: lets the app decide whether to show the Admin link.
+billingRouter.get('/whoami', (req: Request, res: Response) => {
+  res.json({ isOperator: isOperator(req.user!.email) });
+});
 
 billingRouter.get('/', async (req: Request, res: Response) => {
   try {
@@ -223,4 +232,107 @@ admin.get('/invoices', async (req: Request, res: Response) => {
   const ws = typeof req.query.workspaceId === 'string' ? req.query.workspaceId.trim() : '';
   if (!ws) return fail(res, 400, 'VALIDATION_ERROR', 'Choose a workspace.');
   res.json({ invoices: await getBillingStore().listInvoices(ws) });
+});
+
+// ---------------------------------------------------------------------------
+// Admin panel: overview, health, one workspace in detail, members, users, audit trail
+// ---------------------------------------------------------------------------
+
+admin.get('/overview', async (_req: Request, res: Response) => {
+  const store = getFirestoreStore();
+  const [workspaces, open] = await Promise.all([store.listWorkspacesForOperator('', 500), getBillingStore().listRequests({ status: 'open' })]);
+  const byPlan: Record<string, number> = {};
+  let expiring = 0;
+  for (const w of workspaces) {
+    byPlan[w.plan] = (byPlan[w.plan] ?? 0) + 1;
+    const st = planStatus(w.planExpiresAt ?? null);
+    if ((w.storedPlan ?? w.plan) !== 'free' && (st.status === 'grace' || (st.status === 'active' && Date.parse(w.planExpiresAt ?? '') - Date.now() < 7 * 86_400_000))) expiring++;
+  }
+  let usage: Awaited<ReturnType<typeof readUsage>> = [];
+  try { usage = await readUsage(3); } catch { /* shown as empty */ }
+  const checks = evaluateLaunchReadiness(process.env).map(({ id, title, status, detail }) => ({ id, title, status, detail }));
+  res.json({
+    counts: { workspaces: workspaces.length, openRequests: open.length, endingSoon: expiring },
+    byPlan,
+    usage,
+    health: {
+      sharedStore: Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ? 'upstash' : 'memory',
+      errorAlertsConfigured: Boolean(process.env.ERROR_WEBHOOK_URL),
+      emailConfigured: mailConfigured(),
+      summariesJobConfigured: (process.env.CRON_SECRET ?? '').trim().length >= 16,
+      operators: (process.env.OPERATOR_EMAILS ?? '').split(',').filter((e) => e.trim()).length,
+    },
+    checks,
+  });
+});
+
+admin.get('/workspaces/:id', async (req: Request, res: Response) => {
+  const store = getFirestoreStore();
+  const ws = await store.getWorkspace(String(req.params.id));
+  if (!ws) return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+  const [projects, usage, invoices, invites, requests] = await Promise.all([
+    store.listProjects(ws.id), store.getUsage(ws.id, getUtcMonthPeriod()), getBillingStore().listInvoices(ws.id),
+    getInviteStore().listForWorkspace(ws.id), getBillingStore().listRequests({ workspaceId: ws.id, status: 'open' }),
+  ]);
+  const members = await Promise.all(Object.entries(ws.members).map(async ([uid, role]) => {
+    const u = await store.getUser(uid);
+    return { uid, role, email: u?.email ?? '', displayName: u?.displayName ?? 'AdLens User' };
+  }));
+  res.json({
+    workspace: { id: ws.id, name: ws.name, ownerId: ws.ownerId, createdAt: ws.createdAt, joinDomain: ws.joinDomain ?? null },
+    current: planSummary(ws),
+    usage: { aiQuestions: typeof usage?.aiQuestions === 'number' ? usage.aiQuestions : 0, projects: projects.filter((p) => !p.isDemo).length },
+    projects: projects.map((p) => ({ id: p.id, name: p.name, domain: p.domain, isDemo: Boolean(p.isDemo) })),
+    members,
+    invites: invites.map((i) => ({ id: i.id, email: i.email, role: i.role, createdAt: i.createdAt })),
+    invoices,
+    openRequest: requests[0] ? { plan: requests[0].plan, email: requests[0].email, message: requests[0].message, createdAt: requests[0].createdAt } : null,
+  });
+});
+
+admin.post('/workspaces/:id/members/:uid/role', async (req: Request, res: Response) => {
+  const body = z.object({ role: z.enum(['admin', 'member']) }).safeParse(req.body);
+  if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', 'Choose admin or member.');
+  const store = getFirestoreStore();
+  const ws = await store.getWorkspace(String(req.params.id));
+  const target = String(req.params.uid);
+  if (!ws || !Object.prototype.hasOwnProperty.call(ws.members, target)) return fail(res, 404, 'NOT_FOUND', 'Member not found.');
+  if (ws.members[target] === 'owner') return fail(res, 409, 'OWNER_ROLE_FIXED', "The owner's role cannot be changed.");
+  await store.updateWorkspace(ws.id, { members: { ...ws.members, [target]: body.data.role } });
+  void recordAudit({ uid: req.user!.uid, action: 'member.role_changed', workspaceId: ws.id, detail: `by operator, to ${body.data.role}` });
+  res.status(204).end();
+});
+
+admin.delete('/workspaces/:id/members/:uid', async (req: Request, res: Response) => {
+  const ws = await getFirestoreStore().getWorkspace(String(req.params.id));
+  if (!ws) return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+  const result = await removeMember(ws, String(req.params.uid));
+  if (result === 'owner') return fail(res, 409, 'OWNER_CANNOT_BE_REMOVED', 'The owner cannot be removed.');
+  if (result === 'missing') return fail(res, 404, 'NOT_FOUND', 'Member not found.');
+  void recordAudit({ uid: req.user!.uid, action: 'member.removed', workspaceId: ws.id, detail: 'by operator' });
+  res.status(204).end();
+});
+
+admin.get('/users', async (req: Request, res: Response) => {
+  const store = getFirestoreStore();
+  const q = typeof req.query.q === 'string' ? req.query.q : '';
+  const users = await store.listUsersForOperator(q, 25);
+  const out = await Promise.all(users.map(async (u) => ({
+    uid: u.uid, email: u.email, displayName: u.displayName, createdAt: u.createdAt,
+    workspaces: (await store.listWorkspacesForUser(u.uid)).map((w) => ({ id: w.id, name: w.name, role: w.members[u.uid] ?? 'member', plan: w.plan })),
+  })));
+  res.json({ users: out });
+});
+
+admin.get('/audit', async (req: Request, res: Response) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 300);
+  const wanted = typeof req.query.workspaceId === 'string' ? req.query.workspaceId.trim() : '';
+  const events = wanted ? (await (await import('../lib/auditLog.js')).listAuditForWorkspace(wanted, limit)) : await listRecentAudit(limit);
+  const store = getFirestoreStore();
+  const names = new Map<string, string>();
+  for (const uid of new Set(events.map((e) => e.uid))) {
+    const u = await store.getUser(uid).catch(() => null);
+    names.set(uid, u?.email || 'deleted account');
+  }
+  res.json({ events: events.map((e) => ({ id: e.id, at: e.at, action: e.action, detail: e.detail ?? null, workspaceId: e.workspaceId ?? null, who: names.get(e.uid) ?? '' })) });
 });

@@ -64,4 +64,6 @@ There is no payment provider yet. A customer asks for an upgrade, pays you direc
 4. When `endsOn` passes there are 7 days of grace, then the workspace behaves as Free. Nothing is deleted: the workspace simply cannot add more than Free allows. Setting the plan again restores everything.
 5. New workspaces start on `DEFAULT_NEW_WORKSPACE_PLAN` (currently `beta`, so nothing changes for anyone yet). Switch it to `free` when the plan screens are live.
 
-The operator screens (Sprint 20e) will wrap these calls; until then they are plain API calls. Refund policy: no refunds after 3 days.
+The Admin page (`/admin`, sidebar "Admin", operators only) wraps these calls. To give another trusted person the Admin page, add their email to `OPERATOR_EMAILS` (comma-separated) and publish.
+
+Team: Settings → Workspace → Team lets an owner add people by email, set roles (owner / admin / member) and offer colleagues with the same company email the chance to join. Each person uses their own Google and Meta connections. Refund policy: no refunds after 3 days.

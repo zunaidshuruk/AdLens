@@ -81,6 +81,8 @@ export interface WorkspaceDoc {
   storedPlan?: string;
   /** When the paid plan ends (ISO), or null for no end date. */
   planExpiresAt?: string | null;
+  /** When set, people who sign in with a verified email on this domain are offered the chance to join. Never a free-mail domain. */
+  joinDomain?: string | null;
   members: Record<string, WorkspaceRole>;
   memberIds: string[];
   logoURL?: string | null;
@@ -137,6 +139,10 @@ export interface FirestoreStoreAdapter {
     created: boolean;
   }>;
   getUser(uid: string): Promise<UserDoc | null>;
+  /** Finds the account that signed up with this email (compared in lower case). */
+  findUserByEmail(email: string): Promise<(UserDoc & { uid: string }) | null>;
+  /** Operator only: accounts whose email or name contains the text. */
+  listUsersForOperator(query: string, limit: number): Promise<(UserDoc & { uid: string })[]>;
   updateUser(
     uid: string,
     patch: {
@@ -174,6 +180,10 @@ export interface FirestoreStoreAdapter {
   ): Promise<WorkspaceDoc>;
   /** Operator only: set the plan and its end date. Returns null when the workspace does not exist. */
   setWorkspacePlan(wsId: string, plan: string, planExpiresAt: string | null): Promise<WorkspaceDoc | null>;
+  /** Turns the "offer colleagues on this email domain the chance to join" setting on (domain) or off (null). */
+  setWorkspaceJoinDomain(wsId: string, domain: string | null): Promise<WorkspaceDoc | null>;
+  /** Workspaces that offer joining to this email domain. */
+  listWorkspacesByJoinDomain(domain: string): Promise<WorkspaceDoc[]>;
   /** Operator only: recent workspaces, optionally filtered by id or name. */
   listWorkspacesForOperator(query: string, limit: number): Promise<WorkspaceDoc[]>;
   deleteWorkspaceRecursive(wsId: string): Promise<void>;
@@ -314,6 +324,7 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     plan: effectivePlan(typeof raw.plan === 'string' ? raw.plan : 'beta', mapExpiry(raw.planExpiresAt)),
     storedPlan: typeof raw.plan === 'string' ? raw.plan : 'beta',
     planExpiresAt: mapExpiry(raw.planExpiresAt),
+    joinDomain: typeof raw.joinDomain === 'string' && raw.joinDomain ? raw.joinDomain : null,
     members: membersRaw,
     memberIds: memberIdsRaw,
     logoURL: typeof raw.logoURL === 'string' ? raw.logoURL : null,
@@ -474,6 +485,26 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     return mapRawUser(snap.data() ?? {});
   },
 
+  async findUserByEmail(email: string) {
+    const db = getAdminFirestore();
+    const wanted = email.trim().toLowerCase();
+    if (!wanted) return null;
+    for (const candidate of new Set([wanted, email.trim()])) {
+      const snap = await db.collection('users').where('email', '==', candidate).limit(1).get();
+      if (!snap.empty) return { ...mapRawUser(snap.docs[0].data()), uid: snap.docs[0].id };
+    }
+    return null;
+  },
+
+  async listUsersForOperator(query: string, limit: number) {
+    const db = getAdminFirestore();
+    const q = query.trim().toLowerCase();
+    const snap = await db.collection('users').limit(500).get();
+    const all = snap.docs.map((d) => ({ ...mapRawUser(d.data()), uid: d.id }));
+    const hits = q ? all.filter((u) => u.email.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q) || u.uid === query.trim()) : all;
+    return hits.slice(0, limit);
+  },
+
   async updateUser(uid, patch): Promise<UserDoc> {
     const db = getAdminFirestore();
     const ref = db.collection('users').doc(uid);
@@ -613,6 +644,22 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     await ref.update({ plan, planExpiresAt, updatedAt: FieldValue.serverTimestamp() });
     const updated = await ref.get();
     return mapRawWorkspace(updated.id, updated.data() ?? {});
+  },
+
+  async setWorkspaceJoinDomain(wsId, domain) {
+    const db = getAdminFirestore();
+    const ref = db.collection('workspaces').doc(wsId);
+    const snap = await ref.get();
+    if (!snap.exists) return null;
+    await ref.update({ joinDomain: domain, updatedAt: FieldValue.serverTimestamp() });
+    const updated = await ref.get();
+    return mapRawWorkspace(updated.id, updated.data() ?? {});
+  },
+
+  async listWorkspacesByJoinDomain(domain) {
+    const db = getAdminFirestore();
+    const snap = await db.collection('workspaces').where('joinDomain', '==', domain).limit(20).get();
+    return snap.docs.map((d) => mapRawWorkspace(d.id, d.data() ?? {}));
   },
 
   async listWorkspacesForOperator(query, limit) {
@@ -1033,6 +1080,18 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       return u ? structuredClone(u) : null;
     },
 
+    async findUserByEmail(email) {
+      const wanted = email.trim().toLowerCase();
+      for (const [uid, u] of users) if (wanted && u.email.toLowerCase() === wanted) return { ...structuredClone(u), uid };
+      return null;
+    },
+
+    async listUsersForOperator(query, limit) {
+      const q = query.trim().toLowerCase();
+      const all = [...users].map(([uid, u]) => ({ ...structuredClone(u), uid }));
+      return (q ? all.filter((u) => u.email.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q) || u.uid === query.trim()) : all).slice(0, limit);
+    },
+
     async updateUser(uid, patch) {
       const nowIso = new Date().toISOString();
       const existing = users.get(uid) ?? {
@@ -1122,6 +1181,18 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       const updated: WorkspaceDoc = { ...ws, plan, storedPlan: plan, planExpiresAt, updatedAt: new Date().toISOString() };
       workspaces.set(wsId, updated);
       return withEffectivePlan(updated);
+    },
+
+    async setWorkspaceJoinDomain(wsId, domain) {
+      const ws = workspaces.get(wsId);
+      if (!ws) return null;
+      const updated: WorkspaceDoc = { ...ws, joinDomain: domain, updatedAt: new Date().toISOString() };
+      workspaces.set(wsId, updated);
+      return withEffectivePlan(updated);
+    },
+
+    async listWorkspacesByJoinDomain(domain) {
+      return [...workspaces.values()].filter((w) => w.joinDomain === domain).map(withEffectivePlan);
     },
 
     async listWorkspacesForOperator(query, limit) {

@@ -281,6 +281,35 @@ export async function startMetaLogin(): Promise<void> {
 
 export interface SsoConfigInfo { domain: string; providerId: string; displayName: string; verified: boolean; enforced: boolean; requireMfa: boolean; autoJoin: boolean; dnsHost?: string; dnsValue?: string }
 export interface McpProjectOption { workspaceId: string; projectId: string; workspaceName: string; name: string; domain: string }
+export interface TeamMember { uid: string; role: 'owner' | 'admin' | 'member'; email: string; displayName: string }
+export interface TeamInvite { id: string; email: string; role: 'admin' | 'member'; createdAt: string }
+export interface TeamView { members: TeamMember[]; invites: TeamInvite[]; limit: number; plan: string; joinDomain: string | null; yourRole?: string; canManage?: boolean }
+export interface JoinOffer { workspaceId: string; workspaceName: string; ownerName: string; domain: string }
+
+export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; members: number; plan: string; storedPlan: string; planExpiresAt: string | null; status: 'none' | 'active' | 'grace' | 'expired' }
+export interface AdminCheck { id: string; title: string; status: 'pass' | 'fail' | 'warn'; detail: string }
+export interface AdminOverview {
+  counts: { workspaces: number; openRequests: number; endingSoon: number };
+  byPlan: Record<string, number>;
+  usage: { date: string; counts: Record<string, number> }[];
+  health: { sharedStore: string; errorAlertsConfigured: boolean; emailConfigured: boolean; summariesJobConfigured: boolean; operators: number };
+  checks: AdminCheck[];
+}
+export interface AdminInvoice { id: string; number: string; amount: number; currency: 'USD' | 'BDT'; plan: string; periodStart: string; periodEnd: string; note?: string; createdAt: string }
+export interface AdminWorkspaceDetail {
+  workspace: { id: string; name: string; ownerId: string; createdAt: string; joinDomain: string | null };
+  current: { plan: string; label: string; storedPlan: string; status: string; expiresAt: string | null; graceEndsAt: string | null };
+  usage: { aiQuestions: number; projects: number };
+  projects: { id: string; name: string; domain: string; isDemo: boolean }[];
+  members: TeamMember[];
+  invites: TeamInvite[];
+  invoices: AdminInvoice[];
+  openRequest: { plan: string; email: string; message: string; createdAt: string } | null;
+}
+export interface AdminRequest { id: string; workspaceId: string; email: string; plan: string; message: string; createdAt: string }
+export interface AdminUser { uid: string; email: string; displayName: string; createdAt: string; workspaces: { id: string; name: string; role: string; plan: string }[] }
+export interface AdminAuditEvent { id: string; at: string; action: string; detail: string | null; workspaceId: string | null; who: string }
+
 export interface McpKeyInfo { id: string; name: string; prefix: string; projects: { workspaceId: string; projectId: string }[]; createdAt: string; lastUsedAt: string | null }
 export interface McpConnectedApp { familyId: string; clientName: string; connectedAt: string; projects: { workspaceId: string; projectId: string }[] }
 
@@ -788,6 +817,68 @@ export const apiClient = {
   },
   mcpApprove(body: { client_id: string; redirect_uri: string; code_challenge: string; state?: string; approve: boolean; projects: { workspaceId: string; projectId: string }[] }): Promise<{ redirect: string }> {
     return apiRequest('/api/mcp/oauth/approve', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  teamGet(wsId: string): Promise<TeamView> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}`);
+  },
+  teamAdd(wsId: string, email: string, role: 'admin' | 'member'): Promise<TeamView & { added: boolean; invited: boolean }> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/members`, { method: 'POST', body: JSON.stringify({ email, role }) });
+  },
+  teamRemove(wsId: string, uid: string): Promise<void> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+  },
+  teamSetRole(wsId: string, uid: string, role: 'admin' | 'member'): Promise<TeamView> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}`, { method: 'PATCH', body: JSON.stringify({ role }) });
+  },
+  teamCancelInvite(wsId: string, inviteId: string): Promise<void> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/invites/${encodeURIComponent(inviteId)}`, { method: 'DELETE' });
+  },
+  teamSetDomainJoin(wsId: string, enabled: boolean): Promise<TeamView> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/domain-join`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+  },
+  teamOffers(): Promise<{ offers: JoinOffer[] }> {
+    return apiRequest('/api/team/offers/mine');
+  },
+  teamAcceptOffer(wsId: string): Promise<{ joined: boolean; workspaceId: string }> {
+    return apiRequest(`/api/team/offers/${encodeURIComponent(wsId)}/accept`, { method: 'POST', body: '{}' });
+  },
+
+  billingWhoAmI(): Promise<{ isOperator: boolean }> {
+    return apiRequest('/api/billing/whoami');
+  },
+  adminOverview(): Promise<AdminOverview> {
+    return apiRequest('/api/billing/admin/overview');
+  },
+  adminWorkspaces(q: string): Promise<{ workspaces: AdminWorkspaceRow[] }> {
+    return apiRequest(`/api/billing/admin/workspaces?q=${encodeURIComponent(q)}`);
+  },
+  adminWorkspace(id: string): Promise<AdminWorkspaceDetail> {
+    return apiRequest(`/api/billing/admin/workspaces/${encodeURIComponent(id)}`);
+  },
+  adminSetPlan(body: { workspaceId: string; plan: string; endsOn: string | null; note: string }): Promise<unknown> {
+    return apiRequest('/api/billing/admin/set-plan', { method: 'POST', body: JSON.stringify(body) });
+  },
+  adminRecordInvoice(body: { workspaceId: string; number: string; amount: number; currency: 'USD' | 'BDT'; plan: 'pro' | 'business'; periodStart: string; periodEnd: string; note: string }): Promise<unknown> {
+    return apiRequest('/api/billing/admin/invoices', { method: 'POST', body: JSON.stringify(body) });
+  },
+  adminRequests(): Promise<{ requests: AdminRequest[] }> {
+    return apiRequest('/api/billing/admin/requests');
+  },
+  adminCloseRequest(id: string): Promise<void> {
+    return apiRequest(`/api/billing/admin/requests/${encodeURIComponent(id)}/close`, { method: 'POST', body: '{}' });
+  },
+  adminSetMemberRole(wsId: string, uid: string, role: 'admin' | 'member'): Promise<void> {
+    return apiRequest(`/api/billing/admin/workspaces/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}/role`, { method: 'POST', body: JSON.stringify({ role }) });
+  },
+  adminRemoveMember(wsId: string, uid: string): Promise<void> {
+    return apiRequest(`/api/billing/admin/workspaces/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+  },
+  adminUsers(q: string): Promise<{ users: AdminUser[] }> {
+    return apiRequest(`/api/billing/admin/users?q=${encodeURIComponent(q)}`);
+  },
+  adminAudit(workspaceId?: string): Promise<{ events: AdminAuditEvent[] }> {
+    return apiRequest(`/api/billing/admin/audit${workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
   },
 
   digestGet(): Promise<{ emailConfigured: boolean; email: string | null; subscriptions: { workspaceId: string; projectId: string; weekly: boolean; alerts: boolean }[] }> {

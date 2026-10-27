@@ -27,7 +27,11 @@ export type AuditAction =
   | 'sso.signin_blocked'
   | 'plan.changed'
   | 'plan.requested'
-  | 'invoice.recorded';
+  | 'invoice.recorded'
+  | 'member.added'
+  | 'member.invited'
+  | 'member.removed'
+  | 'member.role_changed';
 
 export interface AuditEvent {
   id: string;
@@ -42,6 +46,7 @@ export interface AuditStore {
   put(event: AuditEvent): Promise<void>;
   listForUid(uid: string): Promise<AuditEvent[]>;
   listForWorkspace(workspaceId: string): Promise<AuditEvent[]>;
+  listRecent(limit: number): Promise<AuditEvent[]>;
   deleteForUid(uid: string): Promise<void>;
 }
 
@@ -52,6 +57,7 @@ export function createInMemoryAuditStore(): AuditStore & { all(): AuditEvent[] }
     async put(e) { events.push(e); },
     async listForUid(uid) { return events.filter((e) => e.uid === uid); },
     async listForWorkspace(ws) { return events.filter((e) => e.workspaceId === ws); },
+    async listRecent(limit) { return [...events].sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit); },
     async deleteForUid(uid) { events = events.filter((e) => e.uid !== uid); },
   };
 }
@@ -64,6 +70,10 @@ const firestoreAuditStore: AuditStore = {
   },
   async listForWorkspace(ws) {
     const s = await getAdminFirestore().collection('auditLog').where('workspaceId', '==', ws).get();
+    return s.docs.map((d) => d.data() as AuditEvent);
+  },
+  async listRecent(limit) {
+    const s = await getAdminFirestore().collection('auditLog').orderBy('at', 'desc').limit(limit).get();
     return s.docs.map((d) => d.data() as AuditEvent);
   },
   async deleteForUid(uid) {
@@ -109,4 +119,8 @@ export async function recordAccountDeletion(uid: string, store: AuditStore = get
   } catch {
     // by design
   }
+}
+
+export async function listRecentAudit(limit = 100, store: AuditStore = getAuditStore()): Promise<AuditEvent[]> {
+  return (await store.listRecent(Math.min(Math.max(limit, 1), 300))).sort(newestFirst);
 }

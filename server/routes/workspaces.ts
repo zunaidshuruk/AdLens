@@ -1,3 +1,4 @@
+import { acceptPendingInvites } from './team.js';
 import { getBillingStore } from '../lib/billingStore.js';
 import { getDigestStore } from '../lib/digestStore.js';
 import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
@@ -269,6 +270,7 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
       photoURL,
     });
 
+    if (req.user!.emailVerified) await acceptPendingInvites(uid, email);
     const payload = await buildMePayload(uid, email, displayName, photoURL);
     res.json(payload);
   } catch (err) {
