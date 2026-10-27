@@ -202,39 +202,66 @@ export function SwitchesEditor() {
 }
 
 // ---------------------------------------------------------------------------
-// Operators
+// Staff (operators with roles)
 // ---------------------------------------------------------------------------
 
 export function OperatorsEditor() {
   const { view, setView, error, setError } = useSettings();
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState('support');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const save = async (emails: string[], done: string) => {
+  const save = async (list: { email: string; role: string }[], done: string) => {
     setBusy(true); setError(null); setNotice(null);
-    try { setView(await apiClient.adminSaveOperators(emails)); setNotice(done); setEmail(''); } catch (e) { setError(errText(e, 'Could not save.')); } finally { setBusy(false); }
+    try { setView(await apiClient.adminSaveOperators(list)); setNotice(done); setEmail(''); } catch (e) { setError(errText(e, 'Could not save.')); } finally { setBusy(false); }
   };
 
   if (!view) return error ? <p role="alert" className="text-sm text-danger">{error}</p> : <p className="text-sm text-fg-muted">Loading…</p>;
-  const extra = view.operators.filter((o) => !o.locked).map((o) => o.email);
+  const extra = view.operators.filter((o) => !o.locked).map((o) => ({ email: o.email, role: o.role }));
+  const roleName = (id: string) => view.staffRoles.find((r) => r.id === id)?.name ?? id;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-fg-muted">Operators can sign in on the admin login page and change everything here. Only add people you fully trust. Each admin session lasts one hour, then asks for a fresh sign-in.</p>
+      <p className="text-sm text-fg-muted">AdLens staff sign in on the admin login page. Each person has one staff role that decides which tabs and actions they get. Only add people you trust. Each admin session lasts one hour, then asks for a fresh sign-in.</p>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {notice && <p role="status" className="text-sm text-success">{notice}</p>}
+
       <div className={card}>
+        <h3 className="text-sm font-semibold text-fg">Staff roles</h3>
         <ul className="divide-y divide-line">
-          {view.operators.map((o) => (
-            <li key={o.email} className="py-2 flex flex-wrap items-center justify-between gap-2">
-              <div><div className="text-sm text-fg break-all">{o.email}</div><div className="text-xs text-fg-muted">{o.locked ? 'Owner: set in the OPERATOR_EMAILS secret, cannot be removed here' : 'Added in this panel'}</div></div>
-              {!o.locked && <button type="button" className={btn} disabled={busy} onClick={() => void save(extra.filter((e) => e !== o.email), 'Removed.')}>Remove</button>}
+          {view.staffRoles.map((r) => (
+            <li key={r.id} className="py-2 space-y-1">
+              <div className="text-sm text-fg font-medium">{r.name} <span className="text-xs font-normal text-fg-muted">{r.description}</span></div>
+              <div className="flex flex-wrap gap-1.5">{r.permissions.map((p) => <span key={p} className="rounded-full bg-fill-2 text-fg-muted text-[11px] px-2 py-0.5">{view.staffPermissions.find((x) => x.id === p)?.label ?? p}</span>)}</div>
             </li>
           ))}
         </ul>
-        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (email.trim()) void save([...extra, email.trim()], 'Added. They can use the admin login page now.'); }}>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" className={`${field} flex-1 min-w-[220px]`} aria-label="Operator email" />
-          <button type="submit" className={primary} disabled={busy || !email.trim()}>Add operator</button>
+      </div>
+
+      <div className={card}>
+        <h3 className="text-sm font-semibold text-fg">Staff</h3>
+        <ul className="divide-y divide-line">
+          {view.operators.map((o) => (
+            <li key={o.email} className="py-2 flex flex-wrap items-center justify-between gap-2">
+              <div><div className="text-sm text-fg break-all">{o.email}</div><div className="text-xs text-fg-muted">{o.locked ? 'Owner: set in the OPERATOR_EMAILS secret, always Super admin, cannot be changed here' : 'Added in this panel'}</div></div>
+              {o.locked ? <span className="text-xs text-fg-muted">{roleName(o.role)}</span> : (
+                <div className="flex items-center gap-2">
+                  <select aria-label={`Role for ${o.email}`} value={o.role} disabled={busy} className={`${field} py-1 text-xs`}
+                    onChange={(e) => void save(extra.map((x) => (x.email === o.email ? { ...x, role: e.target.value } : x)), 'Role changed.')}>
+                    {view.staffRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                  <button type="button" className={btn} disabled={busy} onClick={() => void save(extra.filter((x) => x.email !== o.email), 'Removed.')}>Remove</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (email.trim()) void save([...extra, { email: email.trim(), role }], 'Added. They can use the admin login page now.'); }}>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" className={`${field} flex-1 min-w-[220px]`} aria-label="Staff email" />
+          <select aria-label="Staff role" value={role} onChange={(e) => setRole(e.target.value)} className={field}>
+            {view.staffRoles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <button type="submit" className={primary} disabled={busy || !email.trim()}>Add staff</button>
         </form>
       </div>
     </div>

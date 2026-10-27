@@ -72,7 +72,7 @@ test('Sprint 20e — admin panel: fresh sign-in, settings, switches, operators, 
     // plans and prices
     const s0 = await j(await api('/api/admin/settings', 'op'));
     assert.deepEqual(s0.plans.map((p: any) => p.id), ['beta', 'free', 'pro', 'business']);
-    assert.deepEqual(s0.operators, [{ email: 'owner@op.com', locked: true }]);
+    assert.deepEqual(s0.operators, [{ email: 'owner@op.com', locked: true, role: 'super' }]);
     const put = await api('/api/admin/plans', 'op', { plans: { pro: { priceUsd: 29, priceBdt: 2500, limits: { maxProjects: 8 } }, 'convay-team': { label: 'Convay team', features: { maxMembers: 12, historyDays: null }, limits: { maxProjects: 10, aiQuestionsPerMonth: 800 } } } }, 'PUT');
     assert.equal(put.status, 200);
     assert.equal(PLAN_INFO.pro.priceUsd, 29);
@@ -108,7 +108,7 @@ test('Sprint 20e — admin panel: fresh sign-in, settings, switches, operators, 
     await api('/api/billing/admin/set-plan', 'op', { workspaceId: ws.id, plan: 'free' });
     const subs = await j(await api('/api/billing/admin/subscriptions', 'op'));
     const mine = subs.rows.find((r: any) => r.email === 'cust@acme.com');
-    assert.equal(mine.plan, 'free'); assert.equal(mine.role, 'owner'); assert.equal(subs.peopleByPlan.free, 1);
+    assert.equal(mine.plan, 'free'); assert.equal(mine.role, 'Owner'); assert.equal(subs.peopleByPlan.free, 1);
     assert.equal((await j(await api('/api/billing/admin/subscriptions?plan=pro', 'op'))).rows.length, 0);
     assert.equal((await j(await api('/api/billing/admin/subscriptions?q=cust', 'op'))).rows.length, 1);
     assert.equal((await api('/api/billing/admin/subscriptions', 'cust')).status, 403);

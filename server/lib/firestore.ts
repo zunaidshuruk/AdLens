@@ -8,7 +8,8 @@ export function getUtcMonthPeriod(date: Date = new Date()): string {
   return `${year}-${month}`;
 }
 
-export type WorkspaceRole = 'owner' | 'admin' | 'member';
+/** A role id: 'owner', 'admin', 'moderator', 'member', or a custom role id such as 'c_1a2b3c4d' (see lib/permissions.ts). */
+export type WorkspaceRole = string;
 
 export interface UserEmailNotifications {
   weeklyReport?: boolean;
@@ -85,6 +86,8 @@ export interface WorkspaceDoc {
   /** When set, people who sign in with a verified email on this domain are offered the chance to join. Never a free-mail domain. */
   joinDomain?: string | null;
   members: Record<string, WorkspaceRole>;
+  /** Roles the workspace's admins made. Keyed by role id. */
+  customRoles?: Record<string, { name: string; description?: string; permissions: string[]; createdAt: string }>;
   memberIds: string[];
   logoURL?: string | null;
   logoPath?: string | null;
@@ -173,6 +176,7 @@ export interface FirestoreStoreAdapter {
       name?: string;
       ownerId?: string;
       members?: Record<string, WorkspaceRole>;
+      customRoles?: NonNullable<WorkspaceDoc['customRoles']>;
       memberIds?: string[];
       logoURL?: string | null;
       logoPath?: string | null;
@@ -327,6 +331,7 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     planExpiresAt: mapExpiry(raw.planExpiresAt),
     joinDomain: typeof raw.joinDomain === 'string' && raw.joinDomain ? raw.joinDomain : null,
     members: membersRaw,
+    customRoles: mapCustomRoles(raw.customRoles),
     memberIds: memberIdsRaw,
     logoURL: typeof raw.logoURL === 'string' ? raw.logoURL : null,
     logoPath: typeof raw.logoPath === 'string' ? raw.logoPath : null,
@@ -338,6 +343,22 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     createdAt: serializeTimestamp(raw.createdAt, nowIso),
     updatedAt: serializeTimestamp(raw.updatedAt, nowIso),
   };
+}
+
+function mapCustomRoles(v: unknown): NonNullable<WorkspaceDoc['customRoles']> {
+  const out: NonNullable<WorkspaceDoc['customRoles']> = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [id, r] of Object.entries(v as Record<string, unknown>)) {
+    const x = r as { name?: unknown; description?: unknown; permissions?: unknown; createdAt?: unknown };
+    if (typeof x?.name !== 'string' || !x.name) continue;
+    out[id] = {
+      name: x.name,
+      ...(typeof x.description === 'string' && x.description ? { description: x.description } : {}),
+      permissions: Array.isArray(x.permissions) ? x.permissions.filter((p): p is string => typeof p === 'string') : ['reports.view'],
+      createdAt: typeof x.createdAt === 'string' ? x.createdAt : new Date(0).toISOString(),
+    };
+  }
+  return out;
 }
 
 function withEffectivePlan(ws: WorkspaceDoc): WorkspaceDoc {
@@ -627,6 +648,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     if (patch.name !== undefined) updateData.name = patch.name;
     if (patch.ownerId !== undefined) updateData.ownerId = patch.ownerId;
     if (patch.members !== undefined) updateData.members = patch.members;
+    if (patch.customRoles !== undefined) updateData.customRoles = patch.customRoles;
     if (patch.memberIds !== undefined) updateData.memberIds = patch.memberIds;
     if (patch.logoURL !== undefined) updateData.logoURL = patch.logoURL;
     if (patch.logoPath !== undefined) updateData.logoPath = patch.logoPath;
@@ -1212,6 +1234,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.ownerId !== undefined ? { ownerId: patch.ownerId } : {}),
         ...(patch.members !== undefined ? { members: { ...patch.members } } : {}),
+        ...(patch.customRoles !== undefined ? { customRoles: structuredClone(patch.customRoles) } : {}),
         ...(patch.memberIds !== undefined ? { memberIds: [...patch.memberIds] } : {}),
         ...(patch.logoURL !== undefined ? { logoURL: patch.logoURL } : {}),
         ...(patch.logoPath !== undefined ? { logoPath: patch.logoPath } : {}),

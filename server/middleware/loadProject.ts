@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { historyViolation } from '../config/plans.js';
 import { getFirestoreStore, type ProjectDoc } from '../lib/firestore.js';
+import { permissionsOf, type Permission } from '../lib/permissions.js';
 
 declare global {
   namespace Express {
@@ -8,6 +9,8 @@ declare global {
       project?: ProjectDoc;
       /** The plan whose limits apply to the workspace of `project`. */
       workspacePlan?: string;
+      /** What the signed-in person may do in the workspace of `project`. */
+      memberPermissions?: Set<Permission>;
     }
   }
 }
@@ -84,6 +87,12 @@ export async function loadProject(
       return;
     }
 
+    const permissions = permissionsOf(workspace, uid);
+    if (!permissions.has('reports.view')) {
+      res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Your role in this workspace does not allow viewing its data.' } });
+      return;
+    }
+
     const project = await store.getProject(parsed.wsId, parsed.projectId);
     if (!project) {
       res.status(404).json({
@@ -105,6 +114,7 @@ export async function loadProject(
 
     req.project = project;
     req.workspacePlan = workspace.plan;
+    req.memberPermissions = permissions;
     next();
   } catch (err) {
     res.status(500).json({

@@ -3,6 +3,7 @@ import { SsoSettingsCard } from '../components/SsoSettingsCard';
 import { WorkspaceActivityCard } from '../components/WorkspaceActivityCard';
 import { ensureFontLoaded } from '../utils/fontLoader';
 import { PlanCard } from '../components/PlanCard';
+import { RolesCard } from '../components/RolesCard';
 import { TeamCard } from '../components/TeamCard';
 import { EmailSummariesCard } from '../components/EmailSummariesCard';
 import { SecurityActivityCard } from '../components/SecurityActivityCard';
@@ -357,10 +358,13 @@ export const SettingsPage: React.FC = () => {
   } | null>(null);
 
   const canManageWorkspace =
-    !activeWorkspace || activeWorkspace.role === 'owner' || activeWorkspace.role === 'admin';
+    !activeWorkspace ||
+    (activeWorkspace.permissions
+      ? activeWorkspace.permissions.includes('workspace.settings')
+      : activeWorkspace.role === 'owner' || activeWorkspace.role === 'admin');
   const roleTooltip = canManageWorkspace
     ? undefined
-    : 'Only workspace owners and admins can update workspace settings and logo.';
+    : 'Your role does not allow changing workspace settings and the logo.';
 
   // Account display name state
   const [displayName, setDisplayName] = useState(
@@ -2843,6 +2847,7 @@ export const SettingsPage: React.FC = () => {
 
       {showSection('workspace') && <PlanCard />}
       {showSection('workspace') && <TeamCard />}
+      {showSection('workspace') && <RolesCard />}
       {showSection('preferences') && <EmailSummariesCard />}
       {showSection('security') && <SessionsCard />}
       {showSection('security') && <SsoSettingsCard />}

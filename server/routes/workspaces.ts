@@ -1,5 +1,6 @@
 import { acceptPendingInvites } from './team.js';
 import { getFlags } from '../lib/adminSettings.js';
+import { can, permissionsOf, roleDef, roleIdOf } from '../lib/permissions.js';
 import { getInviteStore } from '../lib/inviteStore.js';
 import { isOperator } from './ops.js';
 import { getBillingStore } from '../lib/billingStore.js';
@@ -247,7 +248,9 @@ async function buildMePayload(
       id: ws.id,
       name: ws.name,
       ownerId: ws.ownerId,
-      role: getMemberRole(ws, uid) ?? 'member',
+      role: roleIdOf(ws, uid) ?? 'member',
+      roleName: roleDef(ws, roleIdOf(ws, uid))?.name ?? 'Member',
+      permissions: [...permissionsOf(ws, uid)],
       plan: ws.plan,
       limits: getPlanLimits(ws.plan),
       logoURL: ws.logoURL ?? null,
@@ -574,11 +577,11 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
       return;
     }
 
-    if (role !== 'owner' && role !== 'admin') {
+    if (!can(ws, uid, 'workspace.settings')) {
       res.status(403).json({
         error: {
           code: 'NOT_ALLOWED',
-          message: 'Only workspace owners and admins can update workspace settings.',
+          message: 'Your role does not allow changing workspace settings.',
         },
       });
       return;
@@ -656,11 +659,11 @@ workspacesRouter.put('/:wsId/logo', async (req: Request, res: Response) => {
       });
       return;
     }
-    if (role !== 'owner' && role !== 'admin') {
+    if (!can(ws, uid, 'workspace.settings')) {
       res.status(403).json({
         error: {
           code: 'NOT_ALLOWED',
-          message: 'Only workspace owners and admins can update the workspace logo.',
+          message: 'Your role does not allow changing the workspace logo.',
         },
       });
       return;
@@ -709,11 +712,11 @@ workspacesRouter.delete('/:wsId/logo', async (req: Request, res: Response) => {
       });
       return;
     }
-    if (role !== 'owner' && role !== 'admin') {
+    if (!can(ws, uid, 'workspace.settings')) {
       res.status(403).json({
         error: {
           code: 'NOT_ALLOWED',
-          message: 'Only workspace owners and admins can remove the workspace logo.',
+          message: 'Your role does not allow changing the workspace logo.',
         },
       });
       return;
@@ -747,6 +750,10 @@ workspacesRouter.post('/:wsId/projects', async (req: Request, res: Response) => 
           message: 'You are not a member of this workspace.',
         },
       });
+      return;
+    }
+    if (!can(ws, uid, 'projects.edit')) {
+      res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Your role does not allow creating projects.' } });
       return;
     }
 
@@ -886,11 +893,11 @@ workspacesRouter.delete('/:wsId/projects/:id', async (req: Request, res: Respons
   try {
     const ws = await store.getWorkspace(wsId);
     const role = ws ? getMemberRole(ws, uid) : null;
-    if (!ws || !role || (role !== 'owner' && role !== 'admin')) {
+    if (!ws || !role || !can(ws, uid, 'projects.delete')) {
       res.status(403).json({
         error: {
           code: 'NOT_ALLOWED',
-          message: 'Only workspace owners and admins can delete projects.',
+          message: 'Your role does not allow deleting projects.',
         },
       });
       return;

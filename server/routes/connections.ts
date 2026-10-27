@@ -1,3 +1,4 @@
+import { can } from '../lib/permissions.js';
 import { recordAudit } from '../lib/auditLog.js';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import {
@@ -566,12 +567,7 @@ metaConnectionRouter.post('/selection', async (req: Request, res: Response) => {
 
     const store = getFirestoreStore();
     const workspace = await store.getWorkspace(activeProject.workspaceId);
-    const role = workspace?.members?.[uid];
-    if (
-      !workspace ||
-      !Object.prototype.hasOwnProperty.call(workspace.members ?? {}, uid) ||
-      (role !== 'owner' && role !== 'admin' && role !== 'member')
-    ) {
+    if (!workspace || !can(workspace, uid, 'projects.edit')) {
       res.status(403).json({
         error: {
           code: 'NOT_ALLOWED',

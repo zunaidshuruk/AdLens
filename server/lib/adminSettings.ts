@@ -6,6 +6,7 @@
  */
 import { applyPlanConfig, validatePlanSettings, type PlanSetting } from '../config/plans.js';
 import { getAdminFirestore } from './firestore.js';
+import { isPlatformRoleId, type PlatformRoleId } from './platformRoles.js';
 
 export interface FeatureFlags {
   /** false = nobody new can create an account (existing people and invited people can still sign in). */
@@ -32,11 +33,13 @@ export interface AdminSettings {
   flags: FeatureFlags;
   /** Extra operators added in the panel. The ones in OPERATOR_EMAILS are always operators and cannot be removed here. */
   operators: string[];
+  /** Role of each extra operator, by email. A missing entry means Super admin (how operators were saved before roles existed). */
+  operatorRoles: Record<string, PlatformRoleId>;
   updatedAt: string | null;
   updatedBy: string | null;
 }
 
-export const emptySettings = (): AdminSettings => ({ plans: {}, flags: { ...DEFAULT_FLAGS }, operators: [], updatedAt: null, updatedBy: null });
+export const emptySettings = (): AdminSettings => ({ plans: {}, flags: { ...DEFAULT_FLAGS }, operators: [], operatorRoles: {}, updatedAt: null, updatedBy: null });
 
 export interface AdminSettingsStore {
   load(): Promise<AdminSettings | null>;
@@ -78,6 +81,9 @@ function normalise(raw: Partial<AdminSettings> | null): AdminSettings {
     plans: raw.plans && typeof raw.plans === 'object' ? raw.plans : {},
     flags,
     operators: Array.isArray(raw.operators) ? raw.operators.filter((e): e is string => typeof e === 'string').map((e) => e.trim().toLowerCase()).filter(Boolean) : [],
+    operatorRoles: raw.operatorRoles && typeof raw.operatorRoles === 'object'
+      ? Object.fromEntries(Object.entries(raw.operatorRoles).filter(([, r]) => isPlatformRoleId(r)).map(([e, r]) => [e.trim().toLowerCase(), r as PlatformRoleId]))
+      : {},
     updatedAt: raw.updatedAt ?? null,
     updatedBy: raw.updatedBy ?? null,
   };
@@ -104,8 +110,9 @@ export function refreshAdminSettings(force = false): Promise<void> {
 export const getAdminSettings = (): AdminSettings => current;
 export const getFlags = (): FeatureFlags => current.flags;
 export const extraOperators = (): readonly string[] => current.operators;
+export const operatorRoleOf = (email: string): PlatformRoleId => current.operatorRoles[email] ?? 'super';
 
-export interface SettingsPatch { plans?: Record<string, PlanSetting>; flags?: Partial<FeatureFlags>; operators?: string[] }
+export interface SettingsPatch { plans?: Record<string, PlanSetting>; flags?: Partial<FeatureFlags>; operators?: { email: string; role: PlatformRoleId }[] }
 
 /** Validates and saves a change. Throws a plain-language Error when something is not allowed. */
 export async function saveAdminSettings(patch: SettingsPatch, by: string): Promise<AdminSettings> {
@@ -117,9 +124,13 @@ export async function saveAdminSettings(patch: SettingsPatch, by: string): Promi
   }
   if (patch.flags) next.flags = normalise({ flags: { ...next.flags, ...patch.flags } as FeatureFlags }).flags;
   if (patch.operators) {
-    const list = patch.operators.map((e) => e.trim().toLowerCase()).filter(Boolean);
-    for (const e of list) if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new Error(`"${e}" is not an email address.`);
-    next.operators = [...new Set(list)].slice(0, 50);
+    const entries = patch.operators.map((o) => ({ email: o.email.trim().toLowerCase(), role: o.role })).filter((o) => o.email);
+    for (const o of entries) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(o.email)) throw new Error(`"${o.email}" is not an email address.`);
+      if (!isPlatformRoleId(o.role)) throw new Error('Choose a role for each staff member.');
+    }
+    next.operators = [...new Set(entries.map((o) => o.email))].slice(0, 50);
+    next.operatorRoles = Object.fromEntries(entries.filter((o) => next.operators.includes(o.email)).map((o) => [o.email, o.role]));
   }
   next.updatedAt = new Date().toISOString();
   next.updatedBy = by;

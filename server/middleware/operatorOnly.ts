@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
-import { isOperator } from '../routes/ops.js';
+import type { PlatformPermission } from '../lib/platformRoles.js';
+import { isOperator, platformCan } from '../routes/ops.js';
 
 /** An admin session lasts one hour from the last fresh sign-in on the admin login page. */
 export const ADMIN_SESSION_SECONDS = 60 * 60;
@@ -24,4 +25,15 @@ export function operatorOnly(req: Request, res: Response, next: NextFunction): v
     return;
   }
   next();
+}
+
+/** Like operatorOnly, but the person's staff role must also include this permission. */
+export function requirePlatform(perm: PlatformPermission) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!platformCan(req.user?.email, perm)) {
+      res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Your staff role does not allow this.' } });
+      return;
+    }
+    next();
+  };
 }

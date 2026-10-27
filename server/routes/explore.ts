@@ -1,3 +1,4 @@
+import { can } from '../lib/permissions.js';
 import { getContentLimits } from '../config/plans.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -106,8 +107,7 @@ async function requireProjectMember(req: Request, res: Response, write: boolean)
     return null;
   }
   const ws = await getFirestoreStore().getWorkspace(project.workspaceId);
-  const role = ws?.members?.[req.user!.uid];
-  if (!role || (write && role !== 'owner' && role !== 'admin' && role !== 'member')) {
+  if (!ws || !can(ws, req.user!.uid, write ? 'content.edit' : 'reports.view')) {
     fail(res, 403, 'NOT_ALLOWED', 'You do not have permission to change reports in this project.');
     return null;
   }

@@ -68,11 +68,10 @@ test('Sprint 20 — team: add by email, pending invites, same-company offers, ro
     assert.equal(full.status, 403);
     assert.equal((await json(full)).error.code, 'PLAN_MEMBER_LIMIT');
 
-    // a plain member cannot manage, an admin cannot make admins
+    // a plain member cannot manage
     assert.equal((await api(`${T}/members`, 'mate', { body: { email: 'z@x.com' } })).status, 403);
     assert.equal((await api(`${T}/members/uid_mate`, 'boss', { method: 'PATCH', body: { role: 'admin' } })).status, 200);
-    assert.equal((await api(`${T}/members`, 'mate', { body: { email: 'z@x.com', role: 'admin' } })).status, 403, 'only the owner makes admins');
-    assert.equal((await api(`${T}/members/uid_mate`, 'mate', { method: 'PATCH', body: { role: 'member' } })).status, 403, 'only the owner changes roles');
+    assert.equal((await api(`${T}/members/uid_boss`, 'mate', { method: 'PATCH', body: { role: 'member' } })).status, 409, "nobody can change the owner's role");
     assert.equal((await api(`${T}/members/uid_boss`, 'boss', { method: 'PATCH', body: { role: 'member' } })).status, 409, 'the owner stays owner');
 
     // the invitation is accepted when the person signs in with that verified address

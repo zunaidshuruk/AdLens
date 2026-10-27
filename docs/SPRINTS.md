@@ -730,6 +730,13 @@ Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves
 
 **Font choice (27 Oct 2026, 464 tests):** Settings → Appearance → Font: Plus Jakarta Sans (default), Mada, Poppins, Noto Sans, Inter, Roboto, and the device's own font. Saved per user with the other appearance settings (`appearance.fontFamily`); Bangla text always falls back to Noto Sans Bengali. Non-default fonts are bundled (`@fontsource/*`) but download only when picked. Delivered as `stage-11-fonts` (needs `package.json` and `package-lock.json`).
 
+**Roles and permissions (Sprint 21, 27 Oct 2026, 466 tests):**
+- **Workspace roles.** Four starter roles: Owner (everything, fixed), Admin (everything else), Moderator (view, edit content, AI Analyst, edit projects, manage AI agents, add and remove people, activity log), Member (view, edit content, AI Analyst, edit projects). Eleven permissions in total: view reports; edit dashboards and saved reports; use AI Analyst; create and edit projects; delete projects; manage AI agents; add and remove people; create roles and assign them; change workspace settings; request plan upgrades; see the activity log. Viewing is always included.
+- **Custom roles.** People with "create roles and assign them" (Admins by default) make roles by ticking permissions, edit or delete them (people on a deleted role become Members), up to 20 per workspace, from Settings → Workspace → Roles and permissions. Roles are assigned in the Team list.
+- **Safety rules.** Nobody can give out, edit or take away a role with more permissions than they have themselves. The owner cannot be changed or removed. A role id that no longer exists can only view. Enforced on the server for data screens, dashboards, saved reports, AI Analyst, projects, agents, workspace settings and logo, team, roles, billing requests and the activity log.
+- **AdLens staff roles.** Admin panel → Staff: Super admin, Billing manager, Support, Settings manager. Tabs and actions follow the role. `OPERATOR_EMAILS` are always Super admins. A non-owner Super admin cannot remove their own staff-management access.
+- Not covered yet: per-project roles (roles apply to the whole workspace), AI-tool (MCP) key access, CSV export (still a browser-side action, not a separate permission).
+
 **Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
 
 ---
@@ -748,6 +755,7 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
 | 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
 | 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 12 | `stage-12-roles` | Sprint 21: workspace roles and permissions, custom roles, AdLens staff roles | Sprint 21: roles and permissions |
 | 11 | `stage-11-fonts` | Font choice in Appearance (adds 5 font packages) | Add font choice |
 | 10 | `stage-10-plan-view` | Customer Plan and billing card, admin Subscriptions tab (repeats stage-7 to 9 files) | Sprint 20d: plan view and subscriptions tab |
 | 9 | `stage-9-admin-controls` | Sprint 20e-2: separate admin login, plan/price editor, switches, operators (also repeats stage-7 and stage-8 files) | Sprint 20e-2: admin login and controls |

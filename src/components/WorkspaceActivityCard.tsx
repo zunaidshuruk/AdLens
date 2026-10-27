@@ -14,7 +14,7 @@ const LABELS: Record<string, string> = {
 export const WorkspaceActivityCard: React.FC = () => {
   const { activeWorkspace } = useApp();
   const wsId = activeWorkspace?.id ?? '';
-  const allowed = activeWorkspace?.role === 'owner' || activeWorkspace?.role === 'admin';
+  const allowed = activeWorkspace?.permissions ? activeWorkspace.permissions.includes('audit.view') : activeWorkspace?.role === 'owner' || activeWorkspace?.role === 'admin';
   const [events, setEvents] = useState<{ id: string; at: string; action: string; detail: string | null; by: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {

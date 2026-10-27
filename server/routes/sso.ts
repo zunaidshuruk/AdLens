@@ -1,3 +1,4 @@
+import { can } from '../lib/permissions.js';
 import { getPlanFeatures } from '../config/plans.js';
 import { Router, type Request, type Response } from 'express';
 import { listAuditForWorkspace, recordAudit } from '../lib/auditLog.js';
@@ -170,8 +171,7 @@ ssoRouter.post('/join', async (req: Request, res: Response) => {
 // Owners and admins see what happened in their workspace.
 ssoRouter.get('/workspaces/:wsId/audit', async (req: Request, res: Response) => {
   const ws = await getFirestoreStore().getWorkspace(String(req.params.wsId || '').trim());
-  const role = ws?.members && Object.prototype.hasOwnProperty.call(ws.members, req.user!.uid) ? ws.members[req.user!.uid] : null;
-  if (!ws || (role !== 'owner' && role !== 'admin')) return err(res, 403, 'NOT_ALLOWED', 'Only workspace owners and admins can see the activity log.');
+  if (!ws || !can(ws, req.user!.uid, 'audit.view')) return err(res, 403, 'NOT_ALLOWED', 'Your role does not allow seeing the activity log.');
   const events = await listAuditForWorkspace(ws.id, 200);
   res.json({ events: events.map((e) => ({ id: e.id, at: e.at, action: e.action, detail: e.detail ?? null, by: e.uid === req.user!.uid ? 'you' : 'a member' })) });
 });

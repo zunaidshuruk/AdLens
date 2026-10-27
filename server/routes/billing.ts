@@ -12,12 +12,13 @@ import { listRecentAudit, recordAudit } from '../lib/auditLog.js';
 import { evaluateLaunchReadiness } from '../lib/launchReadiness.js';
 import { getInviteStore } from '../lib/inviteStore.js';
 import { readUsage } from '../lib/usageMeter.js';
-import { removeMember } from './team.js';
+import { removeMember, rolesView } from './team.js';
 import { getBillingStore, newBillingId, type PlanRequest } from '../lib/billingStore.js';
 import { getFirestoreStore, getUtcMonthPeriod, type WorkspaceDoc } from '../lib/firestore.js';
 import { mailConfigured, sendMail } from '../lib/mailer.js';
 import { requireUser } from '../middleware/requireUser.js';
-import { operatorOnly } from '../middleware/operatorOnly.js';
+import { can, roleDef } from '../lib/permissions.js';
+import { operatorOnly, requirePlatform } from '../middleware/operatorOnly.js';
 import { isOperator } from './ops.js';
 
 export const billingRouter = Router();
@@ -91,7 +92,7 @@ billingRouter.get('/', async (req: Request, res: Response) => {
       workspaceId: ws.id,
       workspaceName: ws.name,
       role,
-      canRequestUpgrade: role === 'owner' || role === 'admin',
+      canRequestUpgrade: can(ws, req.user!.uid, 'billing.manage'),
       isOperator: isOperator(req.user!.email),
       current: planSummary(ws),
       usage: {
@@ -120,7 +121,7 @@ billingRouter.post('/upgrade-request', async (req: Request, res: Response) => {
   if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', 'Choose the Pro or Business plan, and keep the message under 500 characters.');
   const ws = await getFirestoreStore().getWorkspace(body.data.workspaceId);
   const role = roleIn(ws, req.user!.uid);
-  if (!ws || (role !== 'owner' && role !== 'admin')) return fail(res, 403, 'NOT_ALLOWED', 'Only a workspace owner or admin can ask for an upgrade.');
+  if (!ws || !role || !can(ws, req.user!.uid, 'billing.manage')) return fail(res, 403, 'NOT_ALLOWED', 'Your role does not allow asking for an upgrade.');
   const email = req.user!.email;
   if (!email) return fail(res, 400, 'NO_EMAIL', 'Your account has no email address we can reply to.');
 
@@ -148,7 +149,7 @@ const admin = Router();
 admin.use(operatorOnly);
 billingRouter.use('/admin', admin);
 
-admin.get('/workspaces', async (req: Request, res: Response) => {
+admin.get('/workspaces', requirePlatform('workspaces.view'), async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q : '';
   const list = await getFirestoreStore().listWorkspacesForOperator(q, 50);
   res.json({
@@ -160,12 +161,12 @@ admin.get('/workspaces', async (req: Request, res: Response) => {
   });
 });
 
-admin.get('/requests', async (_req: Request, res: Response) => {
+admin.get('/requests', requirePlatform('billing.manage'), async (_req: Request, res: Response) => {
   const open = await getBillingStore().listRequests({ status: 'open' });
   res.json({ requests: open.map((r) => ({ id: r.id, workspaceId: r.workspaceId, email: r.email, plan: r.plan, message: r.message, createdAt: r.createdAt })) });
 });
 
-admin.post('/requests/:id/close', async (req: Request, res: Response) => {
+admin.post('/requests/:id/close', requirePlatform('billing.manage'), async (req: Request, res: Response) => {
   const store = getBillingStore();
   const r = await store.getRequest(String(req.params.id));
   if (!r) return fail(res, 404, 'NOT_FOUND', 'Request not found.');
@@ -182,7 +183,7 @@ const setPlanSchema = z.object({
   note: z.string().trim().max(200).optional().default(''),
 });
 
-admin.post('/set-plan', async (req: Request, res: Response) => {
+admin.post('/set-plan', requirePlatform('billing.manage'), async (req: Request, res: Response) => {
   const body = setPlanSchema.safeParse(req.body);
   if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', body.error.issues[0]?.message || 'Check the workspace, plan and end date.');
   const { workspaceId, plan, endsOn, note } = body.data;
@@ -213,7 +214,7 @@ const invoiceSchema = z.object({
   note: z.string().trim().max(200).optional().default(''),
 });
 
-admin.post('/invoices', async (req: Request, res: Response) => {
+admin.post('/invoices', requirePlatform('billing.manage'), async (req: Request, res: Response) => {
   const body = invoiceSchema.safeParse(req.body);
   if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', body.error.issues[0]?.message || 'Check the invoice details.');
   if (body.data.periodStart > body.data.periodEnd) return fail(res, 400, 'VALIDATION_ERROR', 'The period must end on or after the day it starts.');
@@ -225,7 +226,7 @@ admin.post('/invoices', async (req: Request, res: Response) => {
   res.status(201).json({ invoice });
 });
 
-admin.get('/invoices', async (req: Request, res: Response) => {
+admin.get('/invoices', requirePlatform('billing.manage'), async (req: Request, res: Response) => {
   const ws = typeof req.query.workspaceId === 'string' ? req.query.workspaceId.trim() : '';
   if (!ws) return fail(res, 400, 'VALIDATION_ERROR', 'Choose a workspace.');
   res.json({ invoices: await getBillingStore().listInvoices(ws) });
@@ -235,7 +236,7 @@ admin.get('/invoices', async (req: Request, res: Response) => {
 // Admin panel: overview, health, one workspace in detail, members, users, audit trail
 // ---------------------------------------------------------------------------
 
-admin.get('/overview', async (_req: Request, res: Response) => {
+admin.get('/overview', requirePlatform('overview.view'), async (_req: Request, res: Response) => {
   const store = getFirestoreStore();
   const [workspaces, open] = await Promise.all([store.listWorkspacesForOperator('', 500), getBillingStore().listRequests({ status: 'open' })]);
   const byPlan: Record<string, number> = {};
@@ -263,7 +264,7 @@ admin.get('/overview', async (_req: Request, res: Response) => {
   });
 });
 
-admin.get('/workspaces/:id', async (req: Request, res: Response) => {
+admin.get('/workspaces/:id', requirePlatform('workspaces.view'), async (req: Request, res: Response) => {
   const store = getFirestoreStore();
   const ws = await store.getWorkspace(String(req.params.id));
   if (!ws) return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
@@ -273,9 +274,10 @@ admin.get('/workspaces/:id', async (req: Request, res: Response) => {
   ]);
   const members = await Promise.all(Object.entries(ws.members).map(async ([uid, role]) => {
     const u = await store.getUser(uid);
-    return { uid, role, email: u?.email ?? '', displayName: u?.displayName ?? 'AdLens User' };
+    return { uid, role, roleName: roleDef(ws, role)?.name ?? 'Unknown role', email: u?.email ?? '', displayName: u?.displayName ?? 'AdLens User' };
   }));
   res.json({
+    roles: rolesView(ws, null).map(({ id, name, builtin }) => ({ id, name, builtin })),
     workspace: { id: ws.id, name: ws.name, ownerId: ws.ownerId, createdAt: ws.createdAt, joinDomain: ws.joinDomain ?? null },
     current: planSummary(ws),
     usage: { aiQuestions: typeof usage?.aiQuestions === 'number' ? usage.aiQuestions : 0, projects: projects.filter((p) => !p.isDemo).length },
@@ -287,20 +289,21 @@ admin.get('/workspaces/:id', async (req: Request, res: Response) => {
   });
 });
 
-admin.post('/workspaces/:id/members/:uid/role', async (req: Request, res: Response) => {
-  const body = z.object({ role: z.enum(['admin', 'member']) }).safeParse(req.body);
-  if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', 'Choose admin or member.');
+admin.post('/workspaces/:id/members/:uid/role', requirePlatform('workspaces.members'), async (req: Request, res: Response) => {
+  const body = z.object({ role: z.string().trim().min(1).max(40) }).safeParse(req.body);
+  if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', 'Choose a role.');
   const store = getFirestoreStore();
   const ws = await store.getWorkspace(String(req.params.id));
   const target = String(req.params.uid);
   if (!ws || !Object.prototype.hasOwnProperty.call(ws.members, target)) return fail(res, 404, 'NOT_FOUND', 'Member not found.');
   if (ws.members[target] === 'owner') return fail(res, 409, 'OWNER_ROLE_FIXED', "The owner's role cannot be changed.");
+  if (body.data.role === 'owner' || !roleDef(ws, body.data.role)) return fail(res, 400, 'VALIDATION_ERROR', 'That role does not exist in this workspace.');
   await store.updateWorkspace(ws.id, { members: { ...ws.members, [target]: body.data.role } });
-  void recordAudit({ uid: req.user!.uid, action: 'member.role_changed', workspaceId: ws.id, detail: `by operator, to ${body.data.role}` });
+  void recordAudit({ uid: req.user!.uid, action: 'member.role_changed', workspaceId: ws.id, detail: `by AdLens staff, to ${roleDef(ws, body.data.role)?.name ?? body.data.role}` });
   res.status(204).end();
 });
 
-admin.delete('/workspaces/:id/members/:uid', async (req: Request, res: Response) => {
+admin.delete('/workspaces/:id/members/:uid', requirePlatform('workspaces.members'), async (req: Request, res: Response) => {
   const ws = await getFirestoreStore().getWorkspace(String(req.params.id));
   if (!ws) return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
   const result = await removeMember(ws, String(req.params.uid));
@@ -310,19 +313,19 @@ admin.delete('/workspaces/:id/members/:uid', async (req: Request, res: Response)
   res.status(204).end();
 });
 
-admin.get('/users', async (req: Request, res: Response) => {
+admin.get('/users', requirePlatform('workspaces.view'), async (req: Request, res: Response) => {
   const store = getFirestoreStore();
   const q = typeof req.query.q === 'string' ? req.query.q : '';
   const users = await store.listUsersForOperator(q, 25);
   const out = await Promise.all(users.map(async (u) => ({
     uid: u.uid, email: u.email, displayName: u.displayName, createdAt: u.createdAt,
-    workspaces: (await store.listWorkspacesForUser(u.uid)).map((w) => ({ id: w.id, name: w.name, role: w.members[u.uid] ?? 'member', plan: w.plan })),
+    workspaces: (await store.listWorkspacesForUser(u.uid)).map((w) => ({ id: w.id, name: w.name, role: roleDef(w, w.members[u.uid])?.name ?? 'Member', plan: w.plan })),
   })));
   res.json({ users: out });
 });
 
 // Who is on which plan: one row per person per workspace, with that workspace's plan.
-admin.get('/subscriptions', async (req: Request, res: Response) => {
+admin.get('/subscriptions', requirePlatform('workspaces.view'), async (req: Request, res: Response) => {
   const store = getFirestoreStore();
   const planFilter = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
   const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
@@ -338,7 +341,7 @@ admin.get('/subscriptions', async (req: Request, res: Response) => {
     for (const [uid, role] of Object.entries(w.members)) {
       const u = await lookup(uid);
       if (q && !`${u.email} ${u.displayName} ${w.name}`.toLowerCase().includes(q)) continue;
-      rows.push({ uid, email: u.email, displayName: u.displayName, role, workspaceId: w.id, workspaceName: w.name, plan: w.plan, label: isKnownPlan(w.plan) ? PLAN_INFO[w.plan].label : w.plan, status: st, planExpiresAt: w.planExpiresAt ?? null });
+      rows.push({ uid, email: u.email, displayName: u.displayName, role: roleDef(w, role)?.name ?? 'Unknown role', workspaceId: w.id, workspaceName: w.name, plan: w.plan, label: isKnownPlan(w.plan) ? PLAN_INFO[w.plan].label : w.plan, status: st, planExpiresAt: w.planExpiresAt ?? null });
     }
   }
   const byPlan: Record<string, number> = {};
@@ -347,7 +350,7 @@ admin.get('/subscriptions', async (req: Request, res: Response) => {
   res.json({ rows: rows.slice(0, 1000), peopleByPlan: byPlan, truncated: workspaces.length >= 300 });
 });
 
-admin.get('/audit', async (req: Request, res: Response) => {
+admin.get('/audit', requirePlatform('workspaces.view'), async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 300);
   const wanted = typeof req.query.workspaceId === 'string' ? req.query.workspaceId.trim() : '';
   const events = wanted ? (await (await import('../lib/auditLog.js')).listAuditForWorkspace(wanted, limit)) : await listRecentAudit(limit);

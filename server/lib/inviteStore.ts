@@ -10,7 +10,8 @@ export interface WorkspaceInvite {
   workspaceId: string;
   /** Lower case. */
   email: string;
-  role: 'admin' | 'member';
+  /** A role id (built-in or custom). Never 'owner'. */
+  role: string;
   invitedBy: string;
   createdAt: string;
 }

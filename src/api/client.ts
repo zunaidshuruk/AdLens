@@ -286,9 +286,15 @@ export async function startMetaLogin(): Promise<void> {
 
 export interface SsoConfigInfo { domain: string; providerId: string; displayName: string; verified: boolean; enforced: boolean; requireMfa: boolean; autoJoin: boolean; dnsHost?: string; dnsValue?: string }
 export interface McpProjectOption { workspaceId: string; projectId: string; workspaceName: string; name: string; domain: string }
-export interface TeamMember { uid: string; role: 'owner' | 'admin' | 'member'; email: string; displayName: string }
-export interface TeamInvite { id: string; email: string; role: 'admin' | 'member'; createdAt: string }
-export interface TeamView { members: TeamMember[]; invites: TeamInvite[]; limit: number; plan: string; joinDomain: string | null; yourRole?: string; canManage?: boolean }
+export interface TeamMember { uid: string; role: string; roleName?: string; email: string; displayName: string }
+export interface TeamInvite { id: string; email: string; role: string; roleName?: string; createdAt: string }
+export interface TeamRole { id: string; name: string; description: string; builtin: boolean; permissions: string[]; memberCount: number; assignable: boolean; editable: boolean }
+export interface PermissionInfo { id: string; label: string; help: string; group: string }
+export interface TeamView {
+  members: TeamMember[]; invites: TeamInvite[]; limit: number; plan: string; joinDomain: string | null;
+  roles: TeamRole[]; permissionList: PermissionInfo[]; maxCustomRoles: number;
+  yourRole: string; yourRoleName: string; yourPermissions: string[]; canManage: boolean; canManageRoles: boolean;
+}
 export interface JoinOffer { workspaceId: string; workspaceName: string; ownerName: string; domain: string }
 
 export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; members: number; plan: string; storedPlan: string; planExpiresAt: string | null; status: 'none' | 'active' | 'grace' | 'expired' }
@@ -328,11 +334,13 @@ export interface AdminSettingsView {
   plans: AdminPlan[];
   saved: Record<string, unknown>;
   flags: AdminFlags;
-  operators: { email: string; locked: boolean }[];
+  operators: { email: string; locked: boolean; role: string }[];
+  staffRoles: { id: string; name: string; description: string; permissions: string[] }[];
+  staffPermissions: { id: string; label: string }[];
   updatedAt: string | null;
   updatedBy: string | null;
 }
-export interface AdminSession { operator: boolean; secondsLeft: number; sessionMinutes: number; email: string | null }
+export interface AdminSession { operator: boolean; secondsLeft: number; sessionMinutes: number; email: string | null; role: string | null; roleName: string | null; permissions: string[] }
 export interface AdminCheck { id: string; title: string; status: 'pass' | 'fail' | 'warn'; detail: string }
 export interface AdminOverview {
   counts: { workspaces: number; openRequests: number; endingSoon: number };
@@ -349,6 +357,7 @@ export interface AdminWorkspaceDetail {
   projects: { id: string; name: string; domain: string; isDemo: boolean }[];
   members: TeamMember[];
   invites: TeamInvite[];
+  roles: { id: string; name: string; builtin: boolean }[];
   invoices: AdminInvoice[];
   openRequest: { plan: string; email: string; message: string; createdAt: string } | null;
 }
@@ -868,13 +877,22 @@ export const apiClient = {
   teamGet(wsId: string): Promise<TeamView> {
     return apiRequest(`/api/team/${encodeURIComponent(wsId)}`);
   },
-  teamAdd(wsId: string, email: string, role: 'admin' | 'member'): Promise<TeamView & { added: boolean; invited: boolean }> {
+  teamAdd(wsId: string, email: string, role: string): Promise<TeamView & { added: boolean; invited: boolean }> {
     return apiRequest(`/api/team/${encodeURIComponent(wsId)}/members`, { method: 'POST', body: JSON.stringify({ email, role }) });
   },
   teamRemove(wsId: string, uid: string): Promise<void> {
     return apiRequest(`/api/team/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}`, { method: 'DELETE' });
   },
-  teamSetRole(wsId: string, uid: string, role: 'admin' | 'member'): Promise<TeamView> {
+  teamCreateRole(wsId: string, body: { name: string; description: string; permissions: string[] }): Promise<TeamView & { roleId: string }> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/roles`, { method: 'POST', body: JSON.stringify(body) });
+  },
+  teamUpdateRole(wsId: string, roleId: string, body: { name: string; description: string; permissions: string[] }): Promise<TeamView> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/roles/${encodeURIComponent(roleId)}`, { method: 'PUT', body: JSON.stringify(body) });
+  },
+  teamDeleteRole(wsId: string, roleId: string): Promise<TeamView> {
+    return apiRequest(`/api/team/${encodeURIComponent(wsId)}/roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' });
+  },
+  teamSetRole(wsId: string, uid: string, role: string): Promise<TeamView> {
     return apiRequest(`/api/team/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}`, { method: 'PATCH', body: JSON.stringify({ role }) });
   },
   teamCancelInvite(wsId: string, inviteId: string): Promise<void> {
@@ -911,7 +929,7 @@ export const apiClient = {
   adminSaveFlags(flags: Partial<AdminFlags>): Promise<AdminSettingsView> {
     return apiRequest('/api/admin/flags', { method: 'PUT', body: JSON.stringify({ flags }) });
   },
-  adminSaveOperators(operators: string[]): Promise<AdminSettingsView> {
+  adminSaveOperators(operators: { email: string; role: string }[]): Promise<AdminSettingsView> {
     return apiRequest('/api/admin/operators', { method: 'PUT', body: JSON.stringify({ operators }) });
   },
   billingWhoAmI(): Promise<{ isOperator: boolean }> {
@@ -938,7 +956,7 @@ export const apiClient = {
   adminCloseRequest(id: string): Promise<void> {
     return apiRequest(`/api/billing/admin/requests/${encodeURIComponent(id)}/close`, { method: 'POST', body: '{}' });
   },
-  adminSetMemberRole(wsId: string, uid: string, role: 'admin' | 'member'): Promise<void> {
+  adminSetMemberRole(wsId: string, uid: string, role: string): Promise<void> {
     return apiRequest(`/api/billing/admin/workspaces/${encodeURIComponent(wsId)}/members/${encodeURIComponent(uid)}/role`, { method: 'POST', body: JSON.stringify({ role }) });
   },
   adminRemoveMember(wsId: string, uid: string): Promise<void> {

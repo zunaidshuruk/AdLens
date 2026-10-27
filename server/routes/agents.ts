@@ -1,3 +1,4 @@
+import { can } from '../lib/permissions.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getContentLimits } from '../config/plans.js';
@@ -56,9 +57,8 @@ async function workspaceScope(req: Request, res: Response, write: boolean): Prom
     return null;
   }
   const ws = await getFirestoreStore().getWorkspace(project.workspaceId);
-  const role = ws?.members?.[req.user!.uid];
-  if (!role || (write && role !== 'owner' && role !== 'admin')) {
-    fail(res, 403, 'NOT_ALLOWED', write ? 'Only workspace owners and admins can change AI agents.' : 'You do not have access to this workspace.');
+  if (!ws || !can(ws, req.user!.uid, write ? 'agents.manage' : 'reports.view')) {
+    fail(res, 403, 'NOT_ALLOWED', write ? 'Your role does not allow changing AI agents.' : 'You do not have access to this workspace.');
     return null;
   }
   return { ws: project.workspaceId, plan: ws?.plan, uid: req.user!.uid };

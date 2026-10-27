@@ -5,7 +5,8 @@ import { runDigests } from '../lib/digestRunner.js';
 import { listAuditForUid } from '../lib/auditLog.js';
 import { getSharedStore } from '../lib/sharedStore.js';
 import { readUsage } from '../lib/usageMeter.js';
-import { extraOperators } from '../lib/adminSettings.js';
+import { extraOperators, operatorRoleOf } from '../lib/adminSettings.js';
+import { PLATFORM_ROLES, type PlatformPermission, type PlatformRoleId } from '../lib/platformRoles.js';
 import { requireUser } from '../middleware/requireUser.js';
 
 export const opsRouter = Router();
@@ -21,6 +22,19 @@ export function isOperator(email: string | null | undefined, env: Record<string,
   const e = email.trim().toLowerCase();
   return ownerEmails(env).includes(e) || extraOperators().includes(e);
 }
+
+/** The staff role of an email: Super admin for the owners in OPERATOR_EMAILS, the saved role for other staff, or null. */
+export function platformRoleOf(email: string | null | undefined, env: Record<string, string | undefined> = process.env): PlatformRoleId | null {
+  if (!email) return null;
+  const e = email.trim().toLowerCase();
+  if (ownerEmails(env).includes(e)) return 'super';
+  return extraOperators().includes(e) ? operatorRoleOf(e) : null;
+}
+
+export const platformCan = (email: string | null | undefined, perm: PlatformPermission): boolean => {
+  const r = platformRoleOf(email);
+  return r !== null && PLATFORM_ROLES[r].permissions.includes(perm);
+};
 
 // Public: for uptime monitors. Proves the server is up and its cache store answers. Reveals nothing else.
 opsRouter.get('/ready', async (_req: Request, res: Response) => {

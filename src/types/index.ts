@@ -418,7 +418,8 @@ export interface PublicConfigResponse {
   providers?: string[];
 }
 
-export type WorkspaceRole = 'owner' | 'admin' | 'member';
+/** A role id: 'owner', 'admin', 'moderator', 'member' or a custom role id. */
+export type WorkspaceRole = string;
 
 export interface UserEmailNotifications {
   weeklyReport?: boolean;
@@ -462,6 +463,10 @@ export interface WorkspaceSummary {
   name: string;
   ownerId: string;
   role: WorkspaceRole;
+  /** Display name of the role, for example "Moderator". */
+  roleName?: string;
+  /** What this person may do in the workspace, for example "content.edit". */
+  permissions?: string[];
   plan: string;
   limits: {
     maxProjects: number;

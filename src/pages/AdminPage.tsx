@@ -9,16 +9,16 @@ import {
 } from '../api/client';
 
 type Tab = 'overview' | 'workspaces' | 'requests' | 'subs' | 'plans' | 'switches' | 'users' | 'operators' | 'audit';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'workspaces', label: 'Workspaces' },
-  { id: 'requests', label: 'Upgrade requests' },
-  { id: 'subs', label: 'Subscriptions' },
-  { id: 'plans', label: 'Plans and prices' },
-  { id: 'switches', label: 'Switches' },
-  { id: 'users', label: 'Users' },
-  { id: 'operators', label: 'Operators' },
-  { id: 'audit', label: 'Activity' },
+const TABS: { id: Tab; label: string; needs: string }[] = [
+  { id: 'overview', label: 'Overview', needs: 'overview.view' },
+  { id: 'workspaces', label: 'Workspaces', needs: 'workspaces.view' },
+  { id: 'requests', label: 'Upgrade requests', needs: 'billing.manage' },
+  { id: 'subs', label: 'Subscriptions', needs: 'workspaces.view' },
+  { id: 'plans', label: 'Plans and prices', needs: 'settings.manage' },
+  { id: 'switches', label: 'Switches', needs: 'settings.manage' },
+  { id: 'users', label: 'Users', needs: 'workspaces.view' },
+  { id: 'operators', label: 'Staff', needs: 'operators.manage' },
+  { id: 'audit', label: 'Activity', needs: 'workspaces.view' },
 ];
 
 const field = 'rounded-lg border border-line bg-surface text-fg text-sm px-3 py-2 min-h-[40px]';
@@ -31,7 +31,7 @@ const ymd = (offsetDays: number) => new Date(Date.now() + offsetDays * 86_400_00
 
 const errText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
-function Overview({ onOpenWorkspaces }: { onOpenWorkspaces: () => void }) {
+function Overview({ onOpenWorkspaces }: { onOpenWorkspaces?: () => void }) {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { apiClient.adminOverview().then(setData).catch((e) => setError(errText(e, 'Could not load.'))); }, []);
@@ -57,7 +57,7 @@ function Overview({ onOpenWorkspaces }: { onOpenWorkspaces: () => void }) {
           {Object.entries(data.byPlan).map(([plan, n]) => <span key={plan} className="rounded-full border border-line px-3 py-1 text-xs text-fg">{plan}: {n}</span>)}
           {Object.keys(data.byPlan).length === 0 && <span className="text-xs text-fg-muted">None yet.</span>}
         </div>
-        <button type="button" className={btn} onClick={onOpenWorkspaces}>Manage workspaces</button>
+        {onOpenWorkspaces && <button type="button" className={btn} onClick={onOpenWorkspaces}>Manage workspaces</button>}
       </div>
       <div className={card}>
         <h3 className="text-sm font-semibold text-fg">Calls to Google and Meta (shared by all users)</h3>
@@ -94,7 +94,9 @@ function Overview({ onOpenWorkspaces }: { onOpenWorkspaces: () => void }) {
   );
 }
 
-function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function WorkspaceDetail({ id, onBack, perms }: { id: string; onBack: () => void; perms: string[] }) {
+  const canBill = perms.includes('billing.manage');
+  const canPeople = perms.includes('workspaces.members');
   const [d, setD] = useState<AdminWorkspaceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -150,7 +152,7 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
           {d.current.storedPlan !== d.current.plan ? ` Stored plan is ${d.current.storedPlan}, but it has run out, so Free limits apply.` : ''}
         </p>
         <p className="text-xs text-fg-muted">Used this month: {d.usage.aiQuestions} AI questions · {d.usage.projects} projects.</p>
-        <form
+        {canBill && <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => { e.preventDefault(); void run(() => apiClient.adminSetPlan({ workspaceId: id, plan, endsOn: paid && endsOn ? endsOn : null, note }), 'Plan saved.'); }}
         >
@@ -162,10 +164,11 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
           {paid && <label className="space-y-1"><span className="text-xs text-fg-muted">Last paid day{endRequired ? '' : ' (optional)'}</span><input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} className={`${field} block`} /></label>}
           <label className="flex-1 min-w-[160px] space-y-1"><span className="text-xs text-fg-muted">Note for the activity log (optional)</span><input value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="Paid by bKash" className={`${field} w-full`} /></label>
           <button type="submit" disabled={busy || (endRequired && !endsOn)} className={primary}>Save plan</button>
-        </form>
+        </form>}
+        {!canBill && <p className="text-xs text-fg-muted">Your staff role cannot change plans.</p>}
       </div>
 
-      <div className={card}>
+      {canBill && <div className={card}>
         <h3 className="text-sm font-semibold text-fg">Record a payment</h3>
         <form
           className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end"
@@ -192,7 +195,7 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
             ))}
           </ul>
         )}
-      </div>
+      </div>}
 
       <div className={card}>
         <h3 className="text-sm font-semibold text-fg">People</h3>
@@ -201,10 +204,10 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
             <li key={m.uid} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
               <div className="min-w-0"><div className="text-sm text-fg truncate">{m.displayName}</div><div className="text-xs text-fg-muted truncate">{m.email}</div></div>
               <div className="flex items-center gap-2">
-                {m.role === 'owner' ? <span className="text-xs text-fg-muted">Owner</span> : (
+                {m.role === 'owner' || !canPeople ? <span className="text-xs text-fg-muted">{m.roleName ?? m.role}</span> : (
                   <>
-                    <select aria-label={`Role for ${m.displayName}`} value={m.role} disabled={busy} className={`${field} py-1 text-xs`} onChange={(e) => void run(() => apiClient.adminSetMemberRole(id, m.uid, e.target.value as 'admin' | 'member'), 'Role changed.')}>
-                      <option value="member">Member</option><option value="admin">Admin</option>
+                    <select aria-label={`Role for ${m.displayName}`} value={m.role} disabled={busy} className={`${field} py-1 text-xs`} onChange={(e) => void run(() => apiClient.adminSetMemberRole(id, m.uid, e.target.value), 'Role changed.')}>
+                      {d.roles.filter((r) => r.id !== 'owner').map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
                     <button type="button" disabled={busy} className={btn} onClick={() => { if (window.confirm(`Remove ${m.displayName} from ${d.workspace.name}?`)) void run(() => apiClient.adminRemoveMember(id, m.uid), 'Removed.'); }}>Remove</button>
                   </>
@@ -212,7 +215,7 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
               </div>
             </li>
           ))}
-          {d.invites.map((i) => <li key={i.id} className="px-3 py-2 text-sm text-fg-muted">{i.email} · invited as {i.role}, not signed in yet</li>)}
+          {d.invites.map((i) => <li key={i.id} className="px-3 py-2 text-sm text-fg-muted">{i.email} · invited as {i.roleName ?? i.role}, not signed in yet</li>)}
         </ul>
         {d.workspace.joinDomain && <p className="text-xs text-fg-muted">Colleagues with @{d.workspace.joinDomain} emails are offered the chance to join.</p>}
       </div>
@@ -227,7 +230,7 @@ function WorkspaceDetail({ id, onBack }: { id: string; onBack: () => void }) {
   );
 }
 
-function Workspaces({ initialId }: { initialId?: string | null }) {
+function Workspaces({ initialId, perms }: { initialId?: string | null; perms: string[] }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<AdminWorkspaceRow[]>([]);
   const [open, setOpen] = useState<string | null>(initialId ?? null);
@@ -236,7 +239,7 @@ function Workspaces({ initialId }: { initialId?: string | null }) {
     try { setRows((await apiClient.adminWorkspaces(text)).workspaces); setError(null); } catch (e) { setError(errText(e, 'Could not search.')); }
   }, []);
   useEffect(() => { void search(''); }, [search]);
-  if (open) return <WorkspaceDetail id={open} onBack={() => { setOpen(null); void search(q); }} />;
+  if (open) return <WorkspaceDetail perms={perms} id={open} onBack={() => { setOpen(null); void search(q); }} />;
   return (
     <div className="space-y-3">
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void search(q); }}>
@@ -357,6 +360,8 @@ export const AdminPage: React.FC = () => {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [left, setLeft] = useState(0);
   const [tab, setTab] = useState<Tab>('overview');
+  const perms = session?.permissions ?? [];
+  const visible = TABS.filter((t) => perms.includes(t.needs));
   const [focus, setFocus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -365,6 +370,8 @@ export const AdminPage: React.FC = () => {
     apiClient.adminSession().then((s) => {
       if (!s.operator || s.secondsLeft <= 0) { navigate(`/admin-login${s.operator ? '?expired=1' : ''}`, { replace: true }); return; }
       setSession(s); setLeft(s.secondsLeft);
+      const first = TABS.find((t) => s.permissions.includes(t.needs));
+      if (first) setTab(first.id);
     }).catch(() => navigate('/admin-login', { replace: true }));
   }, [user, loading, navigate]);
 
@@ -386,7 +393,7 @@ export const AdminPage: React.FC = () => {
             <div><h1 className="text-base font-semibold text-fg">AdLens Admin</h1><p className="text-xs text-fg-muted">Everything you change here is written to the activity log.</p></div>
           </div>
           <div className="flex items-center gap-3 text-xs text-fg-muted">
-            <span className="break-all">{session.email}</span>
+            <span className="break-all">{session.email}{session.roleName ? ` · ${session.roleName}` : ''}</span>
             <span aria-label="Admin session time left" className={left < 300 ? 'text-warning font-medium' : ''}>Session {fmtLeft(left)}</span>
             <Link to="/" className="underline">Open AdLens</Link>
             <button type="button" onClick={() => void signOut().then(() => navigate('/admin-login', { replace: true }))} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-fg min-h-[36px]"><LogOut className="w-3.5 h-3.5" />Sign out</button>
@@ -395,7 +402,7 @@ export const AdminPage: React.FC = () => {
       </header>
       <main className="max-w-5xl mx-auto px-4 py-5 space-y-5">
         <div role="tablist" className="flex flex-wrap gap-1 border-b border-line">
-          {TABS.map((t) => (
+          {visible.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} type="button"
               onClick={() => { setTab(t.id); if (t.id !== 'workspaces') setFocus(null); }}
               className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t.id ? 'border-accent text-accent-text' : 'border-transparent text-fg-muted hover:text-fg'}`}>
@@ -403,15 +410,15 @@ export const AdminPage: React.FC = () => {
             </button>
           ))}
         </div>
-        {tab === 'overview' && <Overview onOpenWorkspaces={() => setTab('workspaces')} />}
-        {tab === 'workspaces' && <Workspaces key={focus ?? 'list'} initialId={focus} />}
-        {tab === 'requests' && <Requests onOpen={openWorkspace} />}
-        {tab === 'subs' && <Subscriptions onOpen={openWorkspace} />}
-        {tab === 'plans' && <PlansEditor />}
-        {tab === 'switches' && <SwitchesEditor />}
-        {tab === 'users' && <Users onOpen={openWorkspace} />}
-        {tab === 'operators' && <OperatorsEditor />}
-        {tab === 'audit' && <Audit />}
+        {tab === 'overview' && perms.includes('overview.view') && <Overview onOpenWorkspaces={perms.includes('workspaces.view') ? () => setTab('workspaces') : undefined} />}
+        {tab === 'workspaces' && perms.includes('workspaces.view') && <Workspaces key={focus ?? 'list'} initialId={focus} perms={perms} />}
+        {tab === 'requests' && perms.includes('billing.manage') && <Requests onOpen={openWorkspace} />}
+        {tab === 'subs' && perms.includes('workspaces.view') && <Subscriptions onOpen={openWorkspace} />}
+        {tab === 'plans' && perms.includes('settings.manage') && <PlansEditor />}
+        {tab === 'switches' && perms.includes('settings.manage') && <SwitchesEditor />}
+        {tab === 'users' && perms.includes('workspaces.view') && <Users onOpen={openWorkspace} />}
+        {tab === 'operators' && perms.includes('operators.manage') && <OperatorsEditor />}
+        {tab === 'audit' && perms.includes('workspaces.view') && <Audit />}
       </main>
     </div>
   );

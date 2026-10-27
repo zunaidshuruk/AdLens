@@ -32,7 +32,10 @@ export type AuditAction =
   | 'member.invited'
   | 'member.removed'
   | 'member.role_changed'
-  | 'admin.settings_changed';
+  | 'admin.settings_changed'
+  | 'role.created'
+  | 'role.updated'
+  | 'role.deleted';
 
 export interface AuditEvent {
   id: string;

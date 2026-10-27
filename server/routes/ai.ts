@@ -171,6 +171,13 @@ aiRouter.use(requireUser);
 aiRouter.use(aiRateLimitMiddleware);
 aiRouter.use(verifyGoogleSessionOwnership);
 aiRouter.use(loadProject);
+aiRouter.use((req, res, next) => {
+  if (req.method !== 'GET' && req.memberPermissions && !req.memberPermissions.has('ai.use')) {
+    res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Your role in this workspace does not allow using the AI Analyst.' } });
+    return;
+  }
+  next();
+});
 
 // GET /api/ai/usage
 aiRouter.get('/usage', async (req: Request, res: Response) => {
