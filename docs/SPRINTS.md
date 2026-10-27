@@ -728,6 +728,8 @@ Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves
 
 **Plan view (20d-lite, 463 tests, 27 Oct 2026):** Settings → Workspace now starts with a "Plan and billing" card: current plan with status and paid-until date, usage bars (projects, AI questions this month, team members), every public plan side by side with the current one marked, "Request Pro/Business" for owners and admins, payments recorded, refund line. The admin panel has a **Subscriptions** tab: every person with their workspace, role, plan, status and paid-until date, filter by plan, search by email/name/workspace. Still to do in 20d: clamp Free date presets in the UI, flip `DEFAULT_NEW_WORKSPACE_PLAN` to free, 20f legal wording.
 
+**Font choice (27 Oct 2026, 464 tests):** Settings → Appearance → Font: Plus Jakarta Sans (default), Mada, Poppins, Noto Sans, Inter, Roboto, and the device's own font. Saved per user with the other appearance settings (`appearance.fontFamily`); Bangla text always falls back to Noto Sans Bengali. Non-default fonts are bundled (`@fontsource/*`) but download only when picked. Delivered as `stage-11-fonts` (needs `package.json` and `package-lock.json`).
+
 **Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
 
 ---
@@ -746,6 +748,7 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
 | 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
 | 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 11 | `stage-11-fonts` | Font choice in Appearance (adds 5 font packages) | Add font choice |
 | 10 | `stage-10-plan-view` | Customer Plan and billing card, admin Subscriptions tab (repeats stage-7 to 9 files) | Sprint 20d: plan view and subscriptions tab |
 | 9 | `stage-9-admin-controls` | Sprint 20e-2: separate admin login, plan/price editor, switches, operators (also repeats stage-7 and stage-8 files) | Sprint 20e-2: admin login and controls |
 | 8 | `stage-8-admin-team` | Sprint 20e admin panel, Team, same-company join offers (also repeats stage-7 files) | Sprint 20e: admin panel and team |

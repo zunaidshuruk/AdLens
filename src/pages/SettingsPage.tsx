@@ -1,6 +1,7 @@
 import { SessionsCard } from '../components/SessionsCard';
 import { SsoSettingsCard } from '../components/SsoSettingsCard';
 import { WorkspaceActivityCard } from '../components/WorkspaceActivityCard';
+import { ensureFontLoaded } from '../utils/fontLoader';
 import { PlanCard } from '../components/PlanCard';
 import { TeamCard } from '../components/TeamCard';
 import { EmailSummariesCard } from '../components/EmailSummariesCard';
@@ -60,6 +61,8 @@ import { IMAGE_ERROR_MESSAGES } from '../utils/imageAssets';
 import {
   buildTheme,
   DEFAULT_APPEARANCE,
+  FONT_FAMILIES,
+  FONT_FAMILY_IDS,
   FONT_SCALES,
   normalizeHex,
   PRESET_IDS,
@@ -1359,6 +1362,40 @@ export const SettingsPage: React.FC = () => {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Font family */}
+            <div className="space-y-2 md:col-span-2">
+              <label className="block text-xs font-medium text-fg">
+                Font
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {FONT_FAMILY_IDS.map((id) => {
+                  const isSelected = (appearance.fontFamily ?? 'plus-jakarta') === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      data-testid={`appearance-font-family-${id}`}
+                      onClick={() => {
+                        void ensureFontLoaded(id);
+                        scheduleAppearanceSave({ ...appearance, fontFamily: id });
+                      }}
+                      style={{ fontFamily: FONT_FAMILIES[id].stack }}
+                      className={`px-3 py-2.5 rounded-lg text-left border transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-accent text-on-accent border-accent'
+                          : 'bg-fill-1 border-line text-fg hover:bg-fill-2'
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold">{FONT_FAMILIES[id].label}</span>
+                      <span className="block text-[11px] opacity-80">{FONT_FAMILIES[id].note}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-fg-muted">Bangla text always uses Noto Sans Bengali.</p>
             </div>
 
             {/* Density */}

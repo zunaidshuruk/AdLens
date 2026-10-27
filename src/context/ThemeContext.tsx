@@ -1,4 +1,5 @@
 import { syncThemeColorMeta } from '../utils/themeColorMeta.js';
+import { ensureFontLoaded } from '../utils/fontLoader.js';
 import React, {
   createContext,
   useCallback,
@@ -188,6 +189,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 
   const theme = useMemo<Theme>(() => buildTheme(resolvedOptions), [resolvedOptions]);
+
+  useEffect(() => {
+    void ensureFontLoaded(resolvedOptions.fontFamily);
+  }, [resolvedOptions.fontFamily]);
 
   useEffect(() => {
     applyThemeToDocument(theme, resolvedOptions.mode);

@@ -146,6 +146,21 @@ export type Tint = 'none' | 'cool' | 'warm' | 'accent';
 export type Radius = 'sharp' | 'default' | 'round';
 export type Density = 'comfortable' | 'compact';
 export type FontScale = 'small' | 'default' | 'large' | 'xlarge';
+
+export type FontFamilyId = 'plus-jakarta' | 'mada' | 'poppins' | 'noto-sans' | 'inter' | 'roboto' | 'system';
+
+/** Bangla text always falls back to Noto Sans Bengali, whichever Latin font is chosen. */
+const FONT_TAIL = "'Noto Sans Bengali', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+export const FONT_FAMILIES: Record<FontFamilyId, { label: string; note: string; stack: string }> = {
+  'plus-jakarta': { label: 'Plus Jakarta Sans', note: 'AdLens default', stack: `'Plus Jakarta Sans', ${FONT_TAIL}` },
+  mada: { label: 'Mada', note: 'Clean and compact', stack: `'Mada', ${FONT_TAIL}` },
+  poppins: { label: 'Poppins', note: 'Round and friendly', stack: `'Poppins', ${FONT_TAIL}` },
+  'noto-sans': { label: 'Noto Sans', note: 'Very easy to read', stack: `'Noto Sans', ${FONT_TAIL}` },
+  inter: { label: 'Inter', note: 'Standard screen font', stack: `'Inter', ${FONT_TAIL}` },
+  roboto: { label: 'Roboto', note: 'Standard Android font', stack: `'Roboto', ${FONT_TAIL}` },
+  system: { label: 'Your device font', note: 'Fastest, nothing to download', stack: `system-ui, ${FONT_TAIL}` },
+};
+export const FONT_FAMILY_IDS = Object.keys(FONT_FAMILIES) as FontFamilyId[];
 export type ChartPaletteId = 'default' | 'colorblind' | 'monochrome' | 'brand';
 export type ContrastLevel = 'standard' | 'high';
 
@@ -156,6 +171,8 @@ export interface ThemeOptions {
   radius: Radius;
   density: Density;
   fontScale: FontScale;
+  /** Optional so older callers keep working; missing means the AdLens default. */
+  fontFamily?: FontFamilyId;
   chartPalette: ChartPaletteId;
   contrast: ContrastLevel;
 }
@@ -353,6 +370,7 @@ export function buildTheme(options: ThemeOptions): Theme {
     '--radius-md': rMd,
     '--radius-lg': rLg,
     '--density': options.density === 'compact' ? '0.875' : '1',
+    '--font-sans': FONT_FAMILIES[options.fontFamily ?? 'plus-jakarta'].stack,
     '--font-scale': String(factor),
     '--root-font-size': `${factor * 100}%`,
   };
@@ -459,6 +477,7 @@ export interface AppearanceSettings {
   radius: Radius;
   density: Density;
   fontScale: FontScale;
+  fontFamily: FontFamilyId;
   chartPalette: ChartPaletteId;
 }
 
@@ -468,12 +487,13 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   radius: 'default',
   density: 'comfortable',
   fontScale: 'default',
+  fontFamily: 'plus-jakarta',
   chartPalette: 'default',
 };
 
 /** Turns saved settings into theme options. "system" picks AdLens Light or Dark from the OS setting. */
 export function resolveAppearance(a: AppearanceSettings, prefersDark: boolean): ThemeOptions {
-  const common = { radius: a.radius, density: a.density, fontScale: a.fontScale, chartPalette: a.chartPalette };
+  const common = { radius: a.radius, density: a.density, fontScale: a.fontScale, fontFamily: a.fontFamily, chartPalette: a.chartPalette };
   if (a.preset === 'custom') {
     return { ...common, mode: a.custom.mode, accent: a.custom.accent, tint: a.custom.tint, contrast: 'standard' };
   }
@@ -488,6 +508,7 @@ const ENUMS = {
   radius: ['sharp', 'default', 'round'],
   density: ['comfortable', 'compact'],
   fontScale: ['small', 'default', 'large', 'xlarge'],
+  fontFamily: FONT_FAMILY_IDS,
   chartPalette: ['default', 'colorblind', 'monochrome', 'brand'],
 } as const;
 
@@ -521,6 +542,7 @@ export function sanitizeAppearance(raw: unknown): { value: AppearanceSettings; e
       radius: pick('radius', r.radius, 'default'),
       density: pick('density', r.density, 'comfortable'),
       fontScale: pick('fontScale', r.fontScale, 'default'),
+      fontFamily: pick('fontFamily', r.fontFamily, 'plus-jakarta'),
       chartPalette: pick('chartPalette', r.chartPalette, 'default'),
     },
     errors,

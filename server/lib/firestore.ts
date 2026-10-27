@@ -35,6 +35,7 @@ export interface AppearanceSettings {
   radius: 'sharp' | 'default' | 'round';
   density: 'comfortable' | 'compact';
   fontScale: 'small' | 'default' | 'large' | 'xlarge';
+  fontFamily?: 'plus-jakarta' | 'mada' | 'poppins' | 'noto-sans' | 'inter' | 'roboto' | 'system';
   chartPalette: 'default' | 'colorblind' | 'monochrome' | 'brand';
 }
 

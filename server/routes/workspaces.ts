@@ -136,6 +136,7 @@ export const appearanceSettingsSchema = z
     radius: z.enum(['sharp', 'default', 'round']),
     density: z.enum(['comfortable', 'compact']),
     fontScale: z.enum(['small', 'default', 'large', 'xlarge']),
+    fontFamily: z.enum(['plus-jakarta', 'mada', 'poppins', 'noto-sans', 'inter', 'roboto', 'system']).optional(),
     chartPalette: z.enum(['default', 'colorblind', 'monochrome', 'brand']),
   })
   .strict();

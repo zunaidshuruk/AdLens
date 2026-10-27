@@ -226,3 +226,16 @@ test('neutral fills step from page to panel; borders and faint text keep their m
     }
   }
 });
+
+test('Font choice: each font sets --font-sans with the Bangla fallback, bad values fall back to the default', () => {
+  assert.match(buildTheme(opts({ fontFamily: 'poppins' })).vars['--font-sans'], /^'Poppins', 'Noto Sans Bengali'/);
+  assert.match(buildTheme(opts({ fontFamily: 'mada' })).vars['--font-sans'], /^'Mada'/);
+  assert.match(buildTheme(opts({ fontFamily: 'noto-sans' })).vars['--font-sans'], /^'Noto Sans',/);
+  assert.match(buildTheme(opts({ fontFamily: 'system' })).vars['--font-sans'], /^system-ui/);
+  assert.match(buildTheme(opts()).vars['--font-sans'], /^'Plus Jakarta Sans'/, 'no choice means the AdLens default');
+  assert.equal(sanitizeAppearance({ fontFamily: 'comic-sans' }).value.fontFamily, 'plus-jakarta');
+  assert.ok(sanitizeAppearance({ fontFamily: 'comic-sans' }).errors.includes('Invalid fontFamily'));
+  assert.equal(sanitizeAppearance({ fontFamily: 'roboto' }).value.fontFamily, 'roboto');
+  assert.equal(sanitizeAppearance({}).value.fontFamily, 'plus-jakarta', 'older saved settings keep working');
+  assert.equal(resolveAppearance({ ...DEFAULT_APPEARANCE, fontFamily: 'inter' }, false).fontFamily, 'inter');
+});
