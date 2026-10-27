@@ -1,3 +1,4 @@
+import { countUpstream } from './usageMeter.js';
 import { OAuth2Client } from 'google-auth-library';
 import { getServerConfig } from '../config.js';
 
@@ -60,6 +61,7 @@ export async function fetchGA4Properties(accessToken: string): Promise<GA4Proper
       url.searchParams.set('pageToken', pageToken);
     }
 
+    void countUpstream('google_other');
     const resp = await fetch(url.toString(), {
       headers: {
         Authorization: `Bearer ${accessToken}`,

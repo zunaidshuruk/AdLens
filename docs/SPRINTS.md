@@ -6,7 +6,7 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 - **Repo:** github.com/zunaidshuruk/AdLens
 - **Live app:** https://adlens-1.ai.studio (AI Studio hosting). Vercel was tried and dropped on 19 Oct 2026.
 - **Built with:** Google AI Studio (Build mode); planning and verification in Claude
-- **Last updated:** 18 Oct 2026
+- **Last updated:** 26 Oct 2026 (stage-6 added: Sprints 10, 11, 12, 15c, 17, 18, 19)
 
 ---
 
@@ -22,19 +22,19 @@ A public, multi-user console. Anyone can sign up, connect their own Google Analy
 | 5 | Live Meta Ads data | ✅ Verified (code) · ⏳ live test needs Meta secrets | `7b30d64` |
 | 6 | Traffic intelligence + AI referral traffic | ✅ Verified (code) | `c3a2d4d` |
 | 7 | Accounts & data on **Firebase**: 7A auth · 7B Firestore projects · 7B-2 settings + images · 7C token vault + account deletion | ✅ Complete: 7A, 7B, 7B-2, 7C-1/2 and 7C-3 verified (`0bc704d`, 133 tests). One small fix pending (delete-account ownership check order) | `9b447e8`, `3c829da`, `0096f89`, `0bc704d` |
-| 8 | **Design system, appearance & theming** (UI/UX overhaul), in 4 small prompts (8-1 … 8-4) | 🔄 8-1 prompt sent · prep done: theme engine, colour migration script (99.9% automatic), command palette, metric glossary | — |
-| 9 | Connections v2: Connect Facebook + project setup wizard | 🧩 Prep done (domain matcher + Facebook sign-in helpers) | — |
-| 10 | Public-launch readiness + platform reviews | ⬜ Planned | — |
-| 11 | Search intelligence | 🧩 Prep done (insights + host breakdown + tests) | — |
-| 12 | Page detail + site snapshot (cross-channel) | 🧩 Prep done (Meta ↔ GA4 campaign matcher) | — |
-| 13 | Flexible report builders (Explore) | ⬜ Planned | — |
-| 14 | **Custom dashboards: builder + template gallery** | ⬜ Planned | — |
-| 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 Prep done (engine router, report compactor, tool layer, **analyst service**) | — |
-| 16 | Bring-your-own AI agents (16a server · 16b settings UI · 16c ask + chat · 16d webhook tools) | 🧩 Agent core prep done (SSRF guard, providers, runner, config, encrypted keys, analyst service; 205 tests) | — |
-| 16.5 | **Installable app (PWA)** for Chrome on Windows and iPhone/iPad: manifest + icons, offline shell, install experience, phone polish, sign-in that works inside the installed app | 🧩 Prep done: icons, manifest, offline page, service worker, update logic, install detection, sign-in proxy (60 new tests, 265 in the repo) | — |
-| 17 | MCP endpoint | ⬜ Planned | — |
-| 18 | Scale & hardening (quotas, shared cache, monitoring, reports, alerts) | ⬜ Planned | — |
-| 19 | Enterprise: SAML/OIDC single sign-on, MFA, audit log | ⬜ Planned | — |
+| 8 | **Design system, appearance & theming** (UI/UX overhaul) | ✅ Done: 8-1 to 8-4 on main (8-4 metric tooltips included) | — |
+| 9 | Connections v2: Connect Facebook + project setup wizard | ✅ Code complete (9a–9d, Facebook card, disconnect fix) · ⏳ live test waits on Meta developer setup | — |
+| 10 | Public-launch readiness + platform reviews | 🧩 Built, zipped in `stage-6-sprints-10-to-19` · owner tasks remain (domain, legal review, Google/Meta reviews; see `docs/LAUNCH-CHECKLIST.md`) | — |
+| 11 | Search intelligence | 🧩 Built (reports + screens), zipped in `stage-6-sprints-10-to-19` | — |
+| 12 | Page detail + site snapshot (cross-channel) | 🧩 Built, zipped in `stage-6-sprints-10-to-19`. Deviation: snapshot is a separate `/snapshot` page, Overview unchanged | — |
+| 13 | Flexible report builders (Explore) | 🧩 Built, tested (371 tests), zipped as `stage-2-explore` · awaiting upload | — |
+| 14 | **Custom dashboards: builder + template gallery** | 🧩 Built, tested, zipped as `stage-3-dashboards` · awaiting upload. Deviations: inline report specs, button move/resize (no drag-and-drop), 4 templates | — |
+| 15 | **Hybrid AI analyst:** 15a cloud Gemini · 15b on-device "Private mode" · 15c optional WebLLM | 🧩 15a-3 (describe-a-widget) and 15b (Private mode) built, tested, zipped as `stage-5-ai-analyst-15` · awaiting upload · 15c (optional WebLLM, owner-hosted module) built, zipped in `stage-6-sprints-10-to-19` | — |
+| 16 | Bring-your-own AI agents (16a server · 16b UI · 16c ask + chat · 16d webhook tools) | 🧩 16a–d built, tested, zipped as `stage-4-ai-agents` · awaiting upload | — |
+| 16.5 | **Installable app (PWA)** | 🔄 PWA-1/2/3 on main · PWA-4 (phone polish) and PWA-5 code (sign-in proxy, `AUTH_PROXY` off by default) zipped as `stage-1-phone-polish-and-signin-proxy` · PWA-5 rollout needs a domain | — |
+| 17 | MCP endpoint | 🧩 Phase A (access keys) and Phase B (OAuth 2.1) built, with `/mcp-access` screens; zipped in `stage-6-sprints-10-to-19` | — |
+| 18 | Scale & hardening (shared cache, audit log, usage meter, error reporting, email summaries and alerts, code-splitting, load test) | 🧩 Built, zipped in `stage-6-sprints-10-to-19`. Billing parked; usage status is an API only (no page) | — |
+| 19 | Enterprise: SAML/OIDC single sign-on, MFA, audit log | 🧩 Built, zipped in `stage-6-sprints-10-to-19` · needs the Firebase Identity Platform upgrade to work live | — |
 
 **Long-lead track (runs alongside sprints, starts after Sprint 10):** Google OAuth verification, Meta Business Verification and Meta App Review. These take weeks and gate public sign-ups.
 
@@ -483,7 +483,7 @@ Adopts #11 and #14.
 - Flags: no tracked traffic, low landing rate, source not Meta, likely match only.
 - Also lists Meta-tagged GA4 campaigns with no Meta match (renamed or typo'd UTMs), plus totals including spend without tracking.
 
-## Sprint 13 — Flexible report builders ("Explore") ⬜
+## Sprint 13 — Flexible report builders ("Explore") 🧩 built, awaiting upload
 
 Adopts #19 and #26.
 - GA4 and Search Console builders with saved reports (stored per project) and CSV export.
@@ -677,10 +677,49 @@ Adopts #30.
 
 ---
 
+## Delivery log — 26 Oct 2026 (built by Claude, 371/371 tests, tsc, colour check and build all clean)
+
+Upload in this order (each zip is applied over the repo, then committed):
+
+| Order | Zip | Contents | Commit message |
+|---|---|---|---|
+| 1 | `stage-1-phone-polish-and-signin-proxy` | PWA-4 phone polish, PWA-5 sign-in proxy (flag off) | PWA-4 and PWA-5 |
+| 2 | `stage-2-explore` | Sprint 13: Explore builders, saved reports, CSV export | Sprint 13: Explore report builder |
+| 3 | `stage-3-dashboards` | Sprint 14: dashboards, 4 templates, presentation mode | Sprint 14: dashboards |
+| 4 | `stage-4-ai-agents` | Sprint 16a–d: bring-your-own agents, webhook signing | Sprint 16: bring-your-own AI agents |
+| 5 | `stage-5-ai-analyst-15` | Sprint 15a-3 describe-a-widget, 15b Private mode | Sprint 15: describe-a-widget and on-device private mode |
+| 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
+
+Deviations from the original plan: dashboards use inline report specs and button-based move/resize; 4 templates (plan said 8), no workspace templates or pin-to-dashboard; agents UI lives at `/agents` (not Settings); engine bar sits on the analyst page; on-device mode shortlists reports by keyword and compacts them (no model tool-calling); added `POST /api/reports/run`; content limits live in `CONTENT_LIMITS` (beta: 10 dashboards, 12 widgets each, 50 saved reports, 3 agents).
+
+---
+
+### Stage 6 — what is in `stage-6-sprints-10-to-19` (26 Oct 2026; clean-room check on a fresh clone with stages 1–6: `npm ci`, tsc, **456/456 tests**, colour check and build all clean)
+
+- **Sprint 10:** landing, Privacy Policy, Terms, Meta data-deletion callback and instructions page, cookie notice, `docs/LAUNCH-CHECKLIST.md`, `scripts/launch-readiness.ts`. `LegalPlaceholderPage.tsx` is deleted (the zip cannot delete files: remove `src/pages/LegalPlaceholderPage.tsx` by hand; it is unused and harmless).
+- **Sprints 11–12:** trending queries, SEO opportunities, cannibalisation, sitemaps, host breakdown, page detail, pages table (GA4 + Search Console), site snapshot at `/snapshot`, Meta ↔ GA4 cross-channel (uses only the user's own Meta token).
+- **Sprint 15c:** optional WebGPU model. WebLLM is not bundled; the owner hosts the module and sets `VITE_WEBLLM_MODULE_URL` (https or same-origin only). Wrapped as the same `LanguageModelLike`, so the Private-mode privacy rule is unchanged. JSON answers are checked against the report numbers; unverified figures are flagged. Verify the model IDs in `MODEL_CATALOG` against the hosted WebLLM version.
+- **Sprint 17:** MCP over Streamable HTTP at `POST /mcp` (read-only, no SDK dependency). Phase A keys `adl_` (max 10 per user, SHA-256 hashed). Phase B OAuth 2.1 (public clients, PKCE S256, `adlo_`/`adlr_` tokens). 60 requests per minute per credential. Screens: `/mcp-access`, `/mcp-access/authorize`; sidebar "Connect AI tools".
+- **Sprint 18:** shared store (memory or Upstash) behind a response cache for GA4, Search Console and Meta; audit log (Firestore `auditLog`, anonymised on account deletion); usage meter; error reporter (`ERROR_WEBHOOK_URL`, secrets scrubbed, de-duplicated); weekly email summaries and unusual-day alerts (Resend, `CRON_SECRET`-protected `POST /api/ops/run-digests`, UTC dates); `GET /api/ops/ready`, `/api/ops/audit`, `/api/ops/usage` (operators only); code-splitting (main bundle about 735 KB → about 212 KB); `scripts/load-test.ts`; `docs/OPERATIONS.md`.
+- **Sprint 19:** company sign-in (SAML/OIDC) with DNS-verified domains (`_adlens-verify.<domain>`), provider-to-domain binding, free-mail blocking, "Require SSO" with a test-first lock-out guard, optional MFA requirement, just-in-time join, TOTP MFA screens, "Sign out everywhere", workspace and personal activity cards, `/sign-in-blocked` page. Needs the Firebase Identity Platform upgrade and TOTP enabled.
+- **New server-only Firestore collections** (default-deny rules, no rules change): `auditLog`, `digestSubscriptions`, `orgSso`, `ssoDomains`, `mcpKeys`, `mcpClients`, `mcpAuthCodes`, `mcpTokens`, `metaUserLinks`, `dataDeletionRequests`.
+- **Deviations:** per-session list replaced by "Sign out everywhere" (Firebase has no session list); billing and plan limits parked; usage status has no page; email summary dates are UTC.
+
 ## Decisions log
 
 | Date | Decision |
 |------|----------|
+| 26 Oct 2026 | Sprint 15c: WebLLM is not bundled; the owner self-hosts the module (`VITE_WEBLLM_MODULE_URL`), because a third-party CDN module would run with the page's sign-in privileges |
+| 26 Oct 2026 | MCP implemented directly over Streamable HTTP (no SDK); Phase A keys and Phase B OAuth 2.1 in one sprint; credentials stored only as SHA-256 hashes |
+| 26 Oct 2026 | Shared store: Upstash REST when configured, in-memory otherwise; same interface for cache, rate limits and sign-out-everywhere markers |
+| 26 Oct 2026 | Enterprise SSO safety: a company sign-in counts only if the email domain is DNS-verified for that exact provider; free-mail domains cannot be claimed; "Require SSO" only when the owner is signed in through that provider |
+| 26 Oct 2026 | If the domain-rule lookup fails, ordinary users still get in; enterprise-provider tokens are refused |
+| 26 Oct 2026 | Billing and plan limits stay parked (not built in Sprint 18); usage status is an operator API only |
+| 26 Oct 2026 | Site snapshot is a separate page (`/snapshot`); cross-channel uses only the user's own Meta connection |
+| 26 Oct 2026 | Private-mode history: turns marked private are never sent to the cloud or to custom agents (`historyForCloud`) |
+| 26 Oct 2026 | `AUTH_PROXY` flag defaults to off until a domain is chosen |
+| 26 Oct 2026 | Saved reports, dashboards and agents are stored server-only (Admin SDK); Firestore rules unchanged (deny by default) |
+| 26 Oct 2026 | CSV export neutralises spreadsheet formulas; Explore reports are registered in the report registry so the AI can use them |
 | 18 Oct 2026 | Name: **AdLens** (KardIQ rejected, since it's already the Amar-Fit app name) |
 | 18 Oct 2026 | Platform: **website**, not Android; restarted in repo `AdLens` |
 | 18 Oct 2026 | Data access: **direct APIs via Google Cloud** (not connector services or CSV upload) |
@@ -724,22 +763,28 @@ Adopts #30.
 - **Domain (Sprint 10):** a dedicated domain (e.g. adlens.app or similar; check availability and trademark) or a subdomain such as adlens.synesisit.com.bd.
 - **Legal entity and support contact (Sprint 10):** Synesis IT PLC as the app owner for Google, Meta and the Privacy Policy.
 - **Subscription details (parked):** plans, prices, limits per plan and payment provider. Revisit before Sprint 18.
-- **MCP auth (Sprint 17):** Phase A (access keys) first, Phase B (OAuth 2.1) after.
+- **MCP auth (Sprint 17):** decided and built: Phase A and Phase B both in.
+- **Ops secrets (Sprint 18, optional):** Upstash, `ERROR_WEBHOOK_URL`, `OPERATOR_EMAILS`, `RESEND_API_KEY` + `MAIL_FROM`, `CRON_SECRET` + a daily scheduler call, `VITE_WEBLLM_MODULE_URL`. See `docs/OPERATIONS.md`.
+- **Firebase Identity Platform upgrade (Sprint 19):** needed for company sign-in and MFA; TOTP must be enabled.
 
 ## Known issues and backlog
 
-- **No install support yet:** no manifest, no service worker, only an SVG icon, no safe-area handling for phones, no cache headers for static files. Planned in Sprint 16.5.
+- **Project deletion:** `deleteProject` does not delete project subcollections (savedReports, dashboards); wire `deleteAll`.
+- **Wrong error text:** `?error=invalid_state` after a Google failure shows the Facebook message.
+- **Untested in real browsers:** Private mode (Chrome Gemini Nano) and the describe-a-widget box need a live check.
+- **Old Facebook connections** are not linked to a Facebook user id until the person reconnects.
+- **Stale tabs after a deploy:** a tab opened before a release may need a reload (lazy-loaded pages).
+- **WebLLM model IDs** in `MODEL_CATALOG` must be verified against the hosted version.
+- **Stale file:** `src/pages/LegalPlaceholderPage.tsx` is unused; delete it by hand.
 - **Fonts load from Google Fonts:** blocks a fully offline shell and sends visitors' addresses to Google. Self-host them in PWA-2.
-
-- **Delete account (7C-3):** the "owner with other members" check runs after Google access is revoked, so a blocked deletion still disconnects the user. Move the check before the destructive steps.
 
 - **Verification emails not arriving (19 Oct 2026):** being diagnosed. Check that the account exists in Firebase → Users, then use Firebase's own "Reset password" email to test delivery. A branded sender domain is planned for Sprint 10.
 - **Microsoft sign-in:** not configured yet. Hide the button until it is (AUTH_PROVIDERS env).
 
 - **Weekly re-sign-in:** Google Testing mode expires sign-ins every 7 days. Fixed when the Google app is verified and published to Production (Sprint 10 track). "Internal" is no longer an option for a public app.
-- **Vercel memory:** the in-memory cache and rate limiter are per-instance on Vercel. A shared store comes in Sprint 18.
+- **Shared store:** resolved in Sprint 18 (set the Upstash secrets to share cache across instances).
 - **Preview deployments:** Vercel previews get different URLs, so only the production domain can do Google sign-in.
 - **API quotas:** Sprints 6–13 add many more GA4/Search Console calls; caching and request budgets matter more (Sprint 18).
-- **Bundle size:** the frontend bundle is about 735 KB. Code-splitting comes in Sprint 18.
+- **Bundle size:** resolved in Sprint 18 (main bundle about 212 KB).
 - **Vercel plan:** a public app needs Vercel Pro (Hobby is non-commercial).
 - **Hard-coded Convay:** mock data and copy still reference Convay. Removed in Sprint 7 (demo project instead).

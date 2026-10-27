@@ -139,6 +139,10 @@ export interface OnDeviceDeps {
   listTools: () => Promise<ToolDefinition[]>;
   runReport: (id: string, args: Record<string, unknown>) => Promise<unknown>;
   signal?: AbortSignal;
+  /** Replaces the default instructions (Sprint 15c: the larger WebGPU models are asked for structured JSON). */
+  systemPrompt?: string;
+  /** Turns the model's raw reply into the text shown to the person. May check the answer against the report numbers. */
+  finalize?: (raw: string, reports: { id: string; text: string }[], dates: DateDefaults) => string;
 }
 
 export type OnDeviceResult =
@@ -185,8 +189,9 @@ export async function askOnDevice(input: OnDeviceAskInput, deps: OnDeviceDeps): 
 
   let session: ModelSession | null = null;
   try {
-    session = await deps.lm.create({ ...LANG_OPTIONS, initialPrompts: [{ role: 'system', content: ON_DEVICE_SYSTEM_PROMPT }] });
-    const answer = (await session.prompt(userMessage, deps.signal ? { signal: deps.signal } : undefined)).trim();
+    session = await deps.lm.create({ ...LANG_OPTIONS, initialPrompts: [{ role: 'system', content: deps.systemPrompt ?? ON_DEVICE_SYSTEM_PROMPT }] });
+    const raw = (await session.prompt(userMessage, deps.signal ? { signal: deps.signal } : undefined)).trim();
+    const answer = raw && deps.finalize ? deps.finalize(raw, reports.map((r) => ({ id: r.id, text: r.text })), input.dates).trim() : raw;
     if (!answer) return { ok: false, code: 'MODEL_ERROR', message: 'The on-device model returned an empty answer. Try asking again.' };
     return { ok: true, answer, numbersUsed: reports.map((r) => ({ toolId: r.id, args: r.args, text: r.text })) };
   } catch (err) {

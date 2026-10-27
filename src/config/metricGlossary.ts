@@ -27,6 +27,12 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     source: 'ga4', better: 'higher',
     aliases: ['total sessions', 'visits'],
   },
+  views: {
+    label: 'Views',
+    definition: 'How many times a page was opened or reloaded. One visitor can open the same page several times.',
+    source: 'ga4', better: 'higher',
+    aliases: ['page views', 'pageviews', 'screen page views'],
+  },
   users: {
     label: 'Users',
     definition: 'Distinct people who visited and engaged with your site in the period.',

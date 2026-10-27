@@ -1,3 +1,4 @@
+import { countUpstream } from '../lib/usageMeter.js';
 import type {
   GA4AcquisitionReport,
   GA4AiTrafficReport,
@@ -68,6 +69,7 @@ export async function callGA4RunReport(
   payload: Record<string, unknown>
 ): Promise<GA4RunReportResponse> {
   const cleanId = propertyId.replace(/^properties\//, '');
+  void countUpstream('ga4');
   const url = `https://analyticsdata.googleapis.com/v1beta/properties/${cleanId}:runReport`;
 
   const resp = await fetch(url, {

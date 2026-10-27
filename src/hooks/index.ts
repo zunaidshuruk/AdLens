@@ -8,3 +8,4 @@ export {
   useReport,
   useSearchConsoleSiteInfo,
 } from './useReport';
+export { useRunReport } from './useRunReport';

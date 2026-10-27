@@ -27,6 +27,8 @@ export const ProtectedRoute: React.FC = () => {
   const returnPath = `${location.pathname}${location.search}`;
 
   if (!user) {
+    // First-time visitors to the home address see what AdLens is (and the links Google and Meta review) instead of a bare sign-in form.
+    if (location.pathname === '/' && !location.search) return <Navigate to="/welcome" replace />;
     return (
       <Navigate
         to={`/sign-in${returnPath && returnPath !== '/' ? `?redirect=${encodeURIComponent(returnPath)}` : ''}`}

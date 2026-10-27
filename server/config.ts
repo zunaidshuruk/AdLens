@@ -1,3 +1,4 @@
+import { parseAllowedHosts } from './lib/authProxy.js';
 import dotenv from 'dotenv';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -59,6 +60,13 @@ export interface ServerConfig {
   aiConfigured: boolean;
   aiFallbackKeyConfigured: boolean;
   authProviders: string[];
+  /** AUTH_PROXY=on serves Firebase's sign-in helper from the app's own address (needed for the installed app). */
+  authProxyEnabled: boolean;
+  authAllowedHosts: string[];
+  /** Who the Privacy Policy and Terms name as the owner, and where people write to (LEGAL_ENTITY, SUPPORT_EMAIL, LEGAL_ADDRESS). */
+  legalEntity: string;
+  supportEmail: string;
+  legalAddress: string;
   isProduction: boolean;
 }
 
@@ -189,6 +197,11 @@ export function getServerConfig(): ServerConfig {
     aiConfigured,
     aiFallbackKeyConfigured,
     authProviders,
+    authProxyEnabled: (process.env.AUTH_PROXY || '').trim().toLowerCase() === 'on',
+    authAllowedHosts: parseAllowedHosts(rawBaseUrl, process.env.AUTH_ALLOWED_HOSTS),
+    legalEntity: (process.env.LEGAL_ENTITY || 'Synesis IT PLC').trim(),
+    supportEmail: (process.env.SUPPORT_EMAIL || '').trim(),
+    legalAddress: (process.env.LEGAL_ADDRESS || '').trim(),
     isProduction: process.env.NODE_ENV === 'production',
   };
 }

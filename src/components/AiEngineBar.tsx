@@ -1,6 +1,8 @@
 import { Cloud, Download, Lock } from 'lucide-react';
 import React from 'react';
 import type { EngineSettings, OnDeviceStatus } from '../utils/aiEngineRouter.js';
+import type { WebLlmSettings } from '../utils/onDeviceRuntime.js';
+import type { WebLlmModelChoice } from '../utils/webLlmEngine.js';
 
 interface Props {
   settings: EngineSettings;
@@ -10,6 +12,8 @@ interface Props {
   downloadProgress: number | null;
   onDownload: () => void;
   downloadError?: string | null;
+  /** Only passed when the owner enabled the optional WebGPU model and this device can run it. */
+  webLlm?: { settings: WebLlmSettings; models: WebLlmModelChoice[]; active: boolean; onChange: (next: WebLlmSettings) => void };
 }
 
 export function describeOnDeviceStatus(status: OnDeviceStatus): string {
@@ -21,7 +25,7 @@ export function describeOnDeviceStatus(status: OnDeviceStatus): string {
   }
 }
 
-export const AiEngineBar: React.FC<Props> = ({ settings, onChange, status, downloadProgress, onDownload, downloadError }) => {
+export const AiEngineBar: React.FC<Props> = ({ settings, onChange, status, downloadProgress, onDownload, downloadError, webLlm }) => {
   const priv = settings.preference === 'on-device';
   const pill = (active: boolean) =>
     `inline-flex items-center gap-1.5 px-3 py-2 min-h-[36px] text-xs font-medium rounded-md transition-colors ${active ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`;
@@ -47,6 +51,23 @@ export const AiEngineBar: React.FC<Props> = ({ settings, onChange, status, downl
             Your question and the answer stay in this browser. Your report numbers are still loaded from your connected accounts, the same as every screen. English, Spanish and Japanese only; answers are simpler than the cloud model&apos;s.
           </p>
           <p data-testid="analyst-on-device-status" className="text-xs text-fg-muted">{describeOnDeviceStatus(status)}</p>
+          {webLlm && (
+            <div data-testid="analyst-webllm" className="rounded-lg border border-line bg-fill-1 p-2 space-y-1.5">
+              <label className="flex items-start gap-2 text-xs text-fg-muted cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={webLlm.settings.enabled} onChange={(e) => webLlm.onChange({ ...webLlm.settings, enabled: e.target.checked })} />
+                <span>Use a larger model that runs on this device&apos;s graphics chip. <strong className="text-fg">It is used only when Chrome&apos;s built-in AI is not available.</strong> One-time download of about {Math.round((webLlm.models.find((m) => m.id === webLlm.settings.modelId)?.approxDownloadMB ?? 900) / 100) / 10} GB.</span>
+              </label>
+              {webLlm.settings.enabled && (
+                <label className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+                  Model
+                  <select value={webLlm.settings.modelId} onChange={(e) => webLlm.onChange({ ...webLlm.settings, modelId: e.target.value })} className="rounded-lg border border-line bg-surface text-fg text-xs px-2 py-1.5 min-h-[32px]">
+                    {webLlm.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                  <span className="text-fg-subtle">{webLlm.models.find((m) => m.id === webLlm.settings.modelId)?.note}</span>
+                </label>
+              )}
+            </div>
+          )}
           {status === 'downloadable' && (
             <button type="button" onClick={onDownload} className="inline-flex items-center gap-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px]">
               <Download className="w-3.5 h-3.5" /> Download the on-device model

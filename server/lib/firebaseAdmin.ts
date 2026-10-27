@@ -52,6 +52,20 @@ export async function deleteAuthUser(uid: string): Promise<void> {
   }
 }
 
+let testSessionRevoker: ((uid: string) => Promise<void>) | null = null;
+export function setTestSessionRevoker(r: ((uid: string) => Promise<void>) | null): void {
+  testSessionRevoker = r;
+}
+
+/** Signs the person out of every device: their refresh tokens stop working. */
+export async function revokeUserSessions(uid: string): Promise<void> {
+  if (testSessionRevoker) {
+    await testSessionRevoker(uid);
+    return;
+  }
+  await getAuth(getFirebaseAdminApp()).revokeRefreshTokens(uid);
+}
+
 export function parseServiceAccountJson(rawJson: string): ServiceAccount {
   const trimmed = rawJson.trim();
   if (!trimmed) {

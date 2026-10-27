@@ -1,3 +1,4 @@
+import { cacheClear, cacheGet, cacheSet } from '../lib/responseCache.js';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { requireGoogleConfigured } from '../config.js';
 import { GoogleApiError } from '../lib/google.js';
@@ -29,10 +30,9 @@ export const ga4Router = Router();
 
 // In-memory cache with 10-minute TTL
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const ga4Cache = new Map<string, { expiresAt: number; data: unknown }>();
 
 export function clearGA4Cache(): void {
-  ga4Cache.clear();
+  cacheClear('ga4');
 }
 
 function extractRawDatesFromQuery(req: Request) {
@@ -87,23 +87,14 @@ function buildCacheKey(
 
 function sendWithCache<T>(res: Response, cacheKey: string, data: T, fromCache: boolean): void {
   if (!fromCache) {
-    ga4Cache.set(cacheKey, {
-      expiresAt: Date.now() + CACHE_TTL_MS,
-      data,
-    });
+    void cacheSet('ga4', cacheKey, data, CACHE_TTL_MS);
   }
   res.setHeader('X-AdLens-Cache', fromCache ? 'true' : 'false');
   res.json(data);
 }
 
-function getCached<T>(cacheKey: string): T | null {
-  const entry = ga4Cache.get(cacheKey);
-  if (!entry) return null;
-  if (Date.now() >= entry.expiresAt) {
-    ga4Cache.delete(cacheKey);
-    return null;
-  }
-  return entry.data as T;
+async function getCached<T>(cacheKey: string): Promise<T | null> {
+  return cacheGet<T>('ga4', cacheKey);
 }
 
 function handleGA4Error(res: Response, err: unknown): void {
@@ -186,7 +177,7 @@ ga4Router.get('/overview', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'overview', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -208,7 +199,7 @@ ga4Router.get('/traffic-over-time', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'traffic-over-time', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -230,7 +221,7 @@ ga4Router.get('/acquisition', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'acquisition', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -252,7 +243,7 @@ ga4Router.get('/campaigns', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'campaigns', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -274,7 +265,7 @@ ga4Router.get('/top-pages', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'top-pages', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -296,7 +287,7 @@ ga4Router.get('/conversions', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'conversions', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -328,7 +319,7 @@ ga4Router.get('/property-info', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId).replace(/^properties\//, '');
   const cacheKey = buildCacheKey(propertyId, 'property-info', parsed.data);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -396,7 +387,7 @@ ga4Router.get('/traffic-breakdown', async (req: Request, res: Response) => {
   const filterKey = `${parsed.data.dimension}:${rawCountry ?? ''}:${rawDevice ?? ''}:${rawBrowser ?? ''}:${parsed.data.limit ?? 50}`;
   const cacheKey = buildCacheKey(propertyId, 'traffic-breakdown', dates, filterKey);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -418,7 +409,7 @@ ga4Router.get('/source-groups', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'source-groups', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;
@@ -440,7 +431,7 @@ ga4Router.get('/ai-traffic', async (req: Request, res: Response) => {
   const propertyId = String(res.locals.ga4PropertyId);
   const cacheKey = buildCacheKey(propertyId, 'ai-traffic', dates);
 
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     sendWithCache(res, cacheKey, cached, true);
     return;

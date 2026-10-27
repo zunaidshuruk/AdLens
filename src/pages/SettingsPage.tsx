@@ -1,3 +1,8 @@
+import { SessionsCard } from '../components/SessionsCard';
+import { SsoSettingsCard } from '../components/SsoSettingsCard';
+import { WorkspaceActivityCard } from '../components/WorkspaceActivityCard';
+import { EmailSummariesCard } from '../components/EmailSummariesCard';
+import { SecurityActivityCard } from '../components/SecurityActivityCard';
 import { InstallAppSection } from '../components/InstallAppSection';
 import {
   AlertTriangle,
@@ -2796,6 +2801,12 @@ export const SettingsPage: React.FC = () => {
           </div>
         </section>
       )}
+
+      {showSection('preferences') && <EmailSummariesCard />}
+      {showSection('security') && <SessionsCard />}
+      {showSection('security') && <SsoSettingsCard />}
+      {showSection('security') && <WorkspaceActivityCard />}
+      {showSection('security') && <SecurityActivityCard />}
 
       {/* ------------------------------------------------------------- */}
       {/* 6. ABOUT CARD                                                 */}

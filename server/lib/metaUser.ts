@@ -216,3 +216,19 @@ export async function revokeMetaPermissions(
     }
   }
 }
+
+/** The Facebook user id behind an access token (used to match Meta's deauthorize and data-deletion callbacks). Null on any failure. */
+export async function fetchMetaUserId(accessToken: string, appSecret: string): Promise<string | null> {
+  try {
+    const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/me`);
+    url.searchParams.set('fields', 'id');
+    url.searchParams.set('access_token', accessToken);
+    if (appSecret) url.searchParams.set('appsecret_proof', computeAppSecretProof(accessToken, appSecret));
+    const resp = await fetch(url.toString(), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(META_USER_FETCH_TIMEOUT_MS) });
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as { id?: unknown };
+    return typeof body.id === 'string' && /^\d{1,30}$/.test(body.id) ? body.id : null;
+  } catch {
+    return null;
+  }
+}

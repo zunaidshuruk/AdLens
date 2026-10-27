@@ -11,6 +11,8 @@ export interface ReportContext {
   ga4PropertyName?: string;
   searchConsoleSite?: string;
   project?: ProjectDoc;
+  /** Meta Ads access for the signed-in user's own connection, or null when not connected. */
+  getMeta?: () => Promise<{ accessToken: string; appSecret: string; accountId: string } | null>;
 }
 
 export interface ReportDefinition<I = unknown, O = unknown> {

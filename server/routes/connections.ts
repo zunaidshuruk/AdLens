@@ -1,3 +1,4 @@
+import { recordAudit } from '../lib/auditLog.js';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import {
   getServerConfig,
@@ -26,6 +27,7 @@ import {
   scoreGA4Property,
 } from '../lib/sourceMatcher.js';
 import { connectionIdFor, VaultError } from '../lib/tokenVault.js';
+import { getMetaDeletionStore } from '../lib/metaDeletion.js';
 import { getVault, mapVaultError } from '../lib/vault.js';
 import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
@@ -617,6 +619,12 @@ metaConnectionRouter.delete('/', async (req: Request, res: Response) => {
     }
 
     await vault.deleteConnection(uid, 'meta');
+    void recordAudit({ uid, action: 'connection.meta.disconnected' });
+    try {
+      await getMetaDeletionStore().unlinkUid(uid);
+    } catch {
+      // best effort
+    }
     res.status(204).end();
   } catch (err) {
     sendMetaError(res, err);

@@ -15,6 +15,7 @@ import {
   linkWithPopup,
   OAuthProvider,
   onAuthStateChanged,
+  SAMLAuthProvider,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   sendEmailVerification,
@@ -39,6 +40,7 @@ import {
   registerAuthTokenGetter,
   type FirebaseInitError,
 } from '../lib/firebase';
+import { isMfaRequiredError, toMfaChallenge } from '../lib/mfa';
 import { clearAppCaches } from '../pwa/updateManager.js';
 import { extractFirebaseErrorCode, mapFirebaseErrorMessage } from '../utils/firebaseErrors';
 
@@ -73,6 +75,8 @@ export interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithMicrosoft: () => Promise<void>;
+  /** Company single sign-on through the provider an administrator set up ("saml.okta", "oidc.acme"...). */
+  signInWithCompany: (providerId: string) => Promise<void>;
   sendReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
@@ -104,7 +108,8 @@ function extractProviders(user: User | null): string[] {
 function isUserVerified(user: User | null, providers: string[]): boolean {
   if (!user) return false;
   if (user.emailVerified) return true;
-  return providers.some((p) => SSO_VERIFIED_PROVIDERS.has(p));
+  // Company single sign-on: the server only accepts these for an email domain the company has proven it owns.
+  return providers.some((p) => SSO_VERIFIED_PROVIDERS.has(p) || /^(saml|oidc)\./.test(p));
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -283,6 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(auth.currentUser);
         forceUserRefresh();
       } catch (err) {
+        if (isMfaRequiredError(err)) throw toMfaChallenge(auth, err);
         throw new Error(mapFirebaseErrorMessage(err));
       }
     },
@@ -298,6 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(auth.currentUser);
         forceUserRefresh();
       } catch (err) {
+        if (isMfaRequiredError(err)) throw toMfaChallenge(auth, err);
         const code = extractFirebaseErrorCode(err);
         if (code === 'auth/popup-blocked') {
           await signInWithRedirect(auth, provider);
@@ -337,6 +344,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     provider.addScope('profile');
     await handleSsoSignIn(provider, 'Microsoft');
   }, [handleSsoSignIn]);
+
+  const signInWithCompany = useCallback(
+    async (providerId: string) => {
+      const auth = requireAuthInstance();
+      if (!/^(saml|oidc)\.[a-z0-9][a-z0-9._-]{0,59}$/.test(providerId)) throw new Error('This single sign-on connection is not valid.');
+      const provider = providerId.startsWith('saml.') ? new SAMLAuthProvider(providerId) : new OAuthProvider(providerId);
+      try {
+        await signInWithPopup(auth, provider);
+        // Join the company workspace (if the administrator allowed it). Never blocks signing in.
+        await apiClient.ssoJoin().catch(() => undefined);
+        setUser(auth.currentUser);
+        forceUserRefresh();
+      } catch (err) {
+        if (isMfaRequiredError(err)) throw toMfaChallenge(auth, err);
+        throw new Error(mapFirebaseErrorMessage(err));
+      }
+    },
+    [requireAuthInstance, forceUserRefresh]
+  );
 
   const sendReset = useCallback(
     async (email: string) => {
@@ -563,6 +589,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signIn,
       signInWithGoogle,
       signInWithMicrosoft,
+      signInWithCompany,
       sendReset,
       signOut,
       resendVerificationEmail,

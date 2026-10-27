@@ -1,3 +1,7 @@
+import { securityRouter, ssoRouter } from './routes/sso.js';
+import { digestRouter } from './routes/digest.js';
+import { reportError } from './lib/errorReporter.js';
+import { opsRouter } from './routes/ops.js';
 import { getServerConfig } from './config.js';
 import { registerAuthProxy, upstreamHostFor } from './lib/authProxy.js';
 import cookieParser from 'cookie-parser';
@@ -16,7 +20,9 @@ import { dashboardsRouter } from './routes/dashboards.js';
 import { exploreRouter } from './routes/explore.js';
 import { ga4Router } from './routes/ga4.js';
 import { healthRouter } from './routes/health.js';
+import { mcpAccountRouter, mcpRouter, oauthRouter } from './routes/mcp.js';
 import { metaRouter } from './routes/meta.js';
+import { metaCallbacksRouter } from './routes/metaCallbacks.js';
 import { publicConfigRouter } from './routes/publicConfig.js';
 import { reportsRouter } from './routes/reports.js';
 import { searchConsoleRouter } from './routes/searchConsole.js';
@@ -66,6 +72,10 @@ app.use((req, _res, next) => {
   next();
 });
 
+// MCP endpoint and its OAuth documents live at the site root (clients look for /mcp and /.well-known/*)
+app.use('/mcp', mcpRouter);
+app.use(oauthRouter);
+
 // Mount API routes
 app.use('/api/health', healthRouter);
 app.use('/api/public-config', publicConfigRouter);
@@ -79,11 +89,30 @@ app.use('/api/google', googleApiRouter);
 app.use('/api/explore', exploreRouter);
 app.use('/api/dashboards', dashboardsRouter);
 app.use('/api/agents', agentsRouter);
+app.use('/api/mcp', mcpAccountRouter);
 app.use('/api/ga4', ga4Router);
 app.use('/api/search-console', searchConsoleRouter);
+app.use('/api/platform', metaCallbacksRouter);
 app.use('/api/meta', metaRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/ops', opsRouter);
+app.use('/api/digest', digestRouter);
+app.use('/api/sso', ssoRouter);
+app.use('/api/security', securityRouter);
+
+// Last resort for anything a route did not catch. Reports it (without request data) and answers with a plain message.
+app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) return next(err);
+  const status = (err as { status?: number; statusCode?: number } | null)?.status ?? (err as { statusCode?: number } | null)?.statusCode;
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    res.status(status).json({ error: { code: 'BAD_REQUEST', message: 'The request could not be read.' } });
+    return;
+  }
+  console.error('[unhandled]', err instanceof Error ? err.name : 'Error');
+  void reportError(err, { method: req.method, path: req.path });
+  res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Something went wrong. Please try again.' } });
+});
 
 const NO_CACHE_FILES = new Set([
   'sw.js',

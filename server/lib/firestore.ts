@@ -169,6 +169,8 @@ export interface FirestoreStoreAdapter {
   ): Promise<WorkspaceDoc>;
   deleteWorkspaceRecursive(wsId: string): Promise<void>;
   removeWorkspaceMember(wsId: string, uid: string): Promise<void>;
+  /** Adds a member (or leaves an existing member's role alone). Returns false when the workspace does not exist. */
+  addWorkspaceMember(wsId: string, uid: string, role: WorkspaceRole): Promise<boolean>;
   getWorkspaceLogo(wsId: string): Promise<ImageAssetDoc | null>;
   setWorkspaceLogo(
     wsId: string,
@@ -584,6 +586,23 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
   async deleteWorkspaceRecursive(wsId: string): Promise<void> {
     const db = getAdminFirestore();
     await db.recursiveDelete(db.collection('workspaces').doc(wsId));
+  },
+
+  async addWorkspaceMember(wsId: string, uid: string, role: WorkspaceRole): Promise<boolean> {
+    const db = getAdminFirestore();
+    const ref = db.collection('workspaces').doc(wsId);
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return false;
+      const ws = mapRawWorkspace(snap.id, snap.data() ?? {});
+      if (Object.prototype.hasOwnProperty.call(ws.members, uid)) return true;
+      tx.update(ref, {
+        members: { ...ws.members, [uid]: role },
+        memberIds: [...ws.memberIds, uid],
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
   },
 
   async removeWorkspaceMember(wsId: string, uid: string): Promise<void> {
@@ -1076,6 +1095,14 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
       workspaces.delete(wsId);
       workspaceLogos.delete(wsId);
       projectsByWs.delete(wsId);
+    },
+
+    async addWorkspaceMember(wsId, uid, role) {
+      const ws = workspaces.get(wsId);
+      if (!ws) return false;
+      if (Object.prototype.hasOwnProperty.call(ws.members, uid)) return true;
+      workspaces.set(wsId, { ...ws, members: { ...ws.members, [uid]: role }, memberIds: [...ws.memberIds, uid], updatedAt: new Date().toISOString() });
+      return true;
     },
 
     async removeWorkspaceMember(wsId, uid) {

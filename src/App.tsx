@@ -3,33 +3,50 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { CookieNotice } from './components/CookieNotice';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { APP_NAME, APP_TAGLINE } from './config/app';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { AgentDeveloperPage } from './pages/AgentDeveloperPage';
-import { AgentsPage } from './pages/AgentsPage';
-import { AIAnalystPage } from './pages/AIAnalystPage';
-import { AITrafficPage } from './pages/AITrafficPage';
 import { AuthActionPage } from './pages/AuthActionPage';
-import { ConnectionsPage } from './pages/ConnectionsPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { DashboardsPage } from './pages/DashboardsPage';
-import { ExplorePage } from './pages/ExplorePage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { GA4Page } from './pages/GA4Page';
-import { LegalPlaceholderPage } from './pages/LegalPlaceholderPage';
-import { MetaAdsPage } from './pages/MetaAdsPage';
-import { OverviewPage } from './pages/OverviewPage';
-import { SearchConsolePage } from './pages/SearchConsolePage';
-import { SettingsPage } from './pages/SettingsPage';
+import { LandingPage } from './pages/LandingPage';
+import { LegalPage } from './pages/LegalPage';
+import { DataDeletionPage } from './pages/DataDeletionPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { SignInBlockedPage } from './pages/SignInBlockedPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
+
+// Each screen is loaded when first opened, so the first page a visitor sees downloads far less code (Sprint 18).
+const AgentDeveloperPage = lazy(() => import('./pages/AgentDeveloperPage').then((m) => ({ default: m.AgentDeveloperPage })));
+const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })));
+const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage').then((m) => ({ default: m.AIAnalystPage })));
+const AITrafficPage = lazy(() => import('./pages/AITrafficPage').then((m) => ({ default: m.AITrafficPage })));
+const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })));
+const CrossChannelPage = lazy(() => import('./pages/CrossChannelPage').then((m) => ({ default: m.CrossChannelPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const DashboardsPage = lazy(() => import('./pages/DashboardsPage').then((m) => ({ default: m.DashboardsPage })));
+const ExplorePage = lazy(() => import('./pages/ExplorePage').then((m) => ({ default: m.ExplorePage })));
+const GA4Page = lazy(() => import('./pages/GA4Page').then((m) => ({ default: m.GA4Page })));
+const MetaAdsPage = lazy(() => import('./pages/MetaAdsPage').then((m) => ({ default: m.MetaAdsPage })));
+const OverviewPage = lazy(() => import('./pages/OverviewPage').then((m) => ({ default: m.OverviewPage })));
+const PageDetailPage = lazy(() => import('./pages/PageDetailPage').then((m) => ({ default: m.PageDetailPage })));
+const PagesPage = lazy(() => import('./pages/PagesPage').then((m) => ({ default: m.PagesPage })));
+const SearchIntelligencePage = lazy(() => import('./pages/SearchIntelligencePage').then((m) => ({ default: m.SearchIntelligencePage })));
+const SnapshotPage = lazy(() => import('./pages/SnapshotPage').then((m) => ({ default: m.SnapshotPage })));
+const McpAccessPage = lazy(() => import('./pages/McpAccessPage').then((m) => ({ default: m.McpAccessPage })));
+const McpAuthorizePage = lazy(() => import('./pages/McpAuthorizePage').then((m) => ({ default: m.McpAuthorizePage })));
+const SearchConsolePage = lazy(() => import('./pages/SearchConsolePage').then((m) => ({ default: m.SearchConsolePage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+
+const PageFallback = () => (
+  <div role="status" aria-live="polite" className="p-8 text-sm text-fg-muted">Loading…</div>
+);
 
 export default function App() {
   useEffect(() => {
@@ -41,29 +58,35 @@ export default function App() {
       <AppProvider>
         <ThemeProvider>
           <BrowserRouter>
+            <CookieNotice />
+            <Suspense fallback={<PageFallback />}>
             <Routes>
               {/* Public authentication & legal routes */}
               <Route path="/sign-in" element={<SignInPage />} />
               <Route path="/sign-up" element={<SignUpPage />} />
+              <Route path="/sign-in-blocked" element={<SignInBlockedPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/auth/action" element={<AuthActionPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
-              <Route
-                path="/terms"
-                element={<LegalPlaceholderPage title="Terms of Service" />}
-              />
-              <Route
-                path="/privacy"
-                element={<LegalPlaceholderPage title="Privacy Policy" />}
-              />
+              <Route path="/welcome" element={<LandingPage />} />
+              <Route path="/terms" element={<LegalPage kind="terms" />} />
+              <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+              <Route path="/data-deletion" element={<DataDeletionPage />} />
 
               {/* Protected application routes */}
               <Route element={<ProtectedRoute />}>
+                <Route path="/mcp-access/authorize" element={<McpAuthorizePage />} />
                 <Route element={<Layout />}>
+                  <Route path="/mcp-access" element={<McpAccessPage />} />
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/ga4" element={<GA4Page />} />
                   <Route path="/ai-traffic" element={<AITrafficPage />} />
+                  <Route path="/snapshot" element={<SnapshotPage />} />
                   <Route path="/search-console" element={<SearchConsolePage />} />
+                  <Route path="/search-intelligence" element={<SearchIntelligencePage />} />
+                  <Route path="/pages" element={<PagesPage />} />
+                  <Route path="/pages/detail" element={<PageDetailPage />} />
+                  <Route path="/cross-channel" element={<CrossChannelPage />} />
                   <Route path="/meta-ads" element={<MetaAdsPage />} />
                   <Route path="/dashboards" element={<DashboardsPage />} />
                   <Route path="/dashboards/:id" element={<DashboardPage />} />
@@ -78,6 +101,7 @@ export default function App() {
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </ThemeProvider>
       </AppProvider>

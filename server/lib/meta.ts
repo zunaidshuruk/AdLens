@@ -1,3 +1,4 @@
+import { countUpstream } from './usageMeter.js';
 import crypto from 'node:crypto';
 import { getServerConfig } from '../config.js';
 import { mapMetaErrorCode } from './metaAdsMapper.js';
@@ -123,6 +124,7 @@ export async function metaGet<T = unknown>(
   url.searchParams.set('appsecret_proof', appSecretProof);
 
   const fetchPage = async (targetUrl: string): Promise<GraphPaginatedPayload> => {
+    void countUpstream('meta');
     let response: Response;
     try {
       response = await fetch(targetUrl, {

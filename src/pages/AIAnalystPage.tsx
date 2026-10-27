@@ -22,7 +22,9 @@ import type { AskAnalystHistoryMessage, AskAnalystNumberUsed } from '../types';
 import { agentReadiness } from '../utils/agentForm.js';
 import { chooseEngine, type EngineDecision, type EngineSettings, type OnDeviceStatus } from '../utils/aiEngineRouter.js';
 import type { ToolSource } from '../utils/aiTools.js';
-import { askOnDevice, detectOnDeviceStatus, downloadOnDeviceModel, getLanguageModel, loadEngineSettings, saveEngineSettings } from '../utils/onDeviceEngine.js';
+import { askOnDevice, downloadOnDeviceModel, loadEngineSettings, saveEngineSettings } from '../utils/onDeviceEngine.js';
+import { loadWebLlmSettings, resolveRuntime, saveWebLlmSettings, type ResolvedRuntime, type WebLlmSettings } from '../utils/onDeviceRuntime.js';
+import { availableModels, unloadWebLlm } from '../utils/webLlmEngine.js';
 import { formatFullDateRange } from '../utils/dateUtils';
 
 export const MAX_ANALYST_QUESTION_LENGTH = 2000;
@@ -180,6 +182,8 @@ export const AIAnalystPage: React.FC = () => {
   const [agentId, setAgentId] = useState<string>('');
   const [engineSettings, setEngineSettings] = useState<EngineSettings>(() => loadEngineSettings());
   const [onDeviceStatus, setOnDeviceStatus] = useState<OnDeviceStatus>('unsupported');
+  const [webLlmSettings, setWebLlmSettings] = useState<WebLlmSettings>(() => loadWebLlmSettings());
+  const [runtime, setRuntime] = useState<ResolvedRuntime | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<{ decision: EngineDecision; question: string } | null>(null);
@@ -225,11 +229,21 @@ export const AIAnalystPage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    void detectOnDeviceStatus().then((st) => active && setOnDeviceStatus(st));
+    void resolveRuntime({ settings: webLlmSettings }).then((r) => {
+      if (!active) return;
+      setRuntime(r);
+      setOnDeviceStatus(r.status);
+    });
     return () => {
       active = false;
     };
-  }, []);
+  }, [webLlmSettings]);
+
+  const changeWebLlmSettings = (next: WebLlmSettings) => {
+    if (next.modelId !== webLlmSettings.modelId || !next.enabled) void unloadWebLlm();
+    setWebLlmSettings(next);
+    saveWebLlmSettings(next);
+  };
 
   const changeEngineSettings = (next: EngineSettings) => {
     setEngineSettings(next);
@@ -242,12 +256,14 @@ export const AIAnalystPage: React.FC = () => {
     setDownloadProgress(0);
     setOnDeviceStatus('downloading');
     try {
-      await downloadOnDeviceModel((f) => setDownloadProgress(f));
+      await downloadOnDeviceModel((f) => setDownloadProgress(f), runtime?.lm ?? null);
     } catch {
       setDownloadError('The download did not finish. Check your connection and free disk space, then try again.');
     } finally {
       setDownloadProgress(null);
-      setOnDeviceStatus(await detectOnDeviceStatus());
+      const r = await resolveRuntime({ settings: webLlmSettings });
+      setRuntime(r);
+      setOnDeviceStatus(r.status);
     }
   };
 
@@ -387,13 +403,15 @@ export const AIAnalystPage: React.FC = () => {
       const res = await askOnDevice(
         { question: trimmed, history: historyToSend, project: { name: TRACKED_SITE.name, domain: TRACKED_SITE.domain }, dates, availableSources: sources },
         {
-          lm: getLanguageModel(),
+          lm: runtime?.lm ?? null,
+          ...(runtime?.systemPrompt ? { systemPrompt: runtime.systemPrompt } : {}),
+          ...(runtime?.finalize ? { finalize: runtime.finalize } : {}),
           listTools: async () => (await apiClient.listReports()).map((r) => ({ id: r.id, title: r.title, description: r.description, source: r.source, input: r.input })),
           runReport: async (id, args) => (await apiClient.runReport({ id, args, ...dates })).result,
         }
       );
       const turn: ChatTurn = res.ok
-        ? { id: `turn_${seqRef.current++}`, role: 'assistant', content: res.answer, numbersUsed: res.numbersUsed, engineLabel: 'Chrome built-in AI (on this device)', private: true }
+        ? { id: `turn_${seqRef.current++}`, role: 'assistant', content: res.answer, numbersUsed: res.numbersUsed, engineLabel: runtime?.label || 'On this device', private: true }
         : { id: `turn_${seqRef.current++}`, role: 'assistant', content: res.message, isError: true, numbersUsed: [], private: true };
       setMessages((prev) => [...prev, turn].slice(-MAX_ANALYST_HISTORY_MESSAGES));
     } finally {
@@ -532,6 +550,7 @@ export const AIAnalystPage: React.FC = () => {
           downloadProgress={downloadProgress}
           onDownload={() => void startModelDownload()}
           downloadError={downloadError}
+          webLlm={runtime?.webLlmOffered ? { settings: webLlmSettings, models: availableModels(runtime.module), active: runtime.kind === 'webllm', onChange: changeWebLlmSettings } : undefined}
         />
       )}
 

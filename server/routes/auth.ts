@@ -1,3 +1,4 @@
+import { recordAudit } from '../lib/auditLog.js';
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { getServerConfig, requireGoogleConfigured } from '../config.js';
@@ -19,6 +20,8 @@ import {
   OAUTH_STATE_MAX_AGE_MS,
 } from '../lib/session.js';
 import { VaultError } from '../lib/tokenVault.js';
+import { fetchMetaUserId } from '../lib/metaUser.js';
+import { getMetaDeletionStore } from '../lib/metaDeletion.js';
 import { getVault } from '../lib/vault.js';
 import { requireUser } from '../middleware/requireUser.js';
 
@@ -253,6 +256,7 @@ authRouter.get('/google/callback', requireGoogleConfigured, async (req: Request,
       accessTokenExpiresAt: tokens.expiry_date ?? undefined,
     });
 
+    void recordAudit({ uid: decodedState.uid, action: 'connection.google.connected' });
     clearSession(res);
     res.redirect('/connections?connected=google');
   } catch {
@@ -292,6 +296,7 @@ authRouter.post(
     }
 
     await vault.deleteConnection(uid, 'google');
+    void recordAudit({ uid, action: 'connection.google.disconnected' });
     clearSession(res);
     res.json({ ok: true });
   }
@@ -421,6 +426,15 @@ authRouter.get('/meta/callback', async (req: Request, res: Response) => {
       accessToken: longToken.accessToken,
       accessTokenExpiresAt,
     });
+    void recordAudit({ uid: decodedState.uid, action: 'connection.meta.connected' });
+
+    // Remember which Facebook account this is, so Meta's deauthorize / data-deletion callbacks can find it. Never blocks connecting.
+    try {
+      const fbId = await fetchMetaUserId(longToken.accessToken, cfg.metaAppSecret);
+      if (fbId) await getMetaDeletionStore().link(fbId, decodedState.uid);
+    } catch {
+      // best effort
+    }
 
     res.redirect('/connections?connected=meta');
   } catch {

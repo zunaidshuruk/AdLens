@@ -3,7 +3,10 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { AlertTriangle, Lock, Mail } from 'lucide-react';
 import { APP_NAME, APP_TAGLINE } from '../config/app';
 import { AdLensLogo } from '../components/AdLensLogo';
+import { MfaCodeForm } from '../components/MfaCodeForm';
 import { useAuth } from '../context/AuthContext';
+import { useCompanySso } from '../hooks/useCompanySso';
+import { MfaChallenge } from '../lib/mfa';
 
 export const SignInPage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,6 +19,7 @@ export const SignInPage: React.FC = () => {
     signIn,
     signInWithGoogle,
     signInWithMicrosoft,
+    signInWithCompany,
     pendingLinkEmail,
     pendingLinkProviderLabel,
   } = useAuth();
@@ -29,6 +33,8 @@ export const SignInPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
+  const company = useCompanySso(email);
 
   const redirectTarget =
     searchParams.get('redirect') ||
@@ -62,6 +68,7 @@ export const SignInPage: React.FC = () => {
     try {
       await signIn(email, password);
     } catch (err) {
+      if (err instanceof MfaChallenge) { setChallenge(err); return; }
       setError(err instanceof Error ? err.message : 'Unable to sign in.');
     } finally {
       setSubmitting(false);
@@ -74,6 +81,7 @@ export const SignInPage: React.FC = () => {
     try {
       await signInWithGoogle();
     } catch (err) {
+      if (err instanceof MfaChallenge) { setChallenge(err); return; }
       setError(err instanceof Error ? err.message : 'Unable to sign in with Google.');
     } finally {
       setSubmitting(false);
@@ -86,7 +94,22 @@ export const SignInPage: React.FC = () => {
     try {
       await signInWithMicrosoft();
     } catch (err) {
+      if (err instanceof MfaChallenge) { setChallenge(err); return; }
       setError(err instanceof Error ? err.message : 'Unable to sign in with Microsoft.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCompany = async () => {
+    if (!company) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await signInWithCompany(company.providerId);
+    } catch (err) {
+      if (err instanceof MfaChallenge) { setChallenge(err); return; }
+      setError(err instanceof Error ? err.message : 'Unable to sign in with your company account.');
     } finally {
       setSubmitting(false);
     }
@@ -139,7 +162,21 @@ export const SignInPage: React.FC = () => {
             </div>
           )}
 
-          {showPassword && (
+          {challenge && <MfaCodeForm resolver={challenge.resolver} onCancel={() => setChallenge(null)} />}
+
+          {!challenge && company && (
+            <button
+              type="button"
+              data-testid="company-sso-button"
+              onClick={handleCompany}
+              disabled={submitting}
+              className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold text-on-accent bg-accent hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Continue with {company.displayName}
+            </button>
+          )}
+
+          {!challenge && showPassword && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label
@@ -203,7 +240,7 @@ export const SignInPage: React.FC = () => {
             </form>
           )}
 
-          {showPassword && hasSso && (
+          {!challenge && showPassword && hasSso && (
             <div className="relative flex items-center justify-center">
               <div className="border-t border-line w-full" />
               <span className="bg-surface px-3 text-[11px] font-medium text-fg-subtle uppercase tracking-wider">
@@ -213,7 +250,7 @@ export const SignInPage: React.FC = () => {
             </div>
           )}
 
-          {hasSso && (
+          {!challenge && hasSso && (
             <div
               className={`grid grid-cols-1 ${
                 showGoogle && showMicrosoft ? 'sm:grid-cols-2' : ''

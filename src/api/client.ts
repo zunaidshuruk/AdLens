@@ -75,11 +75,12 @@ const PUBLIC_AUTH_ROUTES = new Set([
   '/sign-up',
   '/forgot-password',
   '/auth/action',
+  '/sign-in-blocked',
   '/terms',
   '/privacy',
 ]);
 
-function navigateToAuthRoute(targetPath: '/sign-in' | '/verify-email'): void {
+function navigateToAuthRoute(targetPath: '/sign-in' | '/verify-email' | `/sign-in-blocked?reason=${string}`): void {
   if (typeof window === 'undefined') return;
   const currentPath = window.location.pathname;
   if (currentPath === targetPath || PUBLIC_AUTH_ROUTES.has(currentPath)) {
@@ -243,6 +244,11 @@ export async function apiRequest<T>(
       parsedErr = await parseErrorResponse(response);
     }
 
+    // Company sign-in rules (Sprint 19): explain on a page that works without the API.
+    if (response.status === 403 && (parsedErr.code === 'SSO_REQUIRED' || parsedErr.code === 'SSO_DOMAIN_MISMATCH' || parsedErr.code === 'MFA_REQUIRED')) {
+      navigateToAuthRoute(`/sign-in-blocked?reason=${parsedErr.code}`);
+    }
+
     // On 403 EMAIL_NOT_VERIFIED go to /verify-email
     if (response.status === 403 && parsedErr.code === 'EMAIL_NOT_VERIFIED') {
       navigateToAuthRoute('/verify-email');
@@ -272,6 +278,11 @@ export async function startMetaLogin(): Promise<void> {
     window.location.href = `/api/auth/meta/start?lt=${encodeURIComponent(linkToken)}`;
   }
 }
+
+export interface SsoConfigInfo { domain: string; providerId: string; displayName: string; verified: boolean; enforced: boolean; requireMfa: boolean; autoJoin: boolean; dnsHost?: string; dnsValue?: string }
+export interface McpProjectOption { workspaceId: string; projectId: string; workspaceName: string; name: string; domain: string }
+export interface McpKeyInfo { id: string; name: string; prefix: string; projects: { workspaceId: string; projectId: string }[]; createdAt: string; lastUsedAt: string | null }
+export interface McpConnectedApp { familyId: string; clientName: string; connectedAt: string; projects: { workspaceId: string; projectId: string }[] }
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -752,5 +763,68 @@ export const apiClient = {
 
   runReport(body: { id: string; args?: Record<string, unknown>; startDate: string; endDate: string; compareStartDate?: string; compareEndDate?: string }): Promise<{ id: string; result: unknown }> {
     return apiRequest('/api/reports/run', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  mcpProjects(): Promise<{ projects: McpProjectOption[] }> {
+    return apiRequest('/api/mcp/projects');
+  },
+  mcpListKeys(): Promise<{ keys: McpKeyInfo[] }> {
+    return apiRequest('/api/mcp/keys');
+  },
+  mcpCreateKey(name: string, projects: { workspaceId: string; projectId: string }[]): Promise<{ key: McpKeyInfo; secret: string }> {
+    return apiRequest('/api/mcp/keys', { method: 'POST', body: JSON.stringify({ name, projects }) });
+  },
+  mcpRevokeKey(id: string): Promise<void> {
+    return apiRequest(`/api/mcp/keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  mcpListApps(): Promise<{ apps: McpConnectedApp[] }> {
+    return apiRequest('/api/mcp/apps');
+  },
+  mcpRevokeApp(familyId: string): Promise<void> {
+    return apiRequest(`/api/mcp/apps/${encodeURIComponent(familyId)}`, { method: 'DELETE' });
+  },
+  mcpAuthorizeInfo(clientId: string, redirectUri: string): Promise<{ clientName: string; redirectHost: string; projects: McpProjectOption[] }> {
+    return apiRequest(`/api/mcp/oauth/authorize-info?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}`);
+  },
+  mcpApprove(body: { client_id: string; redirect_uri: string; code_challenge: string; state?: string; approve: boolean; projects: { workspaceId: string; projectId: string }[] }): Promise<{ redirect: string }> {
+    return apiRequest('/api/mcp/oauth/approve', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  digestGet(): Promise<{ emailConfigured: boolean; email: string | null; subscriptions: { workspaceId: string; projectId: string; weekly: boolean; alerts: boolean }[] }> {
+    return apiRequest('/api/digest');
+  },
+  digestSet(body: { workspaceId: string; projectId: string; weekly: boolean; alerts: boolean }): Promise<{ weekly: boolean; alerts: boolean }> {
+    return apiRequest('/api/digest', { method: 'PUT', body: JSON.stringify(body) });
+  },
+  opsAudit(): Promise<{ events: { id: string; at: string; action: string; detail: string | null }[] }> {
+    return apiRequest('/api/ops/audit');
+  },
+
+  ssoLookup(email: string): Promise<{ sso: { providerId: string; displayName: string } | null }> {
+    return apiRequest(`/api/sso/lookup?email=${encodeURIComponent(email)}`);
+  },
+  ssoJoin(): Promise<{ joined: boolean }> {
+    return apiRequest('/api/sso/join', { method: 'POST' });
+  },
+  ssoGet(wsId: string): Promise<{ config: SsoConfigInfo | null; signedInWith: string | null }> {
+    return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}`);
+  },
+  ssoSave(wsId: string, body: { domain: string; providerId: string; displayName: string; autoJoin?: boolean }): Promise<{ config: SsoConfigInfo }> {
+    return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}`, { method: 'PUT', body: JSON.stringify(body) });
+  },
+  ssoVerify(wsId: string): Promise<{ config: SsoConfigInfo }> {
+    return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}/verify`, { method: 'POST' });
+  },
+  ssoEnforce(wsId: string, body: { enforced: boolean; requireMfa: boolean }): Promise<{ config: SsoConfigInfo }> {
+    return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}/enforce`, { method: 'PUT', body: JSON.stringify(body) });
+  },
+  ssoRemove(wsId: string): Promise<void> {
+    return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}`, { method: 'DELETE' });
+  },
+  workspaceAudit(wsId: string): Promise<{ events: { id: string; at: string; action: string; detail: string | null; by: string }[] }> {
+    return apiRequest(`/api/sso/workspaces/${encodeURIComponent(wsId)}/audit`);
+  },
+  signOutEverywhere(): Promise<{ ok: boolean }> {
+    return apiRequest('/api/security/sign-out-everywhere', { method: 'POST' });
   },
 };

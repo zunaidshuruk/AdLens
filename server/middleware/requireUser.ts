@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
+import { decideSignIn, domainOfEmail, lookupDomainRule } from '../lib/orgSso.js';
+import { getSharedStore } from '../lib/sharedStore.js';
 import { verifyIdToken } from '../lib/firebaseAdmin.js';
 import { clearSession, readSession } from '../lib/session.js';
 import { ensureVaultFromCookie } from '../lib/vault.js';
@@ -13,6 +15,10 @@ export interface AuthenticatedUser {
   emailVerified: boolean;
   providers: string[];
   authTime?: number;
+  /** The Firebase sign-in method used for this token, e.g. "password", "google.com", "saml.okta". */
+  signInProvider?: string;
+  /** "totp" or "phone" when two-step verification was used for this sign-in. */
+  secondFactor?: string;
 }
 
 declare global {
@@ -77,7 +83,28 @@ export async function requireUser(
     const isSsoVerified = providers.some((p) => SSO_VERIFIED_PROVIDERS.has(p));
     const emailVerified = Boolean(decoded.email_verified) || isSsoVerified;
 
-    if (!emailVerified) {
+    // "Sign out everywhere": tokens issued before the person asked are refused (they would otherwise live up to an hour).
+    const revokedAt = Number((await getSharedStore().get(`sess:revoked:${decoded.uid}`).catch(() => null)) ?? 0);
+    if (revokedAt > 0 && (typeof decoded.iat !== 'number' || decoded.iat * 1000 < revokedAt)) {
+      res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'You were signed out on all devices. Please sign in again.' } });
+      return;
+    }
+
+    // Company single sign-on rules (Sprint 19). Free-mail and unknown domains cost nothing here.
+    const ssoProvider = typeof decoded.firebase?.sign_in_provider === 'string' ? decoded.firebase.sign_in_provider : null;
+    const secondFactor = typeof (decoded.firebase as { sign_in_second_factor?: unknown } | undefined)?.sign_in_second_factor === 'string'
+      ? ((decoded.firebase as { sign_in_second_factor?: string }).sign_in_second_factor as string)
+      : null;
+    const email = typeof decoded.email === 'string' ? decoded.email : null;
+    // If the rules cannot be read, ordinary sign-ins carry on (an outage must not lock everyone out), but company SSO tokens are refused.
+    const rule = await lookupDomainRule(domainOfEmail(email)).catch(() => null);
+    const decision = decideSignIn({ email, signInProvider: ssoProvider, secondFactor }, rule);
+    if (!decision.allow) {
+      res.status(403).json({ error: { code: decision.code, message: decision.message } });
+      return;
+    }
+
+    if (!emailVerified && !decision.viaSso) {
       res.status(403).json({
         error: {
           code: 'EMAIL_NOT_VERIFIED',
@@ -103,6 +130,8 @@ export async function requireUser(
       emailVerified: true,
       providers,
       authTime,
+      ...(ssoProvider ? { signInProvider: ssoProvider } : {}),
+      ...(secondFactor ? { secondFactor } : {}),
     };
 
     next();

@@ -1,3 +1,4 @@
+import { countUpstream } from './usageMeter.js';
 import { GoogleApiError } from './google.js';
 import type { SearchConsoleQueryResponse } from './searchConsoleMapper.js';
 
@@ -56,6 +57,7 @@ export async function callSearchConsoleQuery(
   const encodedSite = encodeURIComponent(siteUrl);
   const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`;
 
+  void countUpstream('searchConsole');
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
@@ -84,3 +86,59 @@ export async function callSearchConsoleQuery(
   return (await resp.json()) as SearchConsoleQueryResponse;
 }
 
+
+export interface SitemapListItem {
+  path: string;
+  lastSubmitted?: string;
+  lastDownloaded?: string;
+  isPending?: boolean;
+  isSitemapsIndex?: boolean;
+  warnings?: number;
+  errors?: number;
+  submittedUrls?: number;
+}
+
+/** Read-only list of the sitemaps submitted for a Search Console site. */
+export async function listSitemaps(siteUrl: string, accessToken: string): Promise<SitemapListItem[]> {
+  const url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/sitemaps`;
+  void countUpstream('searchConsole');
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+  if (!resp.ok) {
+    let googleStatus = '';
+    try {
+      const errJson = (await resp.json()) as { error?: { status?: string; errors?: { reason?: string }[] } };
+      googleStatus = errJson?.error?.status || errJson?.error?.errors?.[0]?.reason || '';
+    } catch {
+      // never forward raw Google error bodies
+    }
+    throw mapUpstreamSearchConsoleError(resp.status, googleStatus);
+  }
+  const body = (await resp.json()) as {
+    sitemap?: {
+      path?: string;
+      lastSubmitted?: string;
+      lastDownloaded?: string;
+      isPending?: boolean;
+      isSitemapsIndex?: boolean;
+      warnings?: string | number;
+      errors?: string | number;
+      contents?: { submitted?: string | number }[];
+    }[];
+  };
+  const num = (v: string | number | undefined) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return (body.sitemap ?? [])
+    .filter((s) => typeof s.path === 'string' && s.path)
+    .map((s) => ({
+      path: s.path as string,
+      ...(s.lastSubmitted ? { lastSubmitted: s.lastSubmitted } : {}),
+      ...(s.lastDownloaded ? { lastDownloaded: s.lastDownloaded } : {}),
+      isPending: Boolean(s.isPending),
+      isSitemapsIndex: Boolean(s.isSitemapsIndex),
+      warnings: num(s.warnings),
+      errors: num(s.errors),
+      submittedUrls: (s.contents ?? []).reduce((t, c) => t + num(c.submitted), 0),
+    }));
+}
