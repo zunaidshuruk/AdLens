@@ -2,16 +2,18 @@ import { AlertTriangle, CheckCircle2, LogOut, ShieldCheck, XCircle } from 'lucid
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Subscriptions } from './AdminSubscriptions';
 import { OperatorsEditor, PlansEditor, SwitchesEditor } from './AdminSettings';
 import {
   apiClient, type AdminSession, type AdminAuditEvent, type AdminOverview, type AdminRequest, type AdminUser, type AdminWorkspaceDetail, type AdminWorkspaceRow,
 } from '../api/client';
 
-type Tab = 'overview' | 'workspaces' | 'requests' | 'plans' | 'switches' | 'users' | 'operators' | 'audit';
+type Tab = 'overview' | 'workspaces' | 'requests' | 'subs' | 'plans' | 'switches' | 'users' | 'operators' | 'audit';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'workspaces', label: 'Workspaces' },
   { id: 'requests', label: 'Upgrade requests' },
+  { id: 'subs', label: 'Subscriptions' },
   { id: 'plans', label: 'Plans and prices' },
   { id: 'switches', label: 'Switches' },
   { id: 'users', label: 'Users' },
@@ -404,6 +406,7 @@ export const AdminPage: React.FC = () => {
         {tab === 'overview' && <Overview onOpenWorkspaces={() => setTab('workspaces')} />}
         {tab === 'workspaces' && <Workspaces key={focus ?? 'list'} initialId={focus} />}
         {tab === 'requests' && <Requests onOpen={openWorkspace} />}
+        {tab === 'subs' && <Subscriptions onOpen={openWorkspace} />}
         {tab === 'plans' && <PlansEditor />}
         {tab === 'switches' && <SwitchesEditor />}
         {tab === 'users' && <Users onOpen={openWorkspace} />}

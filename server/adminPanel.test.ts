@@ -104,6 +104,15 @@ test('Sprint 20e — admin panel: fresh sign-in, settings, switches, operators, 
     assert.equal((await api('/api/admin/plans', 'op', { plans: keepPro }, 'PUT')).status, 200);
     assert.ok(!PLAN_IDS.includes('convay-team'));
 
+    // who is on which plan
+    await api('/api/billing/admin/set-plan', 'op', { workspaceId: ws.id, plan: 'free' });
+    const subs = await j(await api('/api/billing/admin/subscriptions', 'op'));
+    const mine = subs.rows.find((r: any) => r.email === 'cust@acme.com');
+    assert.equal(mine.plan, 'free'); assert.equal(mine.role, 'owner'); assert.equal(subs.peopleByPlan.free, 1);
+    assert.equal((await j(await api('/api/billing/admin/subscriptions?plan=pro', 'op'))).rows.length, 0);
+    assert.equal((await j(await api('/api/billing/admin/subscriptions?q=cust', 'op'))).rows.length, 1);
+    assert.equal((await api('/api/billing/admin/subscriptions', 'cust')).status, 403);
+
     // operators from the panel
     assert.equal((await api('/api/admin/operators', 'op', { operators: ['not an email'] }, 'PUT')).status, 400);
     assert.equal((await api('/api/admin/operators', 'op', { operators: ['Helper@X.com'] }, 'PUT')).status, 200);

@@ -292,6 +292,28 @@ export interface TeamView { members: TeamMember[]; invites: TeamInvite[]; limit:
 export interface JoinOffer { workspaceId: string; workspaceName: string; ownerName: string; domain: string }
 
 export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; members: number; plan: string; storedPlan: string; planExpiresAt: string | null; status: 'none' | 'active' | 'grace' | 'expired' }
+export interface BillingPlanCard {
+  id: string; label: string; priceUsd: number; priceBdt: number;
+  limits: { maxProjects: number; aiQuestionsPerMonth: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxAgents: number };
+  features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
+}
+export interface BillingView {
+  workspaceId: string; workspaceName: string; role: string | null; canRequestUpgrade: boolean; isOperator: boolean;
+  current: {
+    plan: string; label: string; storedPlan: string; status: 'none' | 'active' | 'grace' | 'expired'; expiresAt: string | null; graceEndsAt: string | null;
+    limits: BillingPlanCard['limits']; content: BillingPlanCard['content']; features: BillingPlanCard['features'];
+  };
+  usage: { projects: number; members: number; aiQuestions: number };
+  plans: BillingPlanCard[];
+  invoices: { id: string; number: string; amount: number; currency: string; plan: string; periodStart: string; periodEnd: string; createdAt: string }[];
+  openRequest: { plan: string; createdAt: string } | null;
+  refundPolicy: string;
+}
+export interface AdminSubscriptionRow {
+  uid: string; email: string; displayName: string; role: string; workspaceId: string; workspaceName: string;
+  plan: string; label: string; status: 'none' | 'active' | 'grace' | 'expired'; planExpiresAt: string | null;
+}
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
@@ -868,6 +890,15 @@ export const apiClient = {
     return apiRequest(`/api/team/offers/${encodeURIComponent(wsId)}/accept`, { method: 'POST', body: '{}' });
   },
 
+  billingGet(workspaceId: string): Promise<BillingView> {
+    return apiRequest(`/api/billing?workspaceId=${encodeURIComponent(workspaceId)}`);
+  },
+  billingRequestUpgrade(body: { workspaceId: string; plan: string; message: string }): Promise<{ requested: boolean; emailed: boolean }> {
+    return apiRequest('/api/billing/upgrade-request', { method: 'POST', body: JSON.stringify(body) });
+  },
+  adminSubscriptions(plan: string, q: string): Promise<{ rows: AdminSubscriptionRow[]; peopleByPlan: Record<string, number>; truncated: boolean }> {
+    return apiRequest(`/api/billing/admin/subscriptions?plan=${encodeURIComponent(plan)}&q=${encodeURIComponent(q)}`);
+  },
   adminSession(): Promise<AdminSession> {
     return apiRequest('/api/admin/session');
   },

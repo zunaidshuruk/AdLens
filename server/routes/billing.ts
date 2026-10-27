@@ -111,7 +111,7 @@ billingRouter.get('/', async (req: Request, res: Response) => {
 
 const requestSchema = z.object({
   workspaceId: z.string().min(1).max(120),
-  plan: z.enum(['pro', 'business']),
+  plan: z.string().refine((p) => isPaidPlan(p) && !CUSTOM_PLAN_IDS.has(p), 'Choose one of the paid plans.'),
   message: z.string().trim().max(500).optional().default(''),
 });
 
@@ -319,6 +319,32 @@ admin.get('/users', async (req: Request, res: Response) => {
     workspaces: (await store.listWorkspacesForUser(u.uid)).map((w) => ({ id: w.id, name: w.name, role: w.members[u.uid] ?? 'member', plan: w.plan })),
   })));
   res.json({ users: out });
+});
+
+// Who is on which plan: one row per person per workspace, with that workspace's plan.
+admin.get('/subscriptions', async (req: Request, res: Response) => {
+  const store = getFirestoreStore();
+  const planFilter = typeof req.query.plan === 'string' ? req.query.plan.trim() : '';
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+  const workspaces = (await store.listWorkspacesForOperator('', 300)).filter((w) => !planFilter || w.plan === planFilter);
+  const names = new Map<string, { email: string; displayName: string }>();
+  const lookup = async (uid: string) => {
+    if (!names.has(uid)) { const u = await store.getUser(uid).catch(() => null); names.set(uid, { email: u?.email ?? '', displayName: u?.displayName ?? 'AdLens User' }); }
+    return names.get(uid)!;
+  };
+  const rows: { uid: string; email: string; displayName: string; role: string; workspaceId: string; workspaceName: string; plan: string; label: string; status: string; planExpiresAt: string | null }[] = [];
+  for (const w of workspaces) {
+    const st = (w.storedPlan ?? w.plan) === 'free' ? 'none' : planStatus(w.planExpiresAt ?? null).status;
+    for (const [uid, role] of Object.entries(w.members)) {
+      const u = await lookup(uid);
+      if (q && !`${u.email} ${u.displayName} ${w.name}`.toLowerCase().includes(q)) continue;
+      rows.push({ uid, email: u.email, displayName: u.displayName, role, workspaceId: w.id, workspaceName: w.name, plan: w.plan, label: isKnownPlan(w.plan) ? PLAN_INFO[w.plan].label : w.plan, status: st, planExpiresAt: w.planExpiresAt ?? null });
+    }
+  }
+  const byPlan: Record<string, number> = {};
+  for (const w of workspaces) byPlan[w.plan] = (byPlan[w.plan] ?? 0) + Object.keys(w.members).length;
+  rows.sort((a, b) => a.plan.localeCompare(b.plan) || a.workspaceName.localeCompare(b.workspaceName) || a.email.localeCompare(b.email));
+  res.json({ rows: rows.slice(0, 1000), peopleByPlan: byPlan, truncated: workspaces.length >= 300 });
 });
 
 admin.get('/audit', async (req: Request, res: Response) => {
