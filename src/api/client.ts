@@ -311,7 +311,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -333,7 +333,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -422,6 +422,9 @@ export interface SharedSnapshot {
   title: string; description: string; kind: 'dashboard' | 'report'; range: { startDate: string; endDate: string }; generatedAt: string;
   widgets: { id: string; title: string; layout: { x: number; y: number; w: number; h: number }; kind: import('../types/dashboard.js').DashboardWidget['kind']; days?: number; target?: number; text?: string; result?: import('../types/explore.js').ExploreResult; error?: string }[];
 }
+
+export interface EmailScheduleInfo { id: string; kind: 'dashboard' | 'report'; targetId: string; title: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean; lastSentAt?: string; lastError?: string }
+export interface EmailScheduleInput { kind: 'dashboard' | 'report'; targetId: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean }
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -848,6 +851,12 @@ export const apiClient = {
     }
     return r.json();
   },
+
+  async listEmailSchedules(): Promise<{ schedules: EmailScheduleInfo[]; limit: number; emailAllowed: boolean; userEmail: string | null }> { return apiRequest('/api/email-schedules'); },
+  async createEmailSchedule(input: EmailScheduleInput): Promise<EmailScheduleInfo> { return (await apiRequest<{ schedule: EmailScheduleInfo }>('/api/email-schedules', { method: 'POST', body: JSON.stringify(input) })).schedule; },
+  async updateEmailSchedule(id: string, patch: Partial<EmailScheduleInput>): Promise<EmailScheduleInfo> { return (await apiRequest<{ schedule: EmailScheduleInfo }>(`/api/email-schedules/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) })).schedule; },
+  async deleteEmailSchedule(id: string): Promise<void> { await apiRequest<void>(`/api/email-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async testEmailSchedule(id: string): Promise<{ sent: boolean; to: string; reason?: string }> { return apiRequest(`/api/email-schedules/${encodeURIComponent(id)}/test`, { method: 'POST' }); },
 
   getExploreCatalog(): Promise<ExploreCatalog> {
     return apiRequest<ExploreCatalog>('/api/explore/catalog');

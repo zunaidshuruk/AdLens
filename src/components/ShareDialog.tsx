@@ -1,6 +1,6 @@
-import { Copy, Link2, RefreshCw, Trash2, X } from 'lucide-react';
+import { Copy, Link2, Mail, RefreshCw, Send, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
-import { apiClient, type ShareInfo } from '../api/client';
+import { apiClient, type EmailScheduleInfo, type ShareInfo } from '../api/client';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 const field = 'rounded-lg border border-line bg-surface text-fg text-xs px-2 py-2 min-h-[36px] w-full';
@@ -16,6 +16,13 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
   const [password, setPassword] = useState('');
   const [expires, setExpires] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [sched, setSched] = useState<EmailScheduleInfo[]>([]);
+  const [emailAllowed, setEmailAllowed] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [schedLimit, setSchedLimit] = useState(0);
+  const [freq, setFreq] = useState<'weekly' | 'monthly'>('weekly');
+  const [mailRange, setMailRange] = useState<7 | 28 | 90>(7);
+  const [mailTo, setMailTo] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -24,7 +31,15 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
       setLimit(r.limit);
     } catch (e) { setError(errMessage(e)); setShares([]); }
   }, [kind, targetId]);
-  useEffect(() => { void load(); }, [load]);
+  const loadSched = useCallback(async () => {
+    try {
+      const r = await apiClient.listEmailSchedules();
+      setSched(r.schedules.filter((x) => x.kind === kind && x.targetId === targetId));
+      setEmailAllowed(r.emailAllowed); setSchedLimit(r.limit); setUserEmail(r.userEmail);
+      setMailTo((cur) => cur || r.userEmail || '');
+    } catch { /* the share part still works */ }
+  }, [kind, targetId]);
+  useEffect(() => { void load(); void loadSched(); }, [load, loadSched]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -40,6 +55,32 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
       if (s.url) { try { await navigator.clipboard.writeText(s.url); setNote('Link made and copied.'); } catch { setNote('Link made. Copy it below.'); } }
       await load();
     } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const addSched = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy('mail'); setError(null); setNote(null);
+    try {
+      await apiClient.createEmailSchedule({ kind, targetId, frequency: freq, rangeDays: mailRange, enabled: true, emails: mailTo.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) });
+      setNote(freq === 'weekly' ? 'Scheduled. It goes out every Monday.' : 'Scheduled. It goes out on the 1st of each month.');
+      await loadSched();
+    } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const toggleSched = async (x: EmailScheduleInfo) => {
+    setBusy(x.id); setError(null);
+    try { await apiClient.updateEmailSchedule(x.id, { enabled: !x.enabled }); await loadSched(); } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const testSched = async (x: EmailScheduleInfo) => {
+    setBusy(x.id); setError(null); setNote(null);
+    try { const r = await apiClient.testEmailSchedule(x.id); setNote(r.sent ? `Test email sent to ${r.to}.` : r.reason || 'The test email could not be sent.'); } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const delSched = async (x: EmailScheduleInfo) => {
+    if (!window.confirm('Delete this scheduled email?')) return;
+    setBusy(x.id); setError(null);
+    try { await apiClient.deleteEmailSchedule(x.id); await loadSched(); } catch (err) { setError(errMessage(err)); }
     setBusy(null);
   };
   const copy = async (s: ShareInfo) => {
@@ -59,11 +100,11 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-fg/40 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={`Share ${title}`}>
+    <div className="fixed inset-0 z-50 bg-fg/40 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={`Share and email ${title}`}>
       <div className="w-full sm:max-w-lg max-h-[90vh] overflow-auto rounded-t-2xl sm:rounded-2xl bg-page border border-line p-4 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-fg">Share “{title}”</h2>
+            <h2 className="text-base font-semibold text-fg">Share and email “{title}”</h2>
             <p className="text-xs text-fg-muted">Anyone with the link can see a read-only copy of the numbers as they were when the link was made (refreshed daily if you leave that on). They cannot sign in to anything or see your connections.</p>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-fg-muted hover:text-fg"><X className="w-4 h-4" /></button>
@@ -112,6 +153,52 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
             ))}
           </ul>
         )}
+        <div className="border-t border-line pt-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg inline-flex items-center gap-1.5"><Mail className="w-4 h-4" /> Email this on a schedule</h3>
+            <p className="text-xs text-fg-muted">A snapshot of the numbers lands in the inbox: weekly on Mondays or monthly on the 1st. Charts stay in the app; the email shows the numbers and short tables.</p>
+          </div>
+          {!emailAllowed ? (
+            <p className="text-xs text-fg-muted">Scheduled emails are not part of your plan.</p>
+          ) : (
+            <form onSubmit={(e) => void addSched(e)} className="rounded-xl border border-line bg-surface p-3 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-fg space-y-1">How often
+                  <select className={field} value={freq} onChange={(e) => setFreq(e.target.value as 'weekly' | 'monthly')}>
+                    <option value="weekly">Every Monday</option><option value="monthly">1st of every month</option>
+                  </select>
+                </label>
+                <label className="block text-xs font-medium text-fg space-y-1">Numbers cover the last
+                  <select className={field} value={mailRange} onChange={(e) => setMailRange(Number(e.target.value) as 7 | 28 | 90)}>
+                    <option value={7}>7 days</option><option value={28}>28 days</option><option value={90}>90 days</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block text-xs font-medium text-fg space-y-1">Send to (up to 3 addresses, separated by commas)
+                <input className={field} value={mailTo} placeholder={userEmail ?? 'you@company.com'} onChange={(e) => setMailTo(e.target.value)} />
+              </label>
+              <button type="submit" disabled={busy === 'mail' || (schedLimit > 0 && sched.length >= schedLimit)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">
+                <Mail className="w-3.5 h-3.5" /> {busy === 'mail' ? 'Saving…' : 'Schedule the email'}
+              </button>
+            </form>
+          )}
+          {sched.length > 0 && (
+            <ul className="space-y-2">
+              {sched.map((x) => (
+                <li key={x.id} className="rounded-xl border border-line bg-surface p-3 space-y-2">
+                  <p className="text-xs text-fg">{x.frequency === 'weekly' ? 'Every Monday' : '1st of every month'} · last {x.rangeDays} days · {x.emails.join(', ')}{x.enabled ? '' : ' (paused)'}</p>
+                  <p className="text-[11px] text-fg-muted">{x.lastSentAt ? `Last sent ${new Date(x.lastSentAt).toLocaleDateString()}` : 'Not sent yet'}</p>
+                  {x.lastError && <p className="text-[11px] text-warning">{x.lastError}</p>}
+                  <div className="flex gap-2">
+                    <button type="button" disabled={busy === x.id} onClick={() => void testSched(x)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2 disabled:opacity-50"><Send className="w-3.5 h-3.5" /> Send me a test</button>
+                    <button type="button" disabled={busy === x.id} onClick={() => void toggleSched(x)} className="rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2 disabled:opacity-50">{x.enabled ? 'Pause' : 'Resume'}</button>
+                    <button type="button" disabled={busy === x.id} onClick={() => void delSched(x)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-danger hover:bg-danger-soft disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {limit > 0 && <p className="text-[11px] text-fg-subtle">Your plan allows {limit} share {limit === 1 ? 'link' : 'links'} per project.</p>}
       </div>
     </div>

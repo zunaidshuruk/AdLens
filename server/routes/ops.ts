@@ -2,6 +2,8 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { productionDigestDeps } from '../lib/digestWiring.js';
 import { runDigests } from '../lib/digestRunner.js';
+import { getScheduleStore, productionScheduleContext, productionSnapshot, runEmailSchedules } from '../lib/emailSchedules.js';
+import { sendMail } from '../lib/mailer.js';
 import { refreshDueShares } from '../lib/shareWiring.js';
 import { getShareStore } from '../lib/shares.js';
 import { runAlertRules } from '../lib/alertRunner.js';
@@ -135,5 +137,9 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
   try { alerts = await runAlertRules(productionAlertDeps()); } catch { alerts = { error: 'alerts failed' }; }
   let shares: Awaited<ReturnType<typeof refreshDueShares>> | { error: string };
   try { shares = await refreshDueShares(getShareStore()); } catch { shares = { error: 'shares failed' }; }
-  res.json({ ...digests, alerts, shares });
+  let emails: Awaited<ReturnType<typeof runEmailSchedules>> | { error: string };
+  try {
+    emails = await runEmailSchedules({ store: getScheduleStore(), appUrl: getServerConfig().appBaseUrl, sendMail: (m) => sendMail(m), context: productionScheduleContext, snapshot: productionSnapshot });
+  } catch { emails = { error: 'emails failed' }; }
+  res.json({ ...digests, alerts, shares, emails });
 });
