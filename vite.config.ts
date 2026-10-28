@@ -47,6 +47,10 @@ export default defineConfig(() => {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
+          chunkFileNames(chunkInfo) {
+            const safeName = (chunkInfo.name || 'chunk').replace(/error/gi, 'status');
+            return `assets/${safeName}-[hash].js`;
+          },
           manualChunks(id) {
             if (id.includes('node_modules/recharts')) {
               return 'vendor-charts';
