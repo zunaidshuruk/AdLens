@@ -107,6 +107,7 @@ export function PlansEditor() {
               <Num label="Alert rules per project" value={p.content.maxAlertRules} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxAlertRules: v ?? 0 } }))} />
               <Num label="Share links per project" value={p.content.maxShareLinks} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxShareLinks: v ?? 0 } }))} />
               <Num label="Scheduled emails per project" value={p.content.maxEmailSchedules} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxEmailSchedules: v ?? 0 } }))} />
+              <Num label="Pages per site audit" value={p.content.maxCrawlPages} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxCrawlPages: v ?? 0 } }))} />
               <Num label="AI agents (0 = none)" value={p.content.maxAgents} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxAgents: v ?? 0 } }))} />
               <Num label="Report history (days back)" nullable value={p.features.historyDays} hint="Leave empty for no limit" onChange={(v) => patch(p.id, (x) => ({ ...x, features: { ...x.features, historyDays: v } }))} />
               <label className="flex items-center gap-2 text-sm text-fg pt-6"><input type="checkbox" checked={p.features.emailSummaries} onChange={(e) => patch(p.id, (x) => ({ ...x, features: { ...x.features, emailSummaries: e.target.checked } }))} />Email summaries and alerts</label>

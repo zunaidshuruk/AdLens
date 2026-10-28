@@ -34,6 +34,7 @@ const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage').then((m) =>
 const CrossChannelPage = lazy(() => import('./pages/CrossChannelPage').then((m) => ({ default: m.CrossChannelPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const SharedPage = lazy(() => import('./pages/SharedPage').then((m) => ({ default: m.SharedPage })));
+const SeoPage = lazy(() => import('./pages/SeoPage').then((m) => ({ default: m.SeoPage })));
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const DashboardsPage = lazy(() => import('./pages/DashboardsPage').then((m) => ({ default: m.DashboardsPage })));
 const ExplorePage = lazy(() => import('./pages/ExplorePage').then((m) => ({ default: m.ExplorePage })));
@@ -100,6 +101,7 @@ export default function App() {
                   <Route path="/meta-ads" element={<MetaAdsPage />} />
                   <Route path="/dashboards" element={<DashboardsPage />} />
                   <Route path="/alerts" element={<AlertsPage />} />
+                  <Route path="/seo" element={<SeoPage />} />
                   <Route path="/dashboards/:id" element={<DashboardPage />} />
                   <Route path="/explore" element={<ExplorePage />} />
                   <Route path="/agents" element={<AgentsPage />} />

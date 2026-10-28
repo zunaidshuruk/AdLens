@@ -1,0 +1,164 @@
+import { Router, type Request, type Response } from 'express';
+import { z } from 'zod';
+import { getContentLimits } from '../config/plans.js';
+import { requireGoogleConfigured } from '../config.js';
+import { MetaApiError } from '../lib/meta.js';
+import { GoogleApiError } from '../lib/google.js';
+import { getFirestoreStore } from '../lib/firestore.js';
+import { can } from '../lib/permissions.js';
+import { checkRateLimit } from '../lib/rateLimiter.js';
+import { buildReportContext } from '../lib/reportContext.js';
+import { crawlSite } from '../lib/seoCrawl.js';
+import { fetchFollowing, fetchOnce, normaliseInputUrl, type PageFetcher } from '../lib/seoFetch.js';
+import { keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
+import { findOpportunities, type QueryPageRow } from '../lib/seoOpportunities.js';
+import { analyzeHtml, pageIssues, scoreFor } from '../lib/seoPage.js';
+import { SsrfError } from '../lib/ssrfGuard.js';
+import { mapVaultError } from '../lib/vault.js';
+import { loadProject } from '../middleware/loadProject.js';
+import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
+import { searchConsoleExploreReport } from '../reports/exploreReports.js';
+
+/** SEO tools: page checker, site audit, Search Console opportunities, keyword ideas. */
+export const seoRouter = Router();
+
+const fail = (res: Response, status: number, code: string, message: string): void => { res.status(status).json({ error: { code, message } }); };
+
+// Swappable in tests so no test touches the internet.
+const deps: { fetcher: PageFetcher; suggest: SuggestFetcher; now: () => number } = { fetcher: fetchOnce, suggest: googleSuggest, now: Date.now };
+export function setSeoTestDeps(d: Partial<typeof deps> | null): void {
+  deps.fetcher = d?.fetcher ?? fetchOnce; deps.suggest = d?.suggest ?? googleSuggest; deps.now = d?.now ?? Date.now;
+}
+
+seoRouter.use(requireUser);
+seoRouter.use(verifyGoogleSessionOwnership);
+seoRouter.use(loadProject);
+
+interface Scope { plan: string | undefined; uid: string }
+async function scope(req: Request, res: Response): Promise<Scope | null> {
+  const project = req.project;
+  if (!project) { fail(res, 400, 'PROJECT_REQUIRED', 'Choose a project first.'); return null; }
+  const ws = await getFirestoreStore().getWorkspace(project.workspaceId);
+  if (!ws || !can(ws, req.user!.uid, 'reports.view')) { fail(res, 403, 'NOT_ALLOWED', 'You do not have permission to use SEO tools in this project.'); return null; }
+  return { plan: ws.plan, uid: req.user!.uid };
+}
+async function limited(res: Response, uid: string, name: string, limit: number, windowMs: number): Promise<boolean> {
+  const r = await checkRateLimit(`seo-${name}`, uid, limit, windowMs);
+  if (r.allowed) return false;
+  fail(res, 429, 'RATE_LIMITED', `You have used this tool a lot. Try again in ${Math.ceil(r.retryAfterSeconds / 60)} minutes.`);
+  return true;
+}
+const urlError = (res: Response, e: unknown): void => fail(res, 400, 'INVALID_URL', e instanceof SsrfError ? e.message : 'Enter a valid web address, for example example.com/page.');
+
+const hostKey = (h: string) => h.toLowerCase().replace(/^www\./, '');
+function projectHosts(req: Request): string[] {
+  const out = new Set<string>();
+  const add = (v: string | null | undefined) => {
+    if (!v) return;
+    try { out.add(hostKey(new URL(/^[a-z]+:\/\//i.test(v) ? v : `https://${v}`).hostname)); } catch { /* ignore */ }
+  };
+  add(req.project?.domain);
+  const sc = req.project?.searchConsoleSite;
+  if (sc) add(sc.startsWith('sc-domain:') ? sc.slice('sc-domain:'.length) : sc);
+  return [...out];
+}
+
+seoRouter.post('/page', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'page', 60, 3_600_000))) return;
+    const parsed = z.object({ url: z.string().min(3).max(2000) }).safeParse(req.body);
+    if (!parsed.success) return urlError(res, null);
+    let start: URL;
+    try { start = normaliseInputUrl(parsed.data.url); } catch (e) { return urlError(res, e); }
+    const page = await fetchFollowing(start.toString(), deps.fetcher);
+    if (page.error || page.status === 0) return fail(res, 502, 'FETCH_FAILED', page.error || 'The page could not be reached.');
+    if (page.contentType && !/html|xml/.test(page.contentType)) return fail(res, 422, 'NOT_HTML', 'That address is not a web page (it did not return HTML).');
+    const facts = analyzeHtml(page.text, page.url, { status: page.status, contentType: page.contentType, xRobots: page.xRobots, ms: page.ms, bytes: page.bytes, ...(page.chain.length ? { redirectTo: page.url } : {}) });
+    const issues = pageIssues(facts);
+    const links = facts.links;
+    res.json({
+      url: page.url, requested: start.toString(), redirected: page.chain.length > 0, score: scoreFor(issues), issues,
+      facts: {
+        status: facts.status, ms: facts.ms, title: facts.title, titleLength: facts.title?.length ?? 0, description: facts.description, descriptionLength: facts.description?.length ?? 0,
+        h1: facts.h1, h2Count: facts.h2Count, canonical: facts.canonical, wordCount: facts.wordCount, images: facts.images,
+        internalLinks: links.filter((l) => l.internal).length, externalLinks: links.filter((l) => !l.internal).length, noindex: facts.noindex,
+        structuredData: [...new Set(facts.structuredData)], lang: facts.lang,
+      },
+    });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while checking the page.'); }
+});
+
+seoRouter.post('/crawl', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'crawl', 6, 3_600_000))) return;
+    const hosts = projectHosts(req);
+    const parsed = z.object({ url: z.string().min(3).max(2000).optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) return urlError(res, null);
+    const target = parsed.data.url || (req.project?.domain ?? '');
+    if (!target) return fail(res, 409, 'NO_SITE', 'Add your website address to the project first.');
+    let start: URL;
+    try { start = normaliseInputUrl(target); } catch (e) { return urlError(res, e); }
+    if (!hosts.includes(hostKey(start.hostname))) return fail(res, 403, 'NOT_YOUR_SITE', `Site audits only run on this project's own website (${hosts.join(', ') || 'none set'}). Use the page checker for other sites.`);
+    const maxPages = getContentLimits(s.plan).maxCrawlPages;
+    const report = await crawlSite(start.toString(), deps.fetcher, { maxPages, timeBudgetMs: 45_000, now: deps.now });
+    res.json({ report, maxPages });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while auditing the site.'); }
+});
+
+function mapErr(res: Response, err: unknown): void {
+  if (err instanceof MetaApiError) return fail(res, err.status, err.code, err.message);
+  const mapped = mapVaultError(err) ?? (err instanceof GoogleApiError ? err : null);
+  if (mapped) return fail(res, mapped.status, mapped.code, mapped.message);
+  fail(res, 502, 'SEO_FAILED', 'Could not read your Search Console data right now.');
+}
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+async function queryPageRows(req: Request, days: number, limit: number): Promise<QueryPageRow[]> {
+  const end = new Date(deps.now() - 3 * 86_400_000); // Search Console data lags by a couple of days
+  const start = new Date(end.getTime() - (days - 1) * 86_400_000);
+  const ctx = buildReportContext(req.user!.uid, req.project);
+  const result = await searchConsoleExploreReport.run(ctx, { startDate: isoDay(start), endDate: isoDay(end), dimensions: ['query', 'page'], metrics: ['clicks', 'impressions', 'ctr', 'position'], filters: [], limit, orderBy: { field: 'impressions', desc: true } });
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return result.rows.map((r) => ({ query: String(r.query ?? ''), page: String(r.page ?? ''), clicks: num(r.clicks), impressions: num(r.impressions), ctr: num(r.ctr), position: num(r.position) }));
+}
+
+seoRouter.use(requireGoogleConfigured);
+
+seoRouter.post('/opportunities', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s) return;
+    if (!req.project?.searchConsoleSite) return fail(res, 409, 'SC_NOT_SELECTED', 'Choose a Search Console site on the Connections page first.');
+    const parsed = z.object({ days: z.union([z.literal(28), z.literal(90)]).default(28) }).safeParse(req.body ?? {});
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', 'Choose 28 or 90 days.');
+    if (await limited(res, s.uid, 'opps', 30, 3_600_000)) return;
+    let rows: QueryPageRow[];
+    try { rows = await queryPageRows(req, parsed.data.days, 1000); } catch (err) { return mapErr(res, err); }
+    const found = findOpportunities(rows, { minImpressions: parsed.data.days === 90 ? 100 : 50 });
+    res.json({ days: parsed.data.days, rowsRead: rows.length, truncated: rows.length >= 1000, opportunities: found });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});
+
+seoRouter.post('/keywords', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s) return;
+    const parsed = z.object({ seed: z.string().trim().min(2, 'Type a word or phrase').max(80), lang: z.enum(['en', 'bn', 'hi', 'es', 'fr', 'de', 'ar']).default('en'), deep: z.boolean().default(false) }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Type a word or phrase.');
+    if (await limited(res, s.uid, 'keywords', 20, 3_600_000)) return;
+    const ideas = await keywordIdeas(parsed.data.seed, deps.suggest, { lang: parsed.data.lang, alphabet: parsed.data.deep });
+    // Mark the ideas you already get impressions for (best effort: skipped when Search Console is not connected).
+    const known = new Map<string, { impressions: number; position: number; clicks: number }>();
+    if (req.project?.searchConsoleSite) {
+      try {
+        const ctx = buildReportContext(req.user!.uid, req.project);
+        const end = new Date(deps.now() - 3 * 86_400_000);
+        const start = new Date(end.getTime() - 89 * 86_400_000);
+        const r = await searchConsoleExploreReport.run(ctx, { startDate: isoDay(start), endDate: isoDay(end), dimensions: ['query'], metrics: ['clicks', 'impressions', 'position'], filters: [], limit: 1000, orderBy: { field: 'impressions', desc: true } });
+        for (const row of r.rows) known.set(String(row.query ?? '').toLowerCase(), { impressions: Number(row.impressions) || 0, position: Number(row.position) || 0, clicks: Number(row.clicks) || 0 });
+      } catch { /* optional */ }
+    }
+    res.json({ seed: parsed.data.seed, ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null })), note: 'Ideas come from what people type into Google. Search volumes are not included.' });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});

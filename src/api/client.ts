@@ -311,7 +311,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -333,7 +333,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -425,6 +425,19 @@ export interface SharedSnapshot {
 
 export interface EmailScheduleInfo { id: string; kind: 'dashboard' | 'report'; targetId: string; title: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean; lastSentAt?: string; lastError?: string }
 export interface EmailScheduleInput { kind: 'dashboard' | 'report'; targetId: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean }
+
+export interface SeoIssueInfo { id: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string; fix: string }
+export interface SeoPageResult {
+  url: string; requested: string; redirected: boolean; score: number; issues: SeoIssueInfo[];
+  facts: { status: number; ms: number; title: string | null; titleLength: number; description: string | null; descriptionLength: number; h1: string[]; h2Count: number; canonical: string | null; wordCount: number; images: { total: number; missingAlt: number; missingSize: number }; internalLinks: number; externalLinks: number; noindex: boolean; structuredData: string[]; lang: string | null };
+}
+export interface SeoCrawlReport {
+  startUrl: string; crawled: number; stoppedBecause: 'finished' | 'page_limit' | 'time_limit'; seconds: number; statusCounts: Record<string, number>; averageScore: number; robotsBlocked: number; sitemapFound: boolean;
+  groups: { id: string; severity: 'error' | 'warning' | 'info'; title: string; fix: string; count: number; urls: string[] }[];
+  pages: { url: string; status: number; title: string | null; words: number; h1: number; ms: number; issues: number; score: number; redirectTo?: string; linkedFrom?: string; error?: string }[];
+}
+export interface SeoOpportunity { kind: 'striking' | 'low_ctr' | 'no_clicks' | 'cannibal'; query: string; page: string; pages?: string[]; clicks: number; impressions: number; ctr: number; position: number; potentialClicks: number; why: string; action: string }
+export interface SeoKeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'alphabet' | 'seed'; intent: 'informational' | 'commercial' | 'transactional' | 'navigational'; words: number; ranking: { impressions: number; position: number; clicks: number } | null }
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -857,6 +870,11 @@ export const apiClient = {
   async updateEmailSchedule(id: string, patch: Partial<EmailScheduleInput>): Promise<EmailScheduleInfo> { return (await apiRequest<{ schedule: EmailScheduleInfo }>(`/api/email-schedules/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) })).schedule; },
   async deleteEmailSchedule(id: string): Promise<void> { await apiRequest<void>(`/api/email-schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async testEmailSchedule(id: string): Promise<{ sent: boolean; to: string; reason?: string }> { return apiRequest(`/api/email-schedules/${encodeURIComponent(id)}/test`, { method: 'POST' }); },
+
+  async seoPage(url: string): Promise<SeoPageResult> { return apiRequest('/api/seo/page', { method: 'POST', body: JSON.stringify({ url }) }); },
+  async seoCrawl(url?: string): Promise<{ report: SeoCrawlReport; maxPages: number }> { return apiRequest('/api/seo/crawl', { method: 'POST', body: JSON.stringify(url ? { url } : {}) }); },
+  async seoOpportunities(days: 28 | 90): Promise<{ days: number; rowsRead: number; truncated: boolean; opportunities: Record<SeoOpportunity['kind'], SeoOpportunity[]> }> { return apiRequest('/api/seo/opportunities', { method: 'POST', body: JSON.stringify({ days }) }); },
+  async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
 
   getExploreCatalog(): Promise<ExploreCatalog> {
     return apiRequest<ExploreCatalog>('/api/explore/catalog');
