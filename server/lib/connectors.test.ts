@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createConnectedDataset, refreshConnectedDataset } from './connectedData.js';
-import { CONNECTORS, connectorById, fetchConnectorTable, normaliseShop, normaliseSite, parseSheetLink, splitConnectorInput } from './connectors.js';
+import { CONNECTORS, connectorById, fetchConnectorTable, findJsonRows, jsonRowsToGrid, normaliseShop, normaliseSite, parseSheetLink, splitConnectorInput } from './connectors.js';
 import { DatasetError, summary } from './datasets.js';
 import { createInMemoryProjectDocsStore } from './projectDocs.js';
 import { SsrfError, type GuardedResponse, type RequestFn } from './ssrfGuard.js';
@@ -13,7 +13,7 @@ const SHEET = 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxY
 const redirect = (location: string): never => { const e = new SsrfError('REDIRECT_BLOCKED', 'redirect'); (e as SsrfError & { location?: string }).location = location; throw e; };
 
 test('Connectors: live ones are Sheets, Shopify and WooCommerce; the rest are listed as coming soon with no fields', () => {
-  assert.deepEqual(CONNECTORS.filter((c) => c.status === 'live').map((c) => c.id), ['google_sheets', 'shopify', 'woocommerce']);
+  assert.deepEqual(CONNECTORS.filter((c) => c.status === 'live').map((c) => c.id), ['google_sheets', 'shopify', 'woocommerce', 'custom_url']);
   for (const id of ['linkedin_ads', 'tiktok_ads', 'google_ads']) { const c = connectorById(id)!; assert.equal(c.status, 'soon'); assert.equal(c.fields.length, 0); }
   assert.equal(new Set(CONNECTORS.map((c) => c.id)).size, CONNECTORS.length);
 });
@@ -139,4 +139,40 @@ test('Connected tables: secrets are sealed, never exposed, refresh replaces rows
   await store.put('w', 'p', 'datasets', { id: 'file1', name: 'f', columns: [], rows: [], rowCount: 0 });
   await assert.rejects(refreshConnectedDataset(store, 'w', 'p', 'file1', { keyring: ring, request }), /uploaded as a file/);
   await assert.rejects(refreshConnectedDataset(store, 'w', 'p', 'nope', { keyring: ring, request }), (e) => e instanceof DatasetError && e.code === 'NOT_FOUND');
+});
+
+test('Custom link: reads CSV or JSON, sends the sign-in header, refuses unsafe addresses and odd headers', async () => {
+  const seen: { url: string; headers: Record<string, string> }[] = [];
+  const csv: RequestFn = async (url, opts) => { seen.push({ url: url.href, headers: opts.headers ?? {} }); return ok('Day,Spend\n2026-10-01,5\n2026-10-02,7'); };
+  const t = await fetchConnectorTable('custom_url', { url: 'https://example.com/r.csv' }, {}, csv);
+  assert.equal(t.rows.length, 2);
+  assert.equal(seen[0].headers.Authorization, undefined);
+
+  const json: RequestFn = async (url, opts) => { seen.push({ url: url.href, headers: opts.headers ?? {} }); return ok(JSON.stringify({ meta: { n: 2 }, data: { items: [{ day: '2026-10-01', spend: 5, geo: { country: 'BD' } }, { day: '2026-10-02', spend: 7.5, geo: { country: 'IN' }, extra: true }] } })); };
+  const j = await fetchConnectorTable('custom_url', { url: 'https://example.com/api', headerName: 'X-Api-Key', path: 'data.items' }, { headerValue: 'k3y-value' }, json);
+  assert.deepEqual(j.columns.map((c) => c.label), ['day', 'spend', 'geo.country', 'extra']);
+  assert.deepEqual(j.columns.map((c) => c.type), ['date', 'number', 'text', 'text']);
+  assert.equal(seen.at(-1)!.headers['X-Api-Key'], 'k3y-value');
+  // without a path the first list is found; a top-level list works too
+  assert.equal((await fetchConnectorTable('custom_url', { url: 'https://example.com/api' }, {}, json)).rows.length, 2);
+  assert.equal((await fetchConnectorTable('custom_url', { url: 'https://example.com/api' }, {}, async () => ok('[{"a":1},{"a":2},{"a":3}]'))).rows.length, 3);
+
+  for (const bad of ['http://example.com/x', 'https://localhost/x', 'https://10.1.2.3/x', 'https://example.com:8443/x', 'ftp://example.com', 'nonsense']) {
+    await assert.rejects(fetchConnectorTable('custom_url', { url: bad }, {}, csv), DatasetError, bad);
+  }
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x', headerName: 'Host' }, { headerValue: 'evil' }, csv), /not allowed/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x', headerName: 'bad name' }, { headerValue: 'v' }, csv), /not allowed/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x', headerName: 'Authorization' }, {}, csv), /both/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x' }, {}, async () => ok('<html>login</html>')), /web page/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x' }, {}, async () => ok('{"a": 1}')), /list of rows/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x' }, {}, async () => ok('{bad json')), /Could not|could not/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x' }, {}, async () => ({ status: 403, headers: {}, text: '' })), /refused/);
+  await assert.rejects(fetchConnectorTable('custom_url', { url: 'https://example.com/x' }, {}, async () => { throw new SsrfError('REDIRECT_BLOCKED', 'r'); }), /redirected/);
+  assert.equal(findJsonRows({ a: { b: [{ x: 1 }] } }, 'a.b')?.length, 1);
+  assert.equal(findJsonRows({ a: 1 }, 'a.b.c'), null);
+  assert.deepEqual(jsonRowsToGrid([{ a: 1 }, { b: 2 }]), [['a', 'b'], ['1', ''], ['', '2']]);
+  // optional fields may be left out, required ones may not
+  const info = connectorById('custom_url')!;
+  assert.deepEqual(splitConnectorInput(info, { url: ' https://x.com/a ', headerName: '', headerValue: '' }), { params: { url: 'https://x.com/a' }, secrets: {} });
+  assert.throws(() => splitConnectorInput(info, { headerName: 'x' }), DatasetError);
 });

@@ -93,7 +93,7 @@ export const ConnectPanel: React.FC<{ onConnected: (d: DatasetInfo) => void }> =
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button type="submit" disabled={busy || open.fields.some((f) => !(values[f.key] ?? '').trim())} className="rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">{busy ? 'Connecting…' : 'Connect and fetch data'}</button>
+            <button type="submit" disabled={busy || open.fields.some((f) => !f.optional && !(values[f.key] ?? '').trim())} className="rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">{busy ? 'Connecting…' : 'Connect and fetch data'}</button>
             <button type="button" onClick={() => setOpen(null)} className="text-xs text-fg-muted hover:text-fg underline">Cancel</button>
             {error && <span role="alert" className="text-xs text-danger">{error}</span>}
           </div>

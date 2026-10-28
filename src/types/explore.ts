@@ -27,7 +27,7 @@ export interface ConnectorInfo {
   group: string;
   status: 'live' | 'soon';
   blurb: string;
-  fields: { key: string; label: string; secret?: boolean; placeholder?: string; help?: string }[];
+  fields: { key: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string }[];
   steps?: string[];
 }
 

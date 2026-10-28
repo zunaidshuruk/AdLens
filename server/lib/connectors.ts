@@ -4,13 +4,13 @@
  * Pure apart from the injected request function, so tests never touch the network.
  */
 import { validateOutboundUrl, guardedRequest, type RequestFn, SsrfError } from './ssrfGuard.js';
-import { buildTable, DatasetError, MAX_CSV_CHARS, MAX_DATASET_ROWS, type DataCell, type DataColumn } from './datasets.js';
+import { buildTable, tableFromGrid, DatasetError, MAX_CSV_CHARS, MAX_DATASET_ROWS, type DataCell, type DataColumn } from './datasets.js';
 
-export interface ConnectorField { key: string; label: string; secret?: boolean; placeholder?: string; help?: string }
+export interface ConnectorField { key: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string }
 export interface ConnectorInfo {
   id: string;
   label: string;
-  group: 'Ads' | 'Store' | 'Spreadsheet' | 'Email and CRM' | 'Payments' | 'Video';
+  group: 'Ads' | 'Store' | 'Spreadsheet' | 'Email and CRM' | 'Payments' | 'Video' | 'Custom';
   status: 'live' | 'soon';
   blurb: string;
   fields: ConnectorField[];
@@ -46,6 +46,17 @@ export const CONNECTORS: ConnectorInfo[] = [
       { key: 'secret', label: 'Consumer secret', secret: true, placeholder: 'cs_…' },
     ],
     steps: ['In WordPress open WooCommerce, Settings, Advanced, REST API.', 'Add a key with Read permission only.', 'Copy the consumer key and secret (shown once) and paste them here. The site must use https.'],
+  },
+  {
+    id: 'custom_url', label: 'Custom link (CSV or JSON)', group: 'Custom', status: 'live',
+    blurb: 'Connect anything that has a web address returning a CSV file or a JSON list, for example a report link, an internal API or a published feed. Refresh any time.',
+    fields: [
+      { key: 'url', label: 'Address (https)', placeholder: 'https://example.com/report.csv' },
+      { key: 'headerName', label: 'Sign-in header name (optional)', optional: true, placeholder: 'Authorization or X-Api-Key' },
+      { key: 'headerValue', label: 'Sign-in header value (optional)', secret: true, optional: true, placeholder: 'Bearer abc123… or the key itself' },
+      { key: 'path', label: 'Where the rows are inside the JSON (optional)', optional: true, placeholder: 'data.items' },
+    ],
+    steps: ['Paste the https address. It must answer a plain GET request with CSV text or JSON.', 'If it needs a key, enter the header name and value your provider gives you. The value is stored encrypted.', 'For JSON, rows are a list of objects. If the list is not at the top, type where it is (for example data.items); otherwise we look for it.', 'Up to 5,000 rows and 20 columns. Only read access is used.'],
   },
   ...([
     ['linkedin_ads', 'LinkedIn Ads', 'Ads'], ['tiktok_ads', 'TikTok Ads', 'Ads'], ['google_ads', 'Google Ads', 'Ads'],
@@ -238,12 +249,104 @@ export async function fetchWooCommerce(params: Record<string, string>, secrets: 
   return { columns: ORDER_COLUMNS, rows: rows.slice(0, MAX_DATASET_ROWS), ...(note ? { note } : {}) };
 }
 
+// ---------------------------------------------------------------------------
+// Custom link (CSV or JSON)
+// ---------------------------------------------------------------------------
+
+const BLOCKED_HEADERS = /^(host|content-length|transfer-encoding|connection|upgrade|te|trailer|proxy-.*|keep-alive|expect)$/i;
+
+function scalar(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
+/** Finds the list of row objects: at the given path, at the top, or in the first list-valued property. */
+export function findJsonRows(data: unknown, path: string | undefined): Record<string, unknown>[] | null {
+  let node: unknown = data;
+  if (path) {
+    for (const part of path.split('.').filter(Boolean)) {
+      if (typeof node !== 'object' || node === null || Array.isArray(node)) return null;
+      node = (node as Record<string, unknown>)[part];
+    }
+  }
+  if (!Array.isArray(node) && typeof node === 'object' && node !== null && !path) {
+    // No path given: look for the first list of objects, up to three levels down.
+    const search = (n: unknown, depth: number): unknown[] | undefined => {
+      if (Array.isArray(n)) return n.length > 0 && typeof n[0] === 'object' && n[0] !== null ? n : undefined;
+      if (depth === 0 || typeof n !== 'object' || n === null) return undefined;
+      for (const v of Object.values(n as Record<string, unknown>)) { const f = search(v, depth - 1); if (f) return f; }
+      return undefined;
+    };
+    node = search(node, 3);
+  }
+  if (!Array.isArray(node)) return null;
+  const rows = node.filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null && !Array.isArray(r));
+  return rows.length > 0 ? rows : null;
+}
+
+/** Turns a list of objects into a grid: columns are the keys (one level of nested objects becomes "a.b"), values must be simple. */
+export function jsonRowsToGrid(rows: Record<string, unknown>[]): string[][] {
+  const flat = rows.slice(0, MAX_DATASET_ROWS + 1).map((r) => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+        for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) out[`${k}.${k2}`] = scalar(v2);
+      } else out[k] = scalar(v);
+    }
+    return out;
+  });
+  const keys: string[] = [];
+  for (const r of flat.slice(0, 200)) for (const k of Object.keys(r)) if (!keys.includes(k)) keys.push(k);
+  return [keys, ...flat.map((r) => keys.map((k) => r[k] ?? ''))];
+}
+
+export async function fetchCustomUrl(params: Record<string, string>, secrets: Record<string, string>, request: RequestFn): Promise<FetchedTable> {
+  let url: URL;
+  try {
+    url = validateOutboundUrl((params.url ?? '').trim(), { allowedPorts: [443] });
+  } catch { throw fail('Enter an address starting with https:// that is reachable on the public internet.'); }
+  if (url.protocol !== 'https:') throw fail('The address must start with https://.');
+  const headers: Record<string, string> = { accept: 'text/csv, application/json;q=0.9, */*;q=0.1' };
+  const name = (params.headerName ?? '').trim();
+  const value = (secrets.headerValue ?? '').trim();
+  if (name || value) {
+    if (!name || !value) throw fail('Fill in both the sign-in header name and its value, or leave both empty.');
+    if (!/^[A-Za-z0-9-]{1,40}$/.test(name) || BLOCKED_HEADERS.test(name)) throw fail('That header name is not allowed. Use something like Authorization or X-Api-Key.');
+    if (!/^[\x20-\x7e]{1,400}$/.test(value)) throw fail('The header value has characters that are not allowed.');
+    headers[name] = value;
+  }
+  let res;
+  try {
+    res = await request(url, { method: 'GET', headers, timeoutMs: 25_000, maxResponseBytes: 3_000_000 });
+  } catch (e) { throw mapNetworkError(e, 'that address'); }
+  if (res.status === 401 || res.status === 403) throw fail('That address refused the request. Check the sign-in header name and value.');
+  if (res.status === 404) throw fail('Nothing was found at that address.');
+  if (res.status === 429) throw fail('That service is asking us to slow down. Try again in a minute.');
+  if (res.status !== 200) throw fail('That address did not return data. Try opening it in a browser first.');
+  const body = res.text.replace(/^\uFEFF/, '').trim();
+  if (body === '') throw fail('That address returned nothing.');
+  if (body.startsWith('{') || body.startsWith('[')) {
+    let data: unknown;
+    try { data = JSON.parse(body); } catch { throw fail('That address returned JSON we could not read.'); }
+    const rows = findJsonRows(data, (params.path ?? '').trim() || undefined);
+    if (!rows) throw fail('Could not find a list of rows in that JSON. Type where the list is (for example data.items).');
+    const grid = jsonRowsToGrid(rows);
+    const table = tableFromGrid(grid);
+    return rows.length > MAX_DATASET_ROWS ? { ...table, note: `Showing the first ${MAX_DATASET_ROWS.toLocaleString()} rows.` } : table;
+  }
+  if (/^<(!doctype|html)/i.test(body)) throw fail('That address returned a web page, not data. Use a link that returns CSV or JSON.');
+  return buildTable(body);
+}
+
 /** Runs one connector. `secrets` holds only the fields the connector marks secret. */
 export async function fetchConnectorTable(id: string, params: Record<string, string>, secrets: Record<string, string>, request: RequestFn = (u, o) => guardedRequest(u, o), now = new Date()): Promise<FetchedTable> {
   switch (id) {
     case 'google_sheets': return fetchGoogleSheet(params, request);
     case 'shopify': return fetchShopify(params, secrets, request, now);
     case 'woocommerce': return fetchWooCommerce(params, secrets, request, now);
+    case 'custom_url': return fetchCustomUrl(params, secrets, request);
     default: throw fail('That connector is not available yet.');
   }
 }
@@ -255,6 +358,7 @@ export function splitConnectorInput(info: ConnectorInfo, values: unknown): { par
   const secrets: Record<string, string> = {};
   for (const f of info.fields) {
     const v = (values as Record<string, unknown>)[f.key];
+    if (f.optional && (v === undefined || v === null || (typeof v === 'string' && v.trim() === ''))) continue;
     if (typeof v !== 'string' || v.trim() === '' || v.length > 400) throw fail(`Fill in “${f.label}”.`);
     (f.secret ? secrets : params)[f.key] = v.trim();
   }

@@ -99,7 +99,11 @@ const cleanLabel = (raw: string, i: number): string => (raw.replace(/\s+/g, ' ')
 export function buildTable(text: string): { columns: DataColumn[]; rows: DataCell[][] } {
   if (typeof text !== 'string' || text.trim() === '') throw new DatasetError('INVALID_CSV', 'The file is empty.', 400);
   if (text.length > MAX_CSV_CHARS) throw new DatasetError('INVALID_CSV', `The file is too big. Keep it under ${Math.round(MAX_CSV_CHARS / 1000)} KB (about ${MAX_DATASET_ROWS.toLocaleString()} rows).`, 400);
-  const grid = parseCsv(text);
+  return tableFromGrid(parseCsv(text));
+}
+
+/** The same table building, starting from rows of text cells (used by CSV files and by JSON connectors). */
+export function tableFromGrid(grid: string[][]): { columns: DataColumn[]; rows: DataCell[][] } {
   if (grid.length < 2) throw new DatasetError('INVALID_CSV', 'Add a header row and at least one row of data.', 400);
   const header = grid[0];
   if (header.length > MAX_DATASET_COLUMNS) throw new DatasetError('INVALID_CSV', `Too many columns. The limit is ${MAX_DATASET_COLUMNS}.`, 400);
