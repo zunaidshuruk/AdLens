@@ -105,6 +105,17 @@ export function addWidget(widgets: DashboardWidget[], widget: WithoutLayout, siz
   return [...widgets, { ...widget, layout: findFreeSpot(widgets, size) } as unknown as DashboardWidget];
 }
 
+/** Copies a widget (new id, title + " (copy)") into the first free spot of the same size. */
+export function duplicateWidget(widgets: DashboardWidget[], id: string, newId: string): DashboardWidget[] {
+  const src = widgets.find((w) => w.id === id);
+  if (!src) return widgets;
+  const copy = JSON.parse(JSON.stringify(src)) as DashboardWidget;
+  copy.id = newId;
+  copy.title = `${src.title} (copy)`.slice(0, 80);
+  copy.layout = findFreeSpot(widgets, { w: src.layout.w, h: src.layout.h });
+  return [...widgets, copy];
+}
+
 export function removeWidget<T extends { id: string; layout: WidgetLayout }>(widgets: T[], id: string): T[] {
   return compact(widgets.filter((w) => w.id !== id));
 }

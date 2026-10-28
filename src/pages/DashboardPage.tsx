@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Maximize2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, Maximize2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
@@ -7,7 +7,7 @@ import { ErrorState } from '../components/ErrorState';
 import { useDateRange } from '../hooks';
 import type { Dashboard, DashboardWidget, WidgetKind } from '../types/dashboard.js';
 import type { SavedReport } from '../types/explore.js';
-import { addWidget, DEFAULT_SIZE, mobileOrder, placeWidget, removeWidget, resizeWidget } from '../utils/dashboardLayout.js';
+import { addWidget, duplicateWidget, DEFAULT_SIZE, mobileOrder, placeWidget, removeWidget, resizeWidget } from '../utils/dashboardLayout.js';
 
 const ROW_PX = 72;
 const KIND_LABEL: Record<WidgetKind | 'text', string> = { kpi: 'Big number', bar: 'Bar chart', line: 'Line chart', table: 'Table', text: 'Note' };
@@ -71,6 +71,7 @@ function Grid(props: {
                 const t = window.prompt('Widget title', w.title);
                 if (t && t.trim()) onChange(widgets.map((x) => (x.id === w.id ? { ...x, title: t.trim().slice(0, 80) } : x)));
               }}><Pencil className="w-3.5 h-3.5" /></button>
+              <button type="button" className={btn} aria-label="Duplicate widget" onClick={() => onChange(duplicateWidget(widgets, w.id, `w${Date.now().toString(36)}${widgets.length}`))}><Copy className="w-3.5 h-3.5" /></button>
               <button type="button" className={`${btn} hover:text-danger`} aria-label="Remove widget" onClick={() => onChange(removeWidget(widgets, w.id))}><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           )}

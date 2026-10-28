@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DASHBOARD_TEMPLATES } from '../config/dashboardTemplates.js';
 import type { DashboardWidget } from '../types/dashboard.js';
-import { addWidget, clampLayout, compact, DEFAULT_SIZE, findFreeSpot, hasOverlap, mobileOrder, placeWidget, removeWidget, resizeWidget } from './dashboardLayout.js';
+import { addWidget, clampLayout, compact, DEFAULT_SIZE, duplicateWidget, findFreeSpot, hasOverlap, mobileOrder, placeWidget, removeWidget, resizeWidget } from './dashboardLayout.js';
 
 const t = (id: string, x: number, y: number, w: number, h: number): DashboardWidget => ({ id, title: id, kind: 'text', text: 'x', layout: { x, y, w, h } });
 
@@ -51,4 +51,15 @@ test('Sprint 14 — layout: every starter template is overlap-free and uses only
     assert.equal(hasOverlap(tpl.widgets), false, tpl.id);
     assert.equal(new Set(tpl.widgets.map((w) => w.id)).size, tpl.widgets.length, tpl.id);
   }
+});
+
+test('Stage 19 — layout: duplicating a widget copies it with a new id and a free spot', () => {
+  const base = [t('a', 0, 0, 6, 2), t('b', 6, 0, 6, 2)];
+  const out = duplicateWidget(base, 'a', 'a2');
+  assert.equal(out.length, 3);
+  assert.equal(out[2].id, 'a2');
+  assert.equal(out[2].title, 'a (copy)');
+  assert.equal(hasOverlap(out), false);
+  assert.notEqual(out[2], base[0]);
+  assert.equal(duplicateWidget(base, 'nope', 'x').length, 2);
 });
