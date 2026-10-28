@@ -4,6 +4,7 @@ import { getSharedStore } from '../lib/sharedStore.js';
 import { verifyIdToken } from '../lib/firebaseAdmin.js';
 import { clearSession, readSession } from '../lib/session.js';
 import { PROOF_HEADER, proofIsValid } from '../lib/twoStep.js';
+import { checkUserBudget } from './protect.js';
 import { ensureVaultFromCookie } from '../lib/vault.js';
 
 export { ensureVaultFromCookie };
@@ -92,6 +93,8 @@ async function authenticate(
       providerSet.add(signInProvider);
     }
 
+    if (!checkUserBudget(decoded.uid, res)) return;
+
     const providers = Array.from(providerSet);
     const isSsoVerified = providers.some((p) => SSO_VERIFIED_PROVIDERS.has(p));
     const emailVerified = Boolean(decoded.email_verified) || isSsoVerified;
@@ -132,7 +135,11 @@ async function authenticate(
         ? decoded.auth_time
         : undefined;
 
-    if (!skipSecondStep && (decoded as { twoStep?: unknown }).twoStep === true) {
+    // The token's flag can be up to an hour old (a token made before two-step was turned on has none), so the server also keeps its
+    // own short-lived note, set the moment two-step is turned on. Either one means a proof is needed.
+    const twoStepNow = (decoded as { twoStep?: unknown }).twoStep === true
+      || (!skipSecondStep && (await getSharedStore().get(`2fa:on:${decoded.uid}`).catch(() => null)) === '1');
+    if (!skipSecondStep && twoStepNow) {
       const proof = req.headers[PROOF_HEADER];
       let ok = false;
       try {

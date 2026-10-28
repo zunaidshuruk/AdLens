@@ -983,7 +983,8 @@ test('/api/meta routes enforce META_NOT_CONFIGURED, strip act_ prefix, send apps
       metaMissing: string[];
     };
     assert.equal(healthUnconfig.metaConfigured, false);
-    assert.deepEqual(healthUnconfig.metaMissing, [
+    assert.equal((healthUnconfig as Record<string, unknown>).metaMissing, undefined, 'public health must not list missing secrets');
+    void ([
       'META_ACCESS_TOKEN',
       'META_APP_SECRET',
       'META_AD_ACCOUNT_ID',
@@ -2481,7 +2482,7 @@ test('Sprint 7C-1 & 7C-2: token vault wiring, error mapping, lazy cookie migrati
     // 3. /api/health reports vaultReady without printing key values
     const healthRes = await originalFetch(`${baseUrl}/api/health`);
     const healthJson = (await healthRes.json()) as { vaultReady: boolean };
-    assert.equal(healthJson.vaultReady, true);
+    assert.equal((healthJson as Record<string, unknown>).vaultReady, undefined, 'public health must not expose vault state');
     assert.ok(!JSON.stringify(healthJson).includes(process.env.TOKEN_ENCRYPTION_KEY!));
 
     // 4. Lazy migration (cookie -> vault, owner check, clears cookie)
@@ -3164,14 +3165,14 @@ test('Sprint 15a-1b: GEMINI_API_KEY_2 fallback key in /api/health and POST /api/
     let hRaw = await (await fetch(`${baseUrl}/api/health`)).text();
     let hJson = JSON.parse(hRaw) as { aiConfigured: boolean; aiFallbackKeyConfigured: boolean };
     assert.equal(hJson.aiConfigured, false);
-    assert.equal(hJson.aiFallbackKeyConfigured, false);
+    assert.equal((hJson as Record<string, unknown>).aiFallbackKeyConfigured, undefined);
 
     // Only second key set -> aiConfigured true, aiFallbackKeyConfigured true
     process.env.GEMINI_API_KEY_2 = `  ${FALLBACK_KEY}  `;
     hRaw = await (await fetch(`${baseUrl}/api/health`)).text();
     hJson = JSON.parse(hRaw) as { aiConfigured: boolean; aiFallbackKeyConfigured: boolean };
     assert.equal(hJson.aiConfigured, true);
-    assert.equal(hJson.aiFallbackKeyConfigured, true);
+    assert.equal((hJson as Record<string, unknown>).aiFallbackKeyConfigured, undefined);
     assert.ok(!hRaw.includes(FALLBACK_KEY));
 
     // Only second key exists -> used as main key (no retry)

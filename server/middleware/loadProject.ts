@@ -120,7 +120,7 @@ export async function loadProject(
     res.status(500).json({
       error: {
         code: 'INTERNAL_SERVER_ERROR',
-        message: err instanceof Error ? err.message : 'Failed to load project.',
+        message: 'Failed to load project.',
       },
     });
   }

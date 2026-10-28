@@ -14,9 +14,15 @@ export interface DigestInput {
   metrics: DigestMetric[];
   anomaly?: Anomaly | null;
   appUrl: string;
+  /** Link that switches these emails off with one click (shown in the email and sent as a List-Unsubscribe header). */
+  unsubscribeUrl?: string;
 }
 
-export interface BuiltEmail { subject: string; text: string; html: string }
+export interface BuiltEmail { subject: string; text: string; html: string; headers?: Record<string, string> }
+
+export function unsubscribeHeaders(url?: string): Record<string, string> | undefined {
+  return url ? { 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } : undefined;
+}
 
 export const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -46,12 +52,13 @@ export function buildWeeklyDigest(input: DigestInput): BuiltEmail {
     `Open AdLens: ${input.appUrl}`,
     '',
     'You get this because you turned on email summaries in AdLens. Turn them off under Settings, Email summaries.',
+    ...(input.unsubscribeUrl ? [`Unsubscribe with one click: ${input.unsubscribeUrl}`] : []),
   ].join('\n');
   const rows = input.metrics
     .map((m) => `<tr><td style="padding:6px 12px 6px 0;color:#444">${escapeHtml(m.label)}</td><td style="padding:6px 12px 6px 0;font-weight:600">${escapeHtml(fmt(m))}</td><td style="padding:6px 0;color:#666">${escapeHtml(change(m))}</td></tr>`)
     .join('');
-  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#17181b"><h2 style="margin:0 0 4px">${escapeHtml(input.projectName)}</h2><p style="margin:0 0 16px;color:#666">${escapeHtml(input.domain)} · ${escapeHtml(input.startDate)} to ${escapeHtml(input.endDate)}</p><table style="border-collapse:collapse">${rows}</table>${input.anomaly ? `<p style="margin-top:16px;padding:10px;border:1px solid #ddd;border-radius:8px">${escapeHtml(alertSentence(input.anomaly))}</p>` : ''}<p style="margin-top:20px"><a href="${escapeHtml(input.appUrl)}">Open AdLens</a></p><p style="color:#888;font-size:12px">You get this because you turned on email summaries. Turn them off under Settings, Email summaries.</p></div>`;
-  return { subject, text, html };
+  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#17181b"><h2 style="margin:0 0 4px">${escapeHtml(input.projectName)}</h2><p style="margin:0 0 16px;color:#666">${escapeHtml(input.domain)} · ${escapeHtml(input.startDate)} to ${escapeHtml(input.endDate)}</p><table style="border-collapse:collapse">${rows}</table>${input.anomaly ? `<p style="margin-top:16px;padding:10px;border:1px solid #ddd;border-radius:8px">${escapeHtml(alertSentence(input.anomaly))}</p>` : ''}<p style="margin-top:20px"><a href="${escapeHtml(input.appUrl)}">Open AdLens</a></p><p style="color:#888;font-size:12px">You get this because you turned on email summaries. Turn them off under Settings, Email summaries.${input.unsubscribeUrl ? ` <a href="${escapeHtml(input.unsubscribeUrl)}" style="color:#888">Unsubscribe</a>` : ''}</p></div>`;
+  return { subject, text, html, headers: unsubscribeHeaders(input.unsubscribeUrl) };
 }
 
 export function alertSentence(a: Anomaly): string {
@@ -59,11 +66,11 @@ export function alertSentence(a: Anomaly): string {
   return `Heads up: sessions on ${a.date} were ${Math.abs(a.changePercent)}% ${dir} than a typical day (${Math.round(a.value).toLocaleString('en-US')} against about ${Math.round(a.baseline).toLocaleString('en-US')}).`;
 }
 
-export function buildAnomalyAlert(input: Pick<DigestInput, 'projectName' | 'domain' | 'appUrl'> & { anomaly: Anomaly }): BuiltEmail {
+export function buildAnomalyAlert(input: Pick<DigestInput, 'projectName' | 'domain' | 'appUrl' | 'unsubscribeUrl'> & { anomaly: Anomaly }): BuiltEmail {
   const word = input.anomaly.direction === 'up' ? 'spike' : 'drop';
   const subject = `${input.projectName}: traffic ${word} on ${input.anomaly.date}`;
   const sentence = alertSentence(input.anomaly);
-  const text = `${input.projectName} (${input.domain})\n\n${sentence}\n\nSee what changed: ${input.appUrl}\n\nTurn these alerts off under Settings, Email summaries.`;
-  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#17181b"><h2 style="margin:0 0 4px">${escapeHtml(input.projectName)}</h2><p style="margin:0 0 16px;color:#666">${escapeHtml(input.domain)}</p><p>${escapeHtml(sentence)}</p><p><a href="${escapeHtml(input.appUrl)}">See what changed</a></p><p style="color:#888;font-size:12px">Turn these alerts off under Settings, Email summaries.</p></div>`;
-  return { subject, text, html };
+  const text = `${input.projectName} (${input.domain})\n\n${sentence}\n\nSee what changed: ${input.appUrl}\n\nTurn these alerts off under Settings, Email summaries.${input.unsubscribeUrl ? `\nUnsubscribe with one click: ${input.unsubscribeUrl}` : ''}`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#17181b"><h2 style="margin:0 0 4px">${escapeHtml(input.projectName)}</h2><p style="margin:0 0 16px;color:#666">${escapeHtml(input.domain)}</p><p>${escapeHtml(sentence)}</p><p><a href="${escapeHtml(input.appUrl)}">See what changed</a></p><p style="color:#888;font-size:12px">Turn these alerts off under Settings, Email summaries.${input.unsubscribeUrl ? ` <a href="${escapeHtml(input.unsubscribeUrl)}" style="color:#888">Unsubscribe</a>` : ''}</p></div>`;
+  return { subject, text, html, headers: unsubscribeHeaders(input.unsubscribeUrl) };
 }

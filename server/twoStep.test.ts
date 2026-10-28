@@ -206,3 +206,29 @@ test('Sprint 22 — two-step sign-in end to end, and the admin panel needs Googl
     setTestTwoStepStore(null);
   }
 });
+
+test('Security audit — a sign-in token made before two-step was turned on is still stopped (server-side note closes the stale-token window)', async () => {
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-22-32chars!!';
+  const { createMemoryStore, setTestSharedStore } = await import('./lib/sharedStore.js');
+  const shared = createMemoryStore();
+  setTestSharedStore(shared);
+  const fs = createInMemoryFirestoreStore();
+  setTestFirestoreStore(fs);
+  setTestTwoStepStore(createInMemoryTwoStepStore());
+  await fs.bootstrapUserAndWorkspace({ uid: 'uid_stale', email: 'stale@acme.com', displayName: 'S' });
+  setTestTokenVerifier(async () => ({ uid: 'uid_stale', email: 'stale@acme.com', name: 's', email_verified: true, iat: Math.floor(Date.now() / 1000), auth_time: 1_700_000_000, firebase: { identities: { password: ['x'] }, sign_in_provider: 'password' } }) as never);
+  const server = app.listen(0);
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const me = (extra: Record<string, string> = {}) => fetch(`${base}/api/me`, { headers: { Authorization: 'Bearer t', ...extra } });
+  try {
+    assert.notEqual((await me()).status, 403, 'two-step off: no second step asked');
+    await shared.set('2fa:on:uid_stale', '1', 60_000);
+    const blocked = await me();
+    assert.equal(blocked.status, 403);
+    assert.equal(((await blocked.json()) as { error: { code: string } }).error.code, 'TWO_STEP_REQUIRED');
+    const { makeProof } = await import('./lib/twoStep.js');
+    assert.notEqual((await me({ 'X-AdLens-2FA': makeProof('uid_stale', 1_700_000_000) })).status, 403, 'with the proof it works');
+    await shared.del('2fa:on:uid_stale');
+    assert.notEqual((await me()).status, 403, 'turned off again');
+  } finally { setTestSharedStore(null); server.close(); }
+});

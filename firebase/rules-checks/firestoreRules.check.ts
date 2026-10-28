@@ -316,6 +316,25 @@ describe('token vault and unknown paths', () => {
     await assertFails(setDoc(doc(ctx(ALICE), 'connections', 'c2'), { provider: 'google' }));
   });
 
+  test('two-step secrets and backup-code hashes are invisible to everyone, including the owner', async () => {
+    await env.withSecurityRulesDisabled(async (admin) => {
+      await setDoc(doc(admin.firestore(), 'twoStep', ALICE), { uid: ALICE, secretEnc: 'x', enabled: true, backupHashes: ['h'] });
+    });
+    await assertFails(getDoc(doc(ctx(ALICE), 'twoStep', ALICE)));
+    await assertFails(getDoc(doc(ctx(BOB), 'twoStep', ALICE)));
+    await assertFails(getDocs(collection(ctx(ALICE), 'twoStep')));
+    await assertFails(setDoc(doc(ctx(ALICE), 'twoStep', ALICE), { enabled: false }));
+    await assertFails(deleteDoc(doc(ctx(ALICE), 'twoStep', ALICE)));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'twoStep', ALICE)));
+  });
+
+  test('server-only collections (plans, digests, MCP keys, audit log) are closed to browsers', async () => {
+    for (const path of ['adminSettings/config', 'digestSubscriptions/s1', 'mcpKeys/k1', 'auditLog/a1']) {
+      await assertFails(getDoc(doc(ctx(ALICE), path)));
+      await assertFails(setDoc(doc(ctx(ALICE), path), { x: 1 }));
+    }
+  });
+
   test('anything not listed is denied', async () => {
     await assertFails(setDoc(doc(ctx(ALICE), 'random', 'x'), { a: 1 }));
     await assertFails(getDoc(doc(ctx(ALICE), 'random', 'x')));

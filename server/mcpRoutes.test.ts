@@ -235,3 +235,28 @@ test('Sprint 17 — the MCP endpoint is rate limited per credential', async () =
     server.close();
   }
 });
+
+test('Security audit — MCP keys follow the role: no "Use the AI Analyst" permission means no key, and existing keys stop at once', async () => {
+  const { fs, a, pa, server, base } = await setup();
+  try {
+    await fs.updateWorkspace(a.workspace.id, { customRoles: { c_view: { name: 'Viewer', permissions: ['reports.view'], createdAt: '' }, c_ai: { name: 'Ai', permissions: ['reports.view', 'ai.use'], createdAt: '' } } });
+    // alice is the owner, so she keeps full power: a key works
+    const mk = await api(base, 'alice', '/keys', { method: 'POST', body: { name: 'k', projects: [{ workspaceId: a.workspace.id, projectId: pa.id }] } });
+    const { secret } = (await mk.json()) as { secret: string };
+    assert.equal(JSON.parse((await call(base, secret, 'list_projects', {})).result!.content[0].text).projects.length, 1);
+    // bob joins alice's workspace with a view-only role
+    await fs.updateWorkspace(a.workspace.id, { members: { ...(await fs.getWorkspace(a.workspace.id))!.members, uid_bob: 'c_view' } });
+    assert.equal(((await (await api(base, 'bob', '/projects')).json()) as { projects: { workspaceId: string }[] }).projects.some((p) => p.workspaceId === a.workspace.id), false, 'not offered');
+    const denied = await api(base, 'bob', '/keys', { method: 'POST', body: { name: 'x', projects: [{ workspaceId: a.workspace.id, projectId: pa.id }] } });
+    assert.equal(denied.status, 400, 'cannot create a key for a workspace where the role has no AI permission');
+    // with the permission he can; taking it away stops his key at the next call
+    await fs.updateWorkspace(a.workspace.id, { members: { ...(await fs.getWorkspace(a.workspace.id))!.members, uid_bob: 'c_ai' } });
+    const ok = await api(base, 'bob', '/keys', { method: 'POST', body: { name: 'x', projects: [{ workspaceId: a.workspace.id, projectId: pa.id }] } });
+    assert.equal(ok.status, 201);
+    const bobSecret = ((await ok.json()) as { secret: string }).secret;
+    assert.equal(JSON.parse((await call(base, bobSecret, 'list_projects', {})).result!.content[0].text).projects.length, 1);
+    await fs.updateWorkspace(a.workspace.id, { members: { ...(await fs.getWorkspace(a.workspace.id))!.members, uid_bob: 'c_view' } });
+    assert.deepEqual(JSON.parse((await call(base, bobSecret, 'list_projects', {})).result!.content[0].text), { projects: [] });
+    assert.equal((await call(base, bobSecret, 'run_report', { report_id: 'test.mcp', project_id: `${a.workspace.id}/${pa.id}`, start_date: '2026-10-01', end_date: '2026-10-07' })).result!.isError, true);
+  } finally { server.close(); }
+});

@@ -7,6 +7,7 @@ import { previousPeriod } from './dateMath.js';
 import type { RunDigestsDeps } from './digestRunner.js';
 import { getFirestoreStore } from './firestore.js';
 import { sendMail } from './mailer.js';
+import { unsubscribeUrl } from './unsubscribe.js';
 import { buildReportContext } from './reportContext.js';
 import { getDigestStore, type DigestSubscription } from './digestStore.js';
 
@@ -25,6 +26,7 @@ export function productionDigestDeps(now?: Date): RunDigestsDeps {
     appUrl: getServerConfig().appBaseUrl,
     now,
     send: (m) => sendMail(m),
+    unsubscribeUrl: (sub) => unsubscribeUrl(getServerConfig().appBaseUrl, sub.id),
     // A workspace whose plan no longer includes summaries is skipped, not unsubscribed: upgrading brings them back.
     async allowed(sub) {
       const ws = await getFirestoreStore().getWorkspace(sub.workspaceId);

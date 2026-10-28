@@ -5,6 +5,7 @@ import { withDateDefaults } from '../../src/utils/aiTools.js';
 import { GoogleApiError } from './google.js';
 import { MetaApiError } from './meta.js';
 import { getFirestoreStore, type ProjectDoc } from './firestore.js';
+import { can } from './permissions.js';
 import { McpToolError, type McpBackend, type ProjectSummary, type ReportSummary, type RunReportArgs } from './mcpProtocol.js';
 import type { McpPrincipal } from './mcpCredentials.js';
 import { buildReportContext } from './reportContext.js';
@@ -16,12 +17,14 @@ import { reportRegistry } from '../reports/registry.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Loads a project only if the credential lists it AND its owner is still a member of that workspace right now. */
+/** Loads a project only if the credential lists it AND its owner is still a member of that workspace right now with the AI permission. */
 async function loadAllowedProject(p: McpPrincipal, key: { workspaceId: string; projectId: string }): Promise<ProjectDoc | null> {
   if (!p.projects.some((a) => a.workspaceId === key.workspaceId && a.projectId === key.projectId)) return null;
   const store = getFirestoreStore();
   const ws = await store.getWorkspace(key.workspaceId);
   if (!ws?.members || !Object.prototype.hasOwnProperty.call(ws.members, p.uid)) return null;
+  // Checked at every call: if the person's role loses "Use the AI Analyst", their keys and connected apps stop reading this workspace.
+  if (!can(ws, p.uid, 'ai.use')) return null;
   return store.getProject(key.workspaceId, key.projectId);
 }
 

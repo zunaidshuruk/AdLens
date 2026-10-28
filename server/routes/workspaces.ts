@@ -296,7 +296,7 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'BOOTSTRAP_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to bootstrap user workspace.',
+        message: 'Failed to bootstrap user workspace.',
       },
     });
   }
@@ -318,7 +318,7 @@ meRouter.get('/', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'ME_FETCH_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to load user profile and workspaces.',
+        message: 'Failed to load user profile and workspaces.',
       },
     });
   }
@@ -347,7 +347,7 @@ meRouter.patch('/', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'USER_UPDATE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to update user settings.',
+        message: 'Failed to update user settings.',
       },
     });
   }
@@ -370,7 +370,7 @@ meRouter.get('/avatar/:uid', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'AVATAR_FETCH_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to load avatar.',
+        message: 'Failed to load avatar.',
       },
     });
   }
@@ -403,7 +403,7 @@ meRouter.put('/avatar', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'AVATAR_SAVE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to save avatar.',
+        message: 'Failed to save avatar.',
       },
     });
   }
@@ -420,7 +420,7 @@ meRouter.delete('/avatar', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'AVATAR_DELETE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to remove avatar.',
+        message: 'Failed to remove avatar.',
       },
     });
   }
@@ -554,7 +554,7 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'ACCOUNT_DELETE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to delete account.',
+        message: 'Failed to delete account.',
       },
     });
   }
@@ -613,7 +613,7 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'WORKSPACE_UPDATE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to update workspace.',
+        message: 'Failed to update workspace.',
       },
     });
   }
@@ -640,7 +640,7 @@ workspacesRouter.get('/:wsId/logo', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'LOGO_FETCH_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to load workspace logo.',
+        message: 'Failed to load workspace logo.',
       },
     });
   }
@@ -693,7 +693,7 @@ workspacesRouter.put('/:wsId/logo', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'LOGO_SAVE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to save workspace logo.',
+        message: 'Failed to save workspace logo.',
       },
     });
   }
@@ -730,7 +730,7 @@ workspacesRouter.delete('/:wsId/logo', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'LOGO_DELETE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to remove workspace logo.',
+        message: 'Failed to remove workspace logo.',
       },
     });
   }
@@ -816,7 +816,7 @@ workspacesRouter.post('/:wsId/projects', async (req: Request, res: Response) => 
     res.status(500).json({
       error: {
         code: 'PROJECT_CREATE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to create project.',
+        message: 'Failed to create project.',
       },
     });
   }
@@ -879,7 +879,7 @@ workspacesRouter.patch('/:wsId/projects/:id', async (req: Request, res: Response
     res.status(500).json({
       error: {
         code: 'PROJECT_UPDATE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to update project.',
+        message: 'Failed to update project.',
       },
     });
   }
@@ -922,7 +922,7 @@ workspacesRouter.delete('/:wsId/projects/:id', async (req: Request, res: Respons
     res.status(500).json({
       error: {
         code: 'PROJECT_DELETE_FAILED',
-        message: err instanceof Error ? err.message : 'Failed to delete project.',
+        message: 'Failed to delete project.',
       },
     });
   }

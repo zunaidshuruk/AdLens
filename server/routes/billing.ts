@@ -3,6 +3,7 @@
  * receives the payment by hand, then records the invoice and sets the workspace's plan and end date.
  * A future payment webhook only has to do the same two things (record an invoice, set the plan).
  */
+import { getSharedStore } from '../lib/sharedStore.js';
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -109,7 +110,7 @@ billingRouter.get('/', async (req: Request, res: Response) => {
       refundPolicy: 'Refunds are not available after 3 days from the payment date.',
     });
   } catch (e) {
-    fail(res, 500, 'BILLING_FAILED', e instanceof Error ? e.message : 'Could not load billing.');
+    fail(res, 500, 'BILLING_FAILED', 'Could not load billing.');
   }
 });
 
@@ -332,6 +333,7 @@ admin.post('/users/:uid/two-step/reset', requirePlatform('workspaces.members'), 
   const uid = String(req.params.uid);
   await twoStepStore().delete(uid);
   await setTwoStepClaim(uid, false).catch(() => undefined);
+  await getSharedStore().del(`2fa:on:${uid}`).catch(() => undefined);
   await revokeUserSessions(uid).catch(() => undefined);
   void recordAudit({ uid: req.user!.uid, action: 'twostep.reset_by_staff', detail: `for ${createHash('sha256').update(uid).digest('hex').slice(0, 8)}` });
   res.status(204).end();

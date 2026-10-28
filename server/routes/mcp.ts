@@ -3,6 +3,7 @@ import { recordAudit } from '../lib/auditLog.js';
 import express, { Router, type NextFunction, type Request, type Response } from 'express';
 import { getServerConfig } from '../config.js';
 import { getFirestoreStore } from '../lib/firestore.js';
+import { can } from '../lib/permissions.js';
 import {
   cleanProjects,
   createAccessKey,
@@ -188,6 +189,8 @@ async function projectsOf(uid: string): Promise<ProjectOption[]> {
   const out: ProjectOption[] = [];
   for (const ws of await store.listWorkspacesForUser(uid)) {
     if (!ws.members || !Object.prototype.hasOwnProperty.call(ws.members, uid)) continue;
+    // Connecting an AI tool follows the "Use the AI Analyst" permission of the person's role in that workspace.
+    if (!can(ws, uid, 'ai.use')) continue;
     for (const p of await store.listProjects(ws.id)) {
       if (p.isDemo) continue;
       out.push({ workspaceId: ws.id, projectId: p.id, workspaceName: ws.name, name: p.name, domain: p.domain });

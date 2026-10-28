@@ -46,7 +46,7 @@ reportsRouter.get('/', async (req: Request, res: Response) => {
     res.status(500).json({
       error: {
         code: 'INTERNAL_SERVER_ERROR',
-        message: err instanceof Error ? err.message : 'An unexpected server error occurred.',
+        message: 'An unexpected server error occurred.',
       },
     });
   }

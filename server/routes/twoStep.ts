@@ -23,6 +23,8 @@ export const twoStepRouter = Router();
 
 const ISSUER = 'AdLens';
 const PENDING_MS = 15 * 60 * 1000;
+/** Longer than a sign-in token lives (1 hour), so no token made before two-step was turned on can slip through. */
+const TWO_STEP_NOTE_MS = 2 * 60 * 60 * 1000;
 const fail = (res: Response, status: number, code: string, message: string) => void res.status(status).json({ error: { code, message } });
 const codeBody = z.object({ code: z.string().trim().min(6).max(20) });
 
@@ -78,6 +80,7 @@ twoStepRouter.post('/setup/confirm', requireUser, async (req: Request, res: Resp
   const backupCodes = generateBackupCodes();
   await store.put({ uid: doc.uid, secretEnc: doc.pendingEnc, enabled: true, enabledAt: new Date().toISOString(), lastStep: step, backupHashes: backupCodes.map(hashBackupCode) });
   await setTwoStepClaim(doc.uid, true);
+  await getSharedStore().set(`2fa:on:${doc.uid}`, '1', TWO_STEP_NOTE_MS).catch(() => undefined);
   void recordAudit({ uid: doc.uid, action: 'twostep.enabled' });
   res.json({ backupCodes, proof: proofFor(req) });
 });
@@ -120,6 +123,7 @@ twoStepRouter.post('/disable', requireUser, async (req: Request, res: Response) 
   await noteRight(req);
   await twoStepStore().delete(req.user!.uid);
   await setTwoStepClaim(req.user!.uid, false);
+  await getSharedStore().del(`2fa:on:${req.user!.uid}`).catch(() => undefined);
   void recordAudit({ uid: req.user!.uid, action: 'twostep.disabled' });
   res.status(204).end();
 });

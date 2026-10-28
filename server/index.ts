@@ -1,5 +1,6 @@
 import http from 'http';
 import { app } from './app.js';
+import { hardenServer, SERVER_OPTIONS } from './middleware/protect.js';
 
 export { app };
 
@@ -43,8 +44,9 @@ async function startServer(): Promise<void> {
   let retries = 0;
 
   const startListening = () => {
-    const server = app.listen(port, '0.0.0.0', () => {
+    const server = http.createServer(SERVER_OPTIONS, app).listen(port, '0.0.0.0', () => {
       activeServer = server;
+      hardenServer(server);
       console.log(`Server listening on http://0.0.0.0:${port}`);
 
       // Also listen on 3001 in dev mode if primary port is 3000 so any direct 3001 proxy calls succeed

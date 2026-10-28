@@ -25,6 +25,8 @@ export interface RunDigestsDeps {
   projectInfo(sub: DigestSubscription): Promise<{ name: string; domain: string } | null>;
   send(msg: MailMessage): Promise<MailResult>;
   appUrl: string;
+  /** Builds the one-click unsubscribe link for a subscription. */
+  unsubscribeUrl?(sub: DigestSubscription): string;
   now?: Date;
 }
 
@@ -58,12 +60,12 @@ export async function runDigests(deps: RunDigestsDeps): Promise<RunDigestsSummar
       let did = false;
 
       if (weeklyDue && data.overview) {
-        const mail = buildWeeklyDigest({ projectName: info.name, domain: info.domain, startDate: range.start7, endDate: range.end, metrics: metricsFrom(data.overview), anomaly: fresh, appUrl: deps.appUrl });
+        const mail = buildWeeklyDigest({ projectName: info.name, domain: info.domain, startDate: range.start7, endDate: range.end, metrics: metricsFrom(data.overview), anomaly: fresh, appUrl: deps.appUrl, unsubscribeUrl: deps.unsubscribeUrl?.(sub) });
         const r = await deps.send({ to: sub.email, ...mail });
         if (r.ok) { next.lastWeeklyAt = now.toISOString(); summary.weeklySent++; did = true; if (fresh) next.lastAlertDate = fresh.date; } else summary.failed++;
       }
       if (fresh && next.lastAlertDate !== fresh.date) {
-        const mail = buildAnomalyAlert({ projectName: info.name, domain: info.domain, appUrl: deps.appUrl, anomaly: fresh });
+        const mail = buildAnomalyAlert({ projectName: info.name, domain: info.domain, appUrl: deps.appUrl, anomaly: fresh, unsubscribeUrl: deps.unsubscribeUrl?.(sub) });
         const r = await deps.send({ to: sub.email, ...mail });
         if (r.ok) { next.lastAlertDate = fresh.date; summary.alertsSent++; did = true; } else summary.failed++;
       }

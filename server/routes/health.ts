@@ -4,6 +4,7 @@ import { getServerConfig } from '../config.js';
 
 export const healthRouter = Router();
 
+// Public: only what the sign-in screen and uptime checks need. Which secrets are missing is shown to operators in the admin panel.
 healthRouter.get('/', (_req: Request, res: Response) => {
   const cfg = getServerConfig();
   res.json({
@@ -11,15 +12,10 @@ healthRouter.get('/', (_req: Request, res: Response) => {
     app: APP_NAME,
     version: APP_VERSION,
     googleConfigured: cfg.googleConfigured,
-    missing: cfg.missing,
     metaConfigured: cfg.metaConfigured,
     metaLoginConfigured: cfg.metaLoginConfigured,
-    metaMissing: cfg.metaMissing,
     firebaseConfigured: cfg.firebaseConfigured,
-    firebaseMissing: cfg.firebaseMissing,
-    vaultReady: cfg.vaultReady,
     aiConfigured: cfg.aiConfigured,
-    aiFallbackKeyConfigured: cfg.aiFallbackKeyConfigured,
     timestamp: new Date().toISOString(),
   });
 });

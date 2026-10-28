@@ -5,7 +5,9 @@ import { twoStepRouter } from './routes/twoStep.js';
 import { adminRouter } from './routes/admin.js';
 import { featureGate } from './middleware/featureGate.js';
 import { securityHeaders } from './middleware/securityHeaders.js';
+import { ipProtection, loadProtection } from './middleware/protect.js';
 import { digestRouter } from './routes/digest.js';
+import { unsubscribeRouter } from './routes/unsubscribe.js';
 import { reportError } from './lib/errorReporter.js';
 import { opsRouter } from './routes/ops.js';
 import { getServerConfig } from './config.js';
@@ -41,9 +43,13 @@ const __dirname = path.dirname(__filename);
 export const app = express();
 
 // Enable Secure cookies behind reverse proxy / Cloud Run / Vercel
-app.set('trust proxy', 1);
+// How many proxies sit in front (Cloud Run, a load balancer, Cloudflare...). 1 = one. Set TRUST_PROXY=0 when the server is reached directly,
+// otherwise a visitor could fake their address and dodge the per-address limits.
+app.set('trust proxy', Number.isFinite(Number(process.env.TRUST_PROXY)) && process.env.TRUST_PROXY !== undefined && process.env.TRUST_PROXY !== '' ? Number(process.env.TRUST_PROXY) : 1);
 app.disable('x-powered-by');
 app.use(securityHeaders);
+app.use(ipProtection);
+app.use(loadProtection);
 
 // Sign-in helper served from our own address (only when AUTH_PROXY=on). Checked on every request so the switch needs no restart.
 let authProxyApp: express.Express | null = null;
@@ -108,6 +114,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/ops', opsRouter);
 app.use('/api/digest', digestRouter);
+app.use('/api/unsubscribe', unsubscribeRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/2fa', twoStepRouter);

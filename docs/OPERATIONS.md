@@ -44,6 +44,27 @@ Rules the server enforces: a domain counts only after the DNS proof; public emai
 
 "Sign out everywhere" (Settings → Security) revokes every session. Firebase does not list individual sessions, so AdLens offers this instead of a per-device list.
 
+## Protection against floods (Sprint 24)
+
+Built into the server, no extra service needed. Each running copy of the server counts for itself. Defaults (change with settings, all optional):
+
+| Setting | Default | What it limits |
+|---|---|---|
+| `RATE_LIMIT_IP_PER_MIN` | 1200 | API requests per address per minute (IPv6 grouped by network) |
+| `RATE_LIMIT_STATIC_PER_MIN` | 3000 | page and file requests per address per minute |
+| `RATE_LIMIT_USER_PER_MIN` | 300 | requests per signed-in person per minute |
+| `RATE_LIMIT_BAD_TOKEN_PER_MIN` | 40 | rejected sign-in tokens per address per minute before the address is paused |
+| `MAX_IN_FLIGHT_REQUESTS` | 500 | API requests handled at once per server copy, then "busy" (503) |
+| `REQUEST_DEADLINE_SECONDS` / `REQUEST_LONG_DEADLINE_SECONDS` | 55 / 120 | give-up time for normal / AI requests |
+| `TRUST_PROXY` | 1 | how many proxies sit in front of the server. Wrong value = everyone looks like one address (or the attacker can fake theirs). Use the number of proxies between the internet and the server. |
+
+Health checks (`/api/health`, `/api/ops/ready`) are never refused. Slow connections are cut off (headers within 15 s, whole request within about 2 minutes).
+This is not a replacement for network-level protection: **the app is not hosted on Vercel, so put a CDN or load balancer with DDoS protection in front** (Cloudflare free plan, or Google Cloud Armor if on Cloud Run). Without it, a large flood can still use up bandwidth before the app sees it.
+
+## Summary emails: unsubscribe
+
+Every summary and alert email has an "Unsubscribe" link and the standard one-click header. The link is signed with a key derived from `TOKEN_ENCRYPTION_KEY`, so changing that key (without keeping the old one) makes old links stop working; people can still turn emails off in Settings.
+
 ## Load test
 
 `npx tsx scripts/load-test.ts https://YOUR-DOMAIN --seconds=20 --concurrency=20`. Public endpoints by default; authenticated paths count against the shared Google and Meta daily limits, so use a staging copy for those.
