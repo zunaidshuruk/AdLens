@@ -13,6 +13,7 @@ Everything here is optional. Nothing changes until you set the matching secret.
 | `DEFAULT_NEW_WORKSPACE_PLAN` | The plan new sign-ups start on. Default `free`. Set `beta`, `pro` or `business` and redeploy to change it. Existing workspaces never change. |
 | `CRON_SECRET` | At least 16 random characters. Protects the daily job address below. |
 | `PAGESPEED_API_KEY` | Optional but recommended. A free key for Google's PageSpeed Insights, used by the SEO Speed test tab. Create it in Google Cloud: APIs & Services, turn on "PageSpeed Insights API", then Credentials, Create API key (restrict it to that API). Without a key Google allows very few tests and the tab shows a "busy" message. |
+| `GOOGLE_CSE_KEY` and `GOOGLE_CSE_ID` | Optional. Lets the SEO Content brief find the top pages for a keyword by itself. Create a Programmable Search Engine at programmablesearchengine.google.com that searches the whole web (copy its ID), then create an API key in Google Cloud with the "Custom Search API" turned on. 100 searches a day are free. Without them people paste up to 5 competitor addresses instead. |
 | `VITE_WEBLLM_MODULE_URL` | Build-time address of a self-hosted WebLLM file. Shows the optional "larger on-device model" choice in Private mode. Leave empty to hide it. |
 
 ## Daily job (email summaries and alerts)

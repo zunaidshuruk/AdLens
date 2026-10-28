@@ -1,7 +1,8 @@
 import { Search, Sparkles } from 'lucide-react';
 import React, { useState } from 'react';
-import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
+import { apiClient, type ContentBriefInfo, type SeoCrawlReport, type SeoIssueInfo, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
+import { ContentBrief, TopicResearch, WritingAssistant } from '../components/seo/Content';
 import { BacklinkAudit, BacklinkGap, LinkBuilding } from '../components/seo/Backlinks';
 import { LogAnalyzer, OnPageChecker } from '../components/seo/OnPageAndLogs';
 import { KeywordResearch, TopicGap } from '../components/seo/KeywordResearch';
@@ -324,50 +325,55 @@ function SpeedTest() {
   );
 }
 
-const TABS = [
-  { key: 'page', label: 'Page checker' },
-  { key: 'speed', label: 'Speed test' },
-  { key: 'site', label: 'Site audit' },
-  { key: 'opps', label: 'Search opportunities' },
-  { key: 'keywords', label: 'Keyword research' },
-  { key: 'gap', label: 'Topic gap' },
-  { key: 'onpage', label: 'On-page checker' },
-  { key: 'rank', label: 'Rank tracking' },
-  { key: 'lists', label: 'Keyword lists' },
-  { key: 'traffic', label: 'Organic traffic' },
-  { key: 'logs', label: 'Log analyzer' },
-  { key: 'audit', label: 'Backlink audit' },
-  { key: 'linkgap', label: 'Link gap' },
-  { key: 'outreach', label: 'Link building' },
+const GROUPS = [
+  { key: 'check', label: 'Check', tabs: [['page', 'Page checker'], ['onpage', 'On-page checker'], ['speed', 'Speed test'], ['site', 'Site audit'], ['opps', 'Search opportunities']] },
+  { key: 'keywords', label: 'Keywords', tabs: [['keywords', 'Keyword research'], ['gap', 'Topic gap'], ['lists', 'Keyword lists']] },
+  { key: 'rank', label: 'Rankings and traffic', tabs: [['rank', 'Rank tracking'], ['traffic', 'Organic traffic'], ['logs', 'Log analyzer']] },
+  { key: 'content', label: 'Content', tabs: [['topics', 'Topic research'], ['brief', 'Content brief'], ['writer', 'Writing assistant']] },
+  { key: 'links', label: 'Links', tabs: [['audit', 'Backlink audit'], ['linkgap', 'Link gap'], ['outreach', 'Link building']] },
 ] as const;
+type TabKey = (typeof GROUPS)[number]['tabs'][number][0];
 
 export const SeoPage: React.FC = () => {
-  const [tab, setTab] = useState<(typeof TABS)[number]['key']>('page');
+  const [tab, setTab] = useState<TabKey>('page');
+  const [visited, setVisited] = useState<Set<TabKey>>(new Set(['page']));
+  const [briefKeyword, setBriefKeyword] = useState('');
+  const [brief, setBrief] = useState<ContentBriefInfo | null>(null);
+  const go = (k: TabKey) => { setTab(k); setVisited((v) => (v.has(k) ? v : new Set(v).add(k))); };
+  const group = GROUPS.find((g) => g.tabs.some(([k]) => k === tab)) ?? GROUPS[0];
   return (
     <div className="space-y-5">
       <div className="space-y-1">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">SEO tools</h1>
-        <p className="text-xs sm:text-sm text-fg-muted">Check a page, audit your whole site, find what to improve in Google, get keyword ideas and track your rankings.</p>
+        <p className="text-xs sm:text-sm text-fg-muted">Check pages, research keywords, track rankings, plan and write content, and build links.</p>
       </div>
-      <div role="tablist" aria-label="SEO tools" className="flex flex-wrap gap-1 border-b border-line">
-        {TABS.map((t) => (
-          <button key={t.key} role="tab" type="button" aria-selected={tab === t.key} onClick={() => setTab(t.key)} className={`px-3 py-2 text-sm -mb-px border-b-2 ${tab === t.key ? 'border-accent text-accent-text font-medium' : 'border-transparent text-fg-muted hover:text-fg'}`}>{t.label}</button>
+      <nav aria-label="SEO tool groups" className="flex flex-wrap gap-2">
+        {GROUPS.map((g) => (
+          <button key={g.key} type="button" aria-pressed={g.key === group.key} onClick={() => go(g.tabs[0][0])} className={`rounded-full border px-4 py-1.5 text-sm ${g.key === group.key ? 'border-accent bg-accent-soft text-accent-text font-medium' : 'border-line text-fg-muted hover:text-fg'}`}>{g.label}</button>
+        ))}
+      </nav>
+      <div role="tablist" aria-label={group.label} className="flex flex-wrap gap-1 border-b border-line">
+        {group.tabs.map(([key, label]) => (
+          <button key={key} role="tab" type="button" aria-selected={tab === key} onClick={() => go(key)} className={`px-3 py-2 text-sm -mb-px border-b-2 ${tab === key ? 'border-accent text-accent-text font-medium' : 'border-transparent text-fg-muted hover:text-fg'}`}>{label}</button>
         ))}
       </div>
       <div role="tabpanel">
         {tab === 'page' && <PageChecker />}
+        {tab === 'onpage' && <OnPageChecker />}
         {tab === 'speed' && <SpeedTest />}
         {tab === 'site' && <SiteAudit />}
         {tab === 'opps' && <Opportunities />}
         {tab === 'keywords' && <KeywordResearch />}
         {tab === 'gap' && <TopicGap />}
-        {tab === 'rank' && <RankTracking goToLists={() => setTab('lists')} />}
         {tab === 'lists' && <KeywordLists />}
+        {tab === 'rank' && <RankTracking goToLists={() => go('lists')} />}
         {tab === 'traffic' && <TrafficInsights />}
-        {tab === 'onpage' && <OnPageChecker />}
         {tab === 'logs' && <LogAnalyzer />}
+        {tab === 'topics' && <TopicResearch useInBrief={(k) => { setBriefKeyword(k); go('brief'); }} />}
+        {tab === 'brief' && <ContentBrief key={briefKeyword} initialKeyword={briefKeyword} sendToWriter={(b) => { setBrief(b); go('writer'); }} />}
+        {visited.has('writer') && <div hidden={tab !== 'writer'}><WritingAssistant key={brief?.keyword ?? ''} brief={brief} /></div>}
         {tab === 'audit' && <BacklinkAudit />}
-        {tab === 'linkgap' && <BacklinkGap goOutreach={() => setTab('outreach')} />}
+        {tab === 'linkgap' && <BacklinkGap goOutreach={() => go('outreach')} />}
         {tab === 'outreach' && <LinkBuilding />}
       </div>
     </div>

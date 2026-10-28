@@ -11,9 +11,8 @@ export function visibleText(html: string): string {
   return decodeEntities(body).replace(/\s+/g, ' ').trim();
 }
 
-export function tokenise(text: string): string[] {
-  return text.toLowerCase().normalize('NFKC').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-}
+export { tokenise } from '../../src/utils/textStats.js';
+import { tokenise } from '../../src/utils/textStats.js';
 
 /** Counts single words and two-word phrases (never across a stop word). */
 export function termCounts(text: string): Map<string, number> {

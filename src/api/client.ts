@@ -485,6 +485,10 @@ export interface OnPageCheck { id: string; status: 'good' | 'warn' | 'bad'; titl
 export interface OnPageReportInfo { url: string; keyword: string; score: number; facts: { title: string | null; description: string | null; h1: string[]; wordCount: number; urlPath: string }; placement: { title: boolean; h1: boolean; description: boolean; url: boolean; firstParagraph: boolean; h2: number; imageAlt: number }; occurrences: number; density: number; readability: { sentences: number; avgSentenceWords: number; flesch: number | null; level: 'easy' | 'ok' | 'hard' | 'unknown' }; checks: OnPageCheck[]; related: { missing: { term: string; competitors: number; avgCount: number }[]; note: string } | null }
 export interface LinkProspectInfo { id: string; domain: string; pageUrl: string; targetUrl: string; status: 'new' | 'contacted' | 'replied' | 'won' | 'lost'; contactEmail: string; notes: string; linkLive: boolean | null; checkedAt: string | null; createdBy: string; createdAt: string; updatedAt: string }
 
+export interface ContentBriefInfo { keyword: string; pages: { url: string; title: string | null; words: number; headings: string[] }[]; length: { median: number; min: number; max: number; recommended: number }; outline: { text: string; pages: number }[]; questions: string[]; terms: { term: string; pages: number; avgCount: number }[]; titles: string[] }
+export interface TopicMapInfo { topic: string; subtopics: { name: string; keywords: string[] }[]; questions: string[]; headlines: string[] }
+export interface AiWriteRequest { mode: 'draft' | 'outline' | 'rewrite' | 'repurpose' | 'meta'; keyword?: string; topic?: string; text?: string; tone?: string; language?: string; length?: 'short' | 'medium' | 'long'; target?: string; brief?: { outline: string[]; terms: string[]; questions: string[] } }
+
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
     return apiRequest<HealthStatusResponse>('/api/health');
@@ -937,6 +941,9 @@ export const apiClient = {
   async linkUpdateProspect(id: string, patch: Partial<Pick<LinkProspectInfo, 'status' | 'notes' | 'pageUrl' | 'targetUrl' | 'contactEmail'>>): Promise<{ prospect: LinkProspectInfo }> { return apiRequest(`/api/links/prospects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }); },
   async linkDeleteProspect(id: string): Promise<void> { await apiRequest(`/api/links/prospects/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async linkCheckProspect(id: string): Promise<{ prospect: LinkProspectInfo; links: { href: string; text: string; nofollow: boolean }[] }> { return apiRequest(`/api/links/prospects/${encodeURIComponent(id)}/check`, { method: 'POST', body: '{}' }); },
+  async seoTopicResearch(topic: string, lang: string): Promise<{ map: TopicMapInfo; ideas: number }> { return apiRequest('/api/seo/topic-research', { method: 'POST', body: JSON.stringify({ topic, lang }) }); },
+  async seoContentBrief(keyword: string, urls: string[]): Promise<{ brief: ContentBriefInfo; failed: string[]; searched: boolean; note: string }> { return apiRequest('/api/seo/content-brief', { method: 'POST', body: JSON.stringify({ keyword, urls }) }); },
+  async seoAiWrite(req: AiWriteRequest): Promise<{ text: string; quota: { used: number; limit: number | null } }> { return apiRequest('/api/seo/ai-write', { method: 'POST', body: JSON.stringify(req) }); },
   async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; clusters: { name: string; keywords: string[] }[]; providerConnected: boolean; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
   async seoKeywordOverview(keyword: string, lang: string): Promise<SeoKeywordOverview> { return apiRequest('/api/seo/keyword-overview', { method: 'POST', body: JSON.stringify({ keyword, lang }) }); },
   async seoTopicGap(yourUrl: string, competitors: string[]): Promise<SeoTopicGap> { return apiRequest('/api/seo/topic-gap', { method: 'POST', body: JSON.stringify({ yourUrl, competitors }) }); },

@@ -17,6 +17,9 @@ import { fetchFollowing, fetchOnce, normaliseInputUrl, type PageFetcher } from '
 import { countRawElements, parsePageSpeed, runPageSpeed, SpeedError, type PsiRequest } from '../lib/seoSpeed.js';
 import { getDataProvider, NOT_CONNECTED_NOTE } from '../lib/dataProvider.js';
 import { clusterKeywords } from '../lib/rankTracking.js';
+import { cseSearch, type SearchFn } from '../lib/seoSearch.js';
+import { buildBrief, buildTopicMap } from '../lib/seoContent.js';
+import { writeWith, writerInputSchema } from '../lib/seoWriter.js';
 import { onPageReport } from '../lib/seoOnPage.js';
 import { topicGap, visibleText } from '../lib/seoTopics.js';
 import { classifyIntent, keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
@@ -34,9 +37,9 @@ export const seoRouter = Router();
 const fail = (res: Response, status: number, code: string, message: string): void => { res.status(status).json({ error: { code, message } }); };
 
 // Swappable in tests so no test touches the internet.
-const deps: { fetcher: PageFetcher; suggest: SuggestFetcher; now: () => number; psi: PsiRequest | undefined } = { fetcher: fetchOnce, suggest: googleSuggest, now: Date.now, psi: undefined };
+const deps: { fetcher: PageFetcher; suggest: SuggestFetcher; now: () => number; psi: PsiRequest | undefined; search: SearchFn } = { fetcher: fetchOnce, suggest: googleSuggest, now: Date.now, psi: undefined, search: cseSearch };
 export function setSeoTestDeps(d: Partial<typeof deps> | null): void {
-  deps.fetcher = d?.fetcher ?? fetchOnce; deps.suggest = d?.suggest ?? googleSuggest; deps.now = d?.now ?? Date.now; deps.psi = d?.psi;
+  deps.fetcher = d?.fetcher ?? fetchOnce; deps.suggest = d?.suggest ?? googleSuggest; deps.now = d?.now ?? Date.now; deps.psi = d?.psi; deps.search = d?.search ?? cseSearch;
 }
 
 seoRouter.use(requireUser);
@@ -307,6 +310,76 @@ seoRouter.post('/onpage', async (req, res) => {
     }
     res.json({ report: onPageReport(page.text, page.url, parsed.data.keyword, rivalTexts, { status: page.status, ms: page.ms, bytes: page.bytes }), competitorErrors: rivalErrors });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while checking the page.'); }
+});
+
+// Topic map: sub-topics, questions people ask and headline ideas for a subject. Built from Google's suggestions (no AI used).
+seoRouter.post('/topic-research', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'topic', 20, 3_600_000))) return;
+    const parsed = z.object({ topic: z.string().trim().min(2, 'Type a topic').max(80), lang: z.enum(['en', 'bn', 'hi', 'es', 'fr', 'de', 'ar']).default('en') }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Type a topic.');
+    const ideas = await keywordIdeas(parsed.data.topic, deps.suggest, { lang: parsed.data.lang, alphabet: true });
+    res.json({ map: buildTopicMap(parsed.data.topic, ideas), ideas: ideas.length });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});
+
+// Content brief from the pages that already rank: length, outline, questions, words to use. Give competitor addresses, or let Google Programmable Search find them when it is set up.
+seoRouter.post('/content-brief', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'brief', 15, 3_600_000))) return;
+    const parsed = z.object({ keyword: z.string().trim().min(2, 'Type the keyword you want to write for').max(100), urls: z.array(z.string().min(3).max(2000)).max(5).default([]) }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Type a keyword.');
+    let urls = parsed.data.urls; let searched = false;
+    if (urls.length === 0) {
+      const found = await deps.search(parsed.data.keyword);
+      if (found === null) return fail(res, 409, 'NO_SEARCH', 'Add up to 5 competitor page addresses. (Finding them automatically needs Google Programmable Search, which is not set up on this server.)');
+      const own = new Set(projectHosts(req));
+      urls = found.filter((u) => { try { return !own.has(hostKey(new URL(u).hostname)); } catch { return false; } }).slice(0, 5); searched = true;
+      if (urls.length === 0) return fail(res, 422, 'NO_RESULTS', 'No competitor pages were found for that keyword. Add some addresses yourself.');
+    }
+    const pages: { url: string; html: string }[] = []; const failed: string[] = [];
+    for (const input of urls) {
+      try {
+        const u = normaliseInputUrl(input);
+        const page = await fetchFollowing(u.toString(), deps.fetcher);
+        if (page.error || page.status === 0 || page.status >= 400 || (page.contentType && !/html|xml/.test(page.contentType))) failed.push(input); else pages.push({ url: page.url, html: page.text });
+      } catch { failed.push(input); }
+    }
+    if (pages.length === 0) return fail(res, 422, 'PAGES_FAILED', 'None of those pages could be read. Check the addresses.');
+    res.json({ brief: buildBrief(parsed.data.keyword, pages), failed, searched, note: 'Built from the words and headings on those pages. Use it as a guide to what readers expect, then add your own experience and facts.' });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while building the brief.'); }
+});
+
+// AI writing: draft, outline, rewrite, repurpose, meta text. Costs one AI question (given back if it fails).
+seoRouter.post('/ai-write', aiRateLimitMiddleware, async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s) return;
+    if (req.memberPermissions && !req.memberPermissions.has('ai.use')) return fail(res, 403, 'NOT_ALLOWED', 'Your role in this workspace does not allow using the AI.');
+    const parsed = writerInputSchema.safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Check what you typed and try again.');
+    const cfg = getServerConfig();
+    const keys = [cfg.geminiApiKey, cfg.geminiApiKey2].filter((k): k is string => Boolean(k));
+    if (keys.length === 0 || !cfg.geminiModel) return fail(res, 503, 'CLOUD_NOT_CONFIGURED', 'The built-in AI is not set up on this server yet.');
+    const store = getFirestoreStore();
+    const ws = req.project!.workspaceId;
+    const quota = await store.consumeAiQuota(ws);
+    if (!quota.ok) return fail(res, 429, 'QUOTA_EXCEEDED', "You've used all AI questions for this month.");
+    let outcome: Awaited<ReturnType<typeof writeWith>> | null = null;
+    for (const apiKey of keys) {
+      const provider = createAgentProvider({ kind: 'gemini', model: cfg.geminiModel, apiKey, agent: { id: 'seo-writer', name: 'SEO writer' }, temperature: 0.7 }, { request: getAiRequest() });
+      outcome = await writeWith(parsed.data, provider);
+      const retryable = !outcome.ok && outcome.code === 'PROVIDER_ERROR' && ['PROVIDER_AUTH', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE'].includes(outcome.providerCode ?? '');
+      if (!retryable) break;
+    }
+    if (!outcome || !outcome.ok) {
+      await store.refundAiQuota(ws);
+      return fail(res, 502, 'AI_FAILED', outcome && !outcome.ok ? outcome.message : 'The AI could not be reached.');
+    }
+    res.json({ text: outcome.text, quota: { used: quota.used, limit: quota.limit } });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
 });
 
 seoRouter.get('/provider', async (req, res) => {
