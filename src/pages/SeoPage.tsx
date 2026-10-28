@@ -1,7 +1,8 @@
-import { Copy, Search, Sparkles } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
-import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoKeywordIdea, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
+import { Search, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
+import { KeywordResearch, TopicGap } from '../components/seo/KeywordResearch';
 import { KeywordLists, RankTracking, TrafficInsights } from '../components/seo/RankTracking';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
@@ -238,70 +239,6 @@ function Opportunities() {
   );
 }
 
-const INTENT: Record<SeoKeywordIdea['intent'], string> = { informational: 'Learning', commercial: 'Comparing', transactional: 'Ready to buy', navigational: 'Other' };
-function Keywords() {
-  const [seed, setSeed] = useState('');
-  const [lang, setLang] = useState('en');
-  const [deep, setDeep] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<{ seed: string; ideas: SeoKeywordIdea[]; note: string } | null>(null);
-  const [intent, setIntent] = useState<'all' | SeoKeywordIdea['intent']>('all');
-  const [copied, setCopied] = useState(false);
-  const run = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setError(null); setData(null);
-    try { setData(await apiClient.seoKeywords(seed.trim(), lang, deep)); } catch (err) { setError(errMessage(err)); }
-    setBusy(false);
-  };
-  const shown = useMemo(() => (data?.ideas ?? []).filter((i) => intent === 'all' || i.intent === intent), [data, intent]);
-  const copy = async () => { try { await navigator.clipboard.writeText(shown.map((i) => i.keyword).join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } };
-  return (
-    <div className="space-y-4">
-      <form onSubmit={(e) => void run(e)} className="flex flex-wrap items-end gap-2">
-        <label className="text-xs font-medium text-fg space-y-1 block flex-1 min-w-[220px]">Topic or keyword
-          <input className={`${field} block w-full`} placeholder="for example: leather wallet" value={seed} maxLength={80} onChange={(e) => setSeed(e.target.value)} />
-        </label>
-        <label className="text-xs font-medium text-fg space-y-1 block">Language
-          <select className={`${field} block`} value={lang} onChange={(e) => setLang(e.target.value)}>
-            {[['en', 'English'], ['bn', 'Bangla'], ['hi', 'Hindi'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German']].map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </label>
-        <button type="submit" disabled={busy || seed.trim().length < 2} className={primary}><Search className="w-4 h-4" /> {busy ? 'Searching…' : 'Get ideas'}</button>
-        <label className="flex items-center gap-2 text-xs text-fg w-full"><input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} /> Dig deeper (A to Z, takes longer)</label>
-      </form>
-      <p className="text-xs text-fg-muted">Ideas come from what people type into Google. They show what people ask, not how often: search volumes are not included. Ideas you already get views for in Search Console are marked.</p>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {busy && <div aria-busy="true" className="h-20 rounded-xl bg-fill-2 animate-pulse" />}
-      {data && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-fg-muted">{data.ideas.length} ideas</span>
-            {(['all', 'informational', 'commercial', 'transactional', 'navigational'] as const).map((k) => (
-              <button key={k} type="button" aria-pressed={intent === k} onClick={() => setIntent(k)} className={`text-xs rounded-full border px-3 py-1 ${intent === k ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-muted hover:text-fg'}`}>{k === 'all' ? 'All' : INTENT[k]}</button>
-            ))}
-            <button type="button" onClick={() => void copy()} className="ml-auto inline-flex items-center gap-1 text-xs rounded-lg border border-line px-2.5 py-1.5 text-fg hover:bg-fill-2"><Copy className="w-3.5 h-3.5" /> {copied ? 'Copied' : 'Copy list'}</button>
-          </div>
-          {shown.length === 0 ? <p className="text-sm text-fg-muted">No ideas found. Try a broader word.</p> : (
-            <div className="overflow-auto rounded-xl border border-line bg-surface">
-              <table className="min-w-full text-xs">
-                <thead className="text-fg-muted"><tr><th className="p-2 text-left font-medium">Keyword</th><th className="p-2 text-left font-medium">What people want</th><th className="p-2 text-right font-medium">Your views (90 days)</th><th className="p-2 text-right font-medium">Your position</th></tr></thead>
-                <tbody className="divide-y divide-line">
-                  {shown.map((i) => (
-                    <tr key={i.keyword}>
-                      <td className="p-2 text-fg">{i.keyword}</td><td className="p-2 text-fg-muted">{INTENT[i.intent]}</td>
-                      <td className="p-2 text-right tabular-nums">{i.ranking ? n(i.ranking.impressions) : '—'}</td><td className="p-2 text-right tabular-nums">{i.ranking ? i.ranking.position.toFixed(1) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 const RATING: Record<SpeedMetricInfo['rating'], { label: string; cls: string }> = {
   good: { label: 'Good', cls: 'bg-success-soft text-success' },
@@ -390,7 +327,8 @@ const TABS = [
   { key: 'speed', label: 'Speed test' },
   { key: 'site', label: 'Site audit' },
   { key: 'opps', label: 'Search opportunities' },
-  { key: 'keywords', label: 'Keyword ideas' },
+  { key: 'keywords', label: 'Keyword research' },
+  { key: 'gap', label: 'Topic gap' },
   { key: 'rank', label: 'Rank tracking' },
   { key: 'lists', label: 'Keyword lists' },
   { key: 'traffic', label: 'Organic traffic' },
@@ -414,7 +352,8 @@ export const SeoPage: React.FC = () => {
         {tab === 'speed' && <SpeedTest />}
         {tab === 'site' && <SiteAudit />}
         {tab === 'opps' && <Opportunities />}
-        {tab === 'keywords' && <Keywords />}
+        {tab === 'keywords' && <KeywordResearch />}
+        {tab === 'gap' && <TopicGap />}
         {tab === 'rank' && <RankTracking goToLists={() => setTab('lists')} />}
         {tab === 'lists' && <KeywordLists />}
         {tab === 'traffic' && <TrafficInsights />}

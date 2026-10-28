@@ -15,7 +15,10 @@ import { buildReportContext } from '../lib/reportContext.js';
 import { crawlSite } from '../lib/seoCrawl.js';
 import { fetchFollowing, fetchOnce, normaliseInputUrl, type PageFetcher } from '../lib/seoFetch.js';
 import { countRawElements, parsePageSpeed, runPageSpeed, SpeedError, type PsiRequest } from '../lib/seoSpeed.js';
-import { keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
+import { getDataProvider, NOT_CONNECTED_NOTE } from '../lib/dataProvider.js';
+import { clusterKeywords } from '../lib/rankTracking.js';
+import { topicGap, visibleText } from '../lib/seoTopics.js';
+import { classifyIntent, keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
 import { findOpportunities, type QueryPageRow } from '../lib/seoOpportunities.js';
 import { analyzeHtml, pageIssues, scoreFor } from '../lib/seoPage.js';
 import { SsrfError } from '../lib/ssrfGuard.js';
@@ -190,8 +193,100 @@ seoRouter.post('/keywords', async (req, res) => {
         for (const row of r.rows) known.set(String(row.query ?? '').toLowerCase(), { impressions: Number(row.impressions) || 0, position: Number(row.position) || 0, clicks: Number(row.clicks) || 0 });
       } catch { /* optional */ }
     }
-    res.json({ seed: parsed.data.seed, ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null })), note: 'Ideas come from what people type into Google. Search volumes are not included.' });
+    const provider = getDataProvider();
+    const metrics = new Map<string, { volume: number | null; cpc: number | null; difficulty: number | null }>();
+    if (provider.connected) { try { for (const m of await provider.keywordMetrics(ideas.map((i) => i.keyword).slice(0, 300), 'us')) metrics.set(m.keyword, m); } catch { /* optional */ } }
+    res.json({
+      seed: parsed.data.seed,
+      ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null, metrics: metrics.get(i.keyword) ?? null })),
+      clusters: clusterKeywords(ideas.map((i) => i.keyword)),
+      providerConnected: provider.connected,
+      note: provider.connected ? 'Ideas come from what people type into Google; volumes come from your connected data source.' : `Ideas come from what people type into Google. ${NOT_CONNECTED_NOTE}`,
+    });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});
+
+// One phrase in detail: what people want, how you do for it in Search Console, which pages show up, and related ideas.
+seoRouter.post('/keyword-overview', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s) return;
+    const parsed = z.object({ keyword: z.string().trim().min(2, 'Type a keyword').max(100), lang: z.enum(['en', 'bn', 'hi', 'es', 'fr', 'de', 'ar']).default('en') }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Type a keyword.');
+    if (await limited(res, s.uid, 'overview', 40, 3_600_000)) return;
+    const keyword = parsed.data.keyword.toLowerCase().replace(/\s+/g, ' ');
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    let own: { clicks: number; impressions: number; ctr: number; position: number; pages: { page: string; clicks: number; impressions: number; position: number }[]; daily: { date: string; clicks: number; impressions: number; position: number }[] } | null = null;
+    if (req.project?.searchConsoleSite) {
+      try {
+        const ctx = buildReportContext(req.user!.uid, req.project);
+        const end = new Date(deps.now() - 3 * 86_400_000);
+        const start = new Date(end.getTime() - 89 * 86_400_000);
+        const base = { startDate: isoDay(start), endDate: isoDay(end), filters: [{ field: 'query' as const, op: 'equals' as const, value: keyword }] };
+        const [total, pages, daily] = await Promise.all([
+          searchConsoleExploreReport.run(ctx, { ...base, dimensions: [], metrics: ['clicks', 'impressions', 'ctr', 'position'], limit: 1 }),
+          searchConsoleExploreReport.run(ctx, { ...base, dimensions: ['page'], metrics: ['clicks', 'impressions', 'position'], limit: 10, orderBy: { field: 'impressions', desc: true } }),
+          searchConsoleExploreReport.run(ctx, { ...base, dimensions: ['date'], metrics: ['clicks', 'impressions', 'position'], limit: 100 }),
+        ]);
+        const t = total.rows[0];
+        if (t && num(t.impressions) > 0) {
+          own = {
+            clicks: num(t.clicks), impressions: num(t.impressions), ctr: num(t.ctr), position: Math.round(num(t.position) * 10) / 10,
+            pages: pages.rows.map((r) => ({ page: String(r.page ?? ''), clicks: num(r.clicks), impressions: num(r.impressions), position: Math.round(num(r.position) * 10) / 10 })),
+            daily: daily.rows.map((r) => ({ date: String(r.date ?? ''), clicks: num(r.clicks), impressions: num(r.impressions), position: Math.round(num(r.position) * 10) / 10 })).sort((a, b) => a.date.localeCompare(b.date)),
+          };
+        }
+      } catch (err) { return mapErr(res, err); }
+    }
+    const ideas = await keywordIdeas(keyword, deps.suggest, { lang: parsed.data.lang });
+    const provider = getDataProvider();
+    let metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null = null;
+    if (provider.connected) { try { metrics = (await provider.keywordMetrics([keyword], 'us'))[0] ?? null; } catch { /* optional */ } }
+    res.json({
+      keyword, intent: classifyIntent(keyword), words: keyword.split(' ').length, own, metrics, providerConnected: provider.connected,
+      questions: ideas.filter((i) => i.group === 'questions').slice(0, 10).map((i) => i.keyword),
+      related: ideas.filter((i) => i.group !== 'questions').slice(0, 15).map((i) => i.keyword),
+      note: provider.connected ? '' : NOT_CONNECTED_NOTE,
+    });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});
+
+// Words and phrases that competitors' pages use and yours does not. Fetches up to 5 competitor pages (public pages only).
+seoRouter.post('/topic-gap', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'gap', 15, 3_600_000))) return;
+    const parsed = z.object({ yourUrl: z.string().min(3).max(2000), competitors: z.array(z.string().min(3).max(2000)).min(1, 'Add at least one competitor page').max(5) }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Enter your page and up to 5 competitor pages.');
+    const read = async (input: string): Promise<{ url: string; text: string; words: number } | { url: string; error: string }> => {
+      let u: URL;
+      try { u = normaliseInputUrl(input); } catch (e) { return { url: input, error: e instanceof SsrfError ? e.message : 'Not a valid web address.' }; }
+      const page = await fetchFollowing(u.toString(), deps.fetcher);
+      if (page.error || page.status === 0) return { url: u.toString(), error: page.error || 'The page could not be reached.' };
+      if (page.status >= 400) return { url: u.toString(), error: `The page answered with an error (${page.status}).` };
+      if (page.contentType && !/html|xml/.test(page.contentType)) return { url: u.toString(), error: 'That address is not a web page.' };
+      const text = visibleText(page.text);
+      return { url: page.url, text, words: text.split(' ').filter(Boolean).length };
+    };
+    const [you, ...comps] = await Promise.all([parsed.data.yourUrl, ...parsed.data.competitors].map(read));
+    if (!you || 'error' in you) return fail(res, 422, 'YOUR_PAGE_FAILED', `Your page could not be read: ${you && 'error' in you ? you.error : 'unknown problem'}`);
+    const good = comps.filter((c): c is { url: string; text: string; words: number } => !('error' in c));
+    if (good.length === 0) return fail(res, 422, 'COMPETITORS_FAILED', 'None of the competitor pages could be read. Check the addresses.');
+    const gap = topicGap(you.text, good.map((c) => c.text));
+    res.json({
+      you: { url: you.url, words: you.words },
+      competitors: comps.map((c) => ('error' in c ? { url: c.url, error: c.error } : { url: c.url, words: c.words })),
+      gap,
+      note: 'Based on the words on each page. It shows what competitors cover that you do not; it does not prove those words will help you rank.',
+    });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while comparing the pages.'); }
+});
+
+seoRouter.get('/provider', async (req, res) => {
+  const s = await scope(req, res);
+  if (!s) return;
+  const p = getDataProvider();
+  res.json({ connected: p.connected, name: p.name, note: p.connected ? '' : NOT_CONNECTED_NOTE });
 });
 
 // POST /api/seo/summary: the built-in AI explains a tool result in plain words (uses one AI question, refunded if it fails).

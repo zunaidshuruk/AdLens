@@ -5,10 +5,13 @@
 import { guardedRequest } from './ssrfGuard.js';
 
 export type Intent = 'informational' | 'commercial' | 'transactional' | 'navigational';
-export interface KeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'alphabet' | 'seed'; intent: Intent; words: number }
+export interface KeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'prepositions' | 'comparisons' | 'alphabet' | 'seed'; intent: Intent; words: number }
 
 export const QUESTION_WORDS = ['how', 'what', 'why', 'when', 'where', 'which', 'can', 'is', 'do', 'are'];
 export const SUFFIXES = ['best', 'for', 'vs', 'near me', 'price', 'cost', 'free', 'online', 'tips', 'examples', 'alternatives', 'reviews'];
+
+export const PREPOSITIONS = ['for', 'with', 'without', 'near', 'to', 'like', 'in', 'on', 'from'];
+export const COMPARISONS = ['vs', 'versus', 'or', 'and', 'compared to'];
 
 export function classifyIntent(k: string): Intent {
   const s = k.toLowerCase();
@@ -44,6 +47,8 @@ export async function keywordIdeas(seedRaw: string, fetcher: SuggestFetcher = go
   const probes: { q: string; group: KeywordIdea['group'] }[] = [{ q: seed, group: 'seed' }];
   for (const w of QUESTION_WORDS) probes.push({ q: `${w} ${seed}`, group: 'questions' });
   for (const s of SUFFIXES) probes.push({ q: `${seed} ${s}`, group: 'modifiers' });
+  for (const s of PREPOSITIONS) if (!SUFFIXES.includes(s)) probes.push({ q: `${seed} ${s}`, group: 'prepositions' });
+  for (const s of COMPARISONS) if (!SUFFIXES.includes(s)) probes.push({ q: `${seed} ${s}`, group: 'comparisons' });
   if (opts.alphabet) for (const ch of 'abcdefghijklmnopqrstuvwxyz') probes.push({ q: `${seed} ${ch}`, group: 'alphabet' });
 
   const found = new Map<string, KeywordIdea>();

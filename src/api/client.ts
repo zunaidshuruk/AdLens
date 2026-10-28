@@ -462,7 +462,10 @@ export interface SeoCrawlReport {
   pages: { url: string; status: number; title: string | null; words: number; h1: number; ms: number; issues: number; score: number; redirectTo?: string; linkedFrom?: string; error?: string }[];
 }
 export interface SeoOpportunity { kind: 'striking' | 'low_ctr' | 'no_clicks' | 'cannibal'; query: string; page: string; pages?: string[]; clicks: number; impressions: number; ctr: number; position: number; potentialClicks: number; why: string; action: string }
-export interface SeoKeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'alphabet' | 'seed'; intent: 'informational' | 'commercial' | 'transactional' | 'navigational'; words: number; ranking: { impressions: number; position: number; clicks: number } | null }
+export interface SeoKeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'prepositions' | 'comparisons' | 'alphabet' | 'seed'; intent: 'informational' | 'commercial' | 'transactional' | 'navigational'; words: number; ranking: { impressions: number; position: number; clicks: number } | null; metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null }
+export interface SeoKeywordOverview { keyword: string; intent: SeoKeywordIdea['intent']; words: number; own: { clicks: number; impressions: number; ctr: number; position: number; pages: { page: string; clicks: number; impressions: number; position: number }[]; daily: { date: string; clicks: number; impressions: number; position: number }[] } | null; metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null; providerConnected: boolean; questions: string[]; related: string[]; note: string }
+export interface SeoGapTerm { term: string; competitors: number; avgCount: number; yourCount: number }
+export interface SeoTopicGap { you: { url: string; words: number }; competitors: ({ url: string; words: number } | { url: string; error: string })[]; gap: { missing: SeoGapTerm[]; underused: SeoGapTerm[]; sharedStrengths: SeoGapTerm[]; competitorCount: number }; note: string }
 
 
 export interface RankKeywordList { id: string; name: string; keywords: string[]; tracked: boolean; createdBy: string; createdAt: string; updatedAt: string }
@@ -924,7 +927,9 @@ export const apiClient = {
   async rankRefresh(): Promise<{ days: number; tracked: number; refreshedAt: string }> { return apiRequest('/api/rank/refresh', { method: 'POST', body: '{}' }); },
   async rankHistory(days: 28 | 90): Promise<{ days: number; summary: RankSummaryInfo; tracking: RankTrackingState | null; daysStored: number }> { return apiRequest(`/api/rank/history?days=${days}`); },
   async rankTraffic(): Promise<{ startDate: string; endDate: string; rows: RankPageTraffic[]; totals: { sessions: number; clicks: number; hiddenClicks: number; hiddenShare: number } }> { return apiRequest('/api/rank/traffic', { method: 'POST', body: '{}' }); },
-  async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
+  async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; clusters: { name: string; keywords: string[] }[]; providerConnected: boolean; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
+  async seoKeywordOverview(keyword: string, lang: string): Promise<SeoKeywordOverview> { return apiRequest('/api/seo/keyword-overview', { method: 'POST', body: JSON.stringify({ keyword, lang }) }); },
+  async seoTopicGap(yourUrl: string, competitors: string[]): Promise<SeoTopicGap> { return apiRequest('/api/seo/topic-gap', { method: 'POST', body: JSON.stringify({ yourUrl, competitors }) }); },
 
   /** Downloads a PDF of a dashboard or saved report (numbers as of now). */
   async downloadPdf(kind: 'dashboard' | 'report', targetId: string, rangeDays: 7 | 28 | 90): Promise<void> {
