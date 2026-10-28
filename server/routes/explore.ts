@@ -18,6 +18,8 @@ import { loadProject } from '../middleware/loadProject.js';
 import { requireUser, verifyGoogleSessionOwnership } from '../middleware/requireUser.js';
 import { buildReportContext } from '../lib/reportContext.js';
 import { MetaApiError } from '../lib/meta.js';
+import { DatasetError, dataExploreInputSchema, getDataset, runDataQuery } from '../lib/datasets.js';
+import { datasetScope } from './datasets.js';
 import { ga4ExploreReport, metaExploreReport, searchConsoleExploreReport } from '../reports/exploreReports.js';
 import type { ReportContext } from '../reports/types.js';
 import { googleRateLimitMiddleware } from './connections.js';
@@ -34,6 +36,7 @@ function fail(res: Response, status: number, code: string, message: string): voi
 
 function handleError(res: Response, err: unknown): void {
   if (err instanceof SavedReportError) return fail(res, err.status, err.code, err.message);
+  if (err instanceof DatasetError) return fail(res, err.status, err.code, err.message);
   if (err instanceof MetaApiError) return fail(res, err.status, err.code, err.message);
   const mapped = mapVaultError(err) ?? (err instanceof GoogleApiError ? err : null);
   if (mapped) return fail(res, mapped.status, mapped.code, mapped.message);
@@ -101,6 +104,16 @@ async function run(req: Request, res: Response, kind: 'ga4' | 'search_console' |
   }
 }
 
+exploreRouter.post('/data/run', async (req, res) => {
+  try {
+    const parsed = dataExploreInputSchema.safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REPORT', parsed.error.issues[0]?.message || 'The report settings are not valid.');
+    const s = await datasetScope(req, res, false);
+    if (!s) return;
+    const ds = await getDataset(getProjectDocsStore(), s.ws, s.project, parsed.data.datasetId);
+    res.json(runDataQuery(ds, parsed.data));
+  } catch (err) { handleError(res, err); }
+});
 exploreRouter.post('/meta/run', (req, res) => void run(req, res, 'meta'));
 exploreRouter.use(requireGoogleConfigured);
 exploreRouter.post('/ga4/run', (req, res) => void run(req, res, 'ga4'));

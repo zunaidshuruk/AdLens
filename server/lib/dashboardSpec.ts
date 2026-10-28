@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dataSpecSchema } from './datasets.js';
 import { ga4SpecSchema, metaSpecSchema, scSpecSchema } from './exploreSpec.js';
 
 /** A dashboard is a 12-column grid of widgets. Widgets carry their own small report spec; dates come from the page's date picker. */
@@ -15,7 +16,7 @@ const layoutSchema = z.object({
 const title = z.string().trim().min(1, 'Give every widget a title').max(80);
 const widgetId = z.string().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/);
 
-const queryWidget = (source: 'ga4' | 'search_console' | 'meta', spec: z.ZodType) =>
+const queryWidget = (source: 'ga4' | 'search_console' | 'meta' | 'data', spec: z.ZodType) =>
   z.object({
     id: widgetId,
     title,
@@ -31,6 +32,7 @@ export const widgetSchema = z.union([
   queryWidget('ga4', ga4SpecSchema),
   queryWidget('search_console', scSpecSchema),
   queryWidget('meta', metaSpecSchema),
+  queryWidget('data', dataSpecSchema),
   z.object({ id: widgetId, title, layout: layoutSchema, kind: z.literal('text'), text: z.string().trim().min(1).max(1000) }),
 ]);
 

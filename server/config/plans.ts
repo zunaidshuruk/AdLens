@@ -43,14 +43,16 @@ export interface ContentLimits {
   maxWidgetsPerDashboard: number;
   /** Saved reports per project. */
   maxSavedReports: number;
+  /** Uploaded data tables (CSV) per project. */
+  maxDatasets: number;
   maxAgents: number;
 }
 
 export const CONTENT_LIMITS: Record<string, ContentLimits> = {
-  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxAgents: 3 },
-  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxAgents: 0 },
-  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxAgents: 3 },
-  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxAgents: 10 },
+  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAgents: 3 },
+  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAgents: 0 },
+  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAgents: 3 },
+  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAgents: 10 },
 };
 
 export function getContentLimits(plan: string | undefined | null): ContentLimits {

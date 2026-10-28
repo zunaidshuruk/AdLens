@@ -5,7 +5,7 @@
  */
 import { getAdminFirestore } from './firestore.js';
 
-export type ProjectDocKind = 'savedReports' | 'dashboards';
+export type ProjectDocKind = 'savedReports' | 'dashboards' | 'datasets';
 
 export interface StoredDoc {
   id: string;
@@ -20,7 +20,7 @@ export interface ProjectDocsStore {
   deleteAll(wsId: string, projectId: string): Promise<void>;
 }
 
-const KINDS: ProjectDocKind[] = ['savedReports', 'dashboards'];
+const KINDS: ProjectDocKind[] = ['savedReports', 'dashboards', 'datasets'];
 
 function collectionPath(wsId: string, projectId: string, kind: ProjectDocKind): string {
   return `workspaces/${wsId}/projects/${projectId}/${kind}`;

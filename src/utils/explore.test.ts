@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { ExploreCatalogSource, ExploreResult } from '../types/explore.js';
 import { csvCell, csvFileName, exploreToCsv } from './exploreCsv.js';
 import { formatDuration, formatExploreCell } from './exploreFormat.js';
-import { buildRunRequest, defaultSpec, moveField, normaliseSpec, sameSpec, sanitiseSavedSpec, toggleField, validateSpec } from './exploreState.js';
+import { buildRunRequest, defaultDataSpec, defaultSpec, moveField, normaliseSpec, sameSpec, sanitiseSavedSpec, toggleField, validateSpec } from './exploreState.js';
 
 const CAT: ExploreCatalogSource = {
   maxDimensions: 2, maxMetrics: 3,
@@ -73,4 +73,15 @@ test('saved reports: retired fields are removed; same-spec check ignores a dead 
   assert.deepEqual(clean.filters, []); assert.equal(clean.orderBy, undefined);
   assert.equal(sameSpec(defaultSpec('ga4'), defaultSpec('ga4')), true);
   assert.equal(sameSpec(defaultSpec('ga4'), defaultSpec('search_console')), false);
+});
+
+test('uploaded data: first report breaks down by the first non-number column and counts rows; the request carries the table', () => {
+  const ds = { id: 'd1', columns: [{ key: 'c1', type: 'number' }, { key: 'c2', type: 'text' }] };
+  const spec = defaultDataSpec(ds);
+  assert.deepEqual([spec.dimensions, spec.metrics, spec.datasetId], [['c2'], ['__rows'], 'd1']);
+  const body = buildRunRequest({ ...spec, aggregate: 'avg' }, { startDate: '2026-10-01', endDate: '2026-10-02' });
+  assert.equal(body.datasetId, 'd1');
+  assert.equal(body.aggregate, 'avg');
+  assert.equal('datasetId' in buildRunRequest(defaultSpec('ga4'), { startDate: 'a', endDate: 'b' }), false);
+  assert.deepEqual(defaultDataSpec(undefined).dimensions, []);
 });

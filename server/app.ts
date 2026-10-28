@@ -26,6 +26,7 @@ import {
 import { agentsRouter } from './routes/agents.js';
 import { dashboardsRouter } from './routes/dashboards.js';
 import { exploreRouter } from './routes/explore.js';
+import { datasetsRouter } from './routes/datasets.js';
 import { ga4Router } from './routes/ga4.js';
 import { healthRouter } from './routes/health.js';
 import { mcpAccountRouter, mcpRouter, oauthRouter } from './routes/mcp.js';
@@ -103,6 +104,7 @@ app.use('/api/connections/meta', metaConnectionRouter);
 app.use('/api/connections', connectionsRouter);
 app.use('/api/google', googleApiRouter);
 app.use('/api/explore', exploreRouter);
+app.use('/api/datasets', datasetsRouter);
 app.use('/api/dashboards', dashboardsRouter);
 app.use('/api/agents', agentsRouter);
 app.use('/api/mcp', mcpAccountRouter);

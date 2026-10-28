@@ -2,7 +2,14 @@ import type { ExploreCatalogSource, ExploreFilter, ExploreSource, ExploreSpec } 
 
 export const DEFAULT_LIMIT = 100;
 
+/** A sensible first report for an uploaded table: break down by its first text or date column, count the rows. */
+export function defaultDataSpec(ds: { id: string; columns: { key: string; type: string }[] } | undefined): ExploreSpec {
+  const dim = ds?.columns.find((c) => c.type !== 'number') ?? ds?.columns[0];
+  return { dimensions: dim ? [dim.key] : [], metrics: ['__rows'], filters: [], limit: DEFAULT_LIMIT, datasetId: ds?.id, aggregate: 'sum' };
+}
+
 export function defaultSpec(source: ExploreSource): ExploreSpec {
+  if (source === 'data') return defaultDataSpec(undefined);
   if (source === 'meta') return { dimensions: ['campaign'], metrics: ['spend', 'impressions', 'clicks'], filters: [], limit: DEFAULT_LIMIT };
   return source === 'ga4'
     ? { dimensions: ['sessionDefaultChannelGroup'], metrics: ['sessions', 'totalUsers'], filters: [], limit: DEFAULT_LIMIT }
@@ -53,6 +60,7 @@ export function buildRunRequest(spec: ExploreSpec, range: { startDate: string; e
     limit: spec.limit,
   };
   if (spec.orderBy && [...spec.metrics, ...spec.dimensions].includes(spec.orderBy.field)) body.orderBy = spec.orderBy;
+  if (spec.datasetId) { body.datasetId = spec.datasetId; body.aggregate = spec.aggregate ?? 'sum'; }
   return body;
 }
 

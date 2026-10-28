@@ -35,6 +35,7 @@ export function filtersForSource(source: ExploreSource, f: DashboardFilters): Ex
   const country = clip(f.country);
   const campaign = clip(f.campaign);
   const device = clip(f.device).toLowerCase();
+  if (source === 'data') return [];
   if (source === 'meta') return campaign ? [{ field: 'campaign', op: 'contains', value: campaign }] : [];
   if (country) out.push({ field: 'country', op: 'equals', value: country });
   if (campaign && source === 'ga4') out.push({ field: 'sessionCampaignName', op: 'contains', value: campaign });

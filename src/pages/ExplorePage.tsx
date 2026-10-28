@@ -1,10 +1,12 @@
-import { Download, Play, Plus, Save, Trash2, X } from 'lucide-react';
+import { Download, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../api/client';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { useDateRange } from '../hooks';
 import type {
+  DatasetInfo,
+  ExploreAggregate,
   ExploreCatalog,
   ExploreCatalogSource,
   ExploreFilter,
@@ -18,6 +20,7 @@ import { csvFileName, exploreToCsv } from '../utils/exploreCsv.js';
 import { formatExploreCell } from '../utils/exploreFormat.js';
 import {
   buildRunRequest,
+  defaultDataSpec,
   defaultSpec,
   moveField,
   normaliseSpec,
@@ -27,7 +30,82 @@ import {
   validateSpec,
 } from '../utils/exploreState.js';
 
-const SOURCE_LABEL: Record<ExploreSource, string> = { ga4: 'Google Analytics 4', search_console: 'Search Console', meta: 'Meta Ads' };
+const SOURCE_LABEL: Record<ExploreSource, string> = { ga4: 'Google Analytics 4', search_console: 'Search Console', meta: 'Meta Ads', data: 'Uploaded data' };
+const AGGREGATE_LABEL: Record<ExploreAggregate, string> = { sum: 'Add up', avg: 'Average', min: 'Smallest', max: 'Largest', count: 'Count (how many have a value)' };
+
+function DataPanel(props: {
+  datasets: DatasetInfo[];
+  limit: number;
+  spec: ExploreSpec;
+  onPick: (id: string) => void;
+  onAggregate: (a: ExploreAggregate) => void;
+  onUploaded: (d: DatasetInfo) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const { datasets, limit, spec, onPick, onAggregate, onUploaded, onDeleted } = props;
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const current = datasets.find((d) => d.id === spec.datasetId);
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setMsg(null);
+    setBusy(true);
+    try {
+      const text = await file.text();
+      const d = await apiClient.createDataset(name.trim() || file.name.replace(/\.[^.]+$/, '').slice(0, 80), text);
+      setName('');
+      onUploaded(d);
+      setMsg(`Added “${d.name}” with ${d.rowCount.toLocaleString()} rows.`);
+    } catch (e) {
+      setMsg(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    if (!current || !window.confirm(`Delete the table “${current.name}”? Reports and widgets that use it will stop working.`)) return;
+    try {
+      await apiClient.deleteDataset(current.id);
+      onDeleted(current.id);
+    } catch (e) {
+      setMsg(errMessage(e));
+    }
+  };
+  const field = 'block rounded-lg border border-line bg-surface text-fg text-xs px-2 py-2 min-h-[36px]';
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4 space-y-3">
+      <p className="text-xs text-fg-muted">Upload a CSV file (spreadsheet export) with a header row, up to 5,000 rows and 20 columns. Dates should look like 2026-10-31. Your plan allows {limit} {limit === 1 ? 'table' : 'tables'} per project ({datasets.length} used).</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs text-fg-muted space-y-1">
+          <span className="block">Table</span>
+          <select aria-label="Uploaded table" value={spec.datasetId ?? ''} onChange={(e) => onPick(e.target.value)} disabled={datasets.length === 0} className={field}>
+            {datasets.length === 0 && <option value="">No tables yet</option>}
+            {datasets.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.rowCount.toLocaleString()} rows)</option>)}
+          </select>
+        </label>
+        <label className="text-xs text-fg-muted space-y-1">
+          <span className="block">Combine numbers by</span>
+          <select aria-label="How to combine numbers" value={spec.aggregate ?? 'sum'} onChange={(e) => onAggregate(e.target.value as ExploreAggregate)} className={field}>
+            {(Object.keys(AGGREGATE_LABEL) as ExploreAggregate[]).map((a) => <option key={a} value={a}>{AGGREGATE_LABEL[a]}</option>)}
+          </select>
+        </label>
+        {current && <button type="button" onClick={() => void remove()} className="inline-flex items-center gap-1.5 text-xs text-danger hover:underline py-2"><Trash2 className="w-3.5 h-3.5" /> Delete table</button>}
+      </div>
+      <div className="flex flex-wrap items-end gap-3 border-t border-line pt-3">
+        <label className="text-xs text-fg-muted space-y-1">
+          <span className="block">Name (optional)</span>
+          <input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="e.g. TikTok ads, October" className={`${field} w-56`} />
+        </label>
+        <label className={`inline-flex items-center gap-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+          <Upload className="w-3.5 h-3.5" /> {busy ? 'Uploading…' : 'Choose CSV file'}
+          <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" className="sr-only" onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
+        {msg && <span role="status" className="text-xs text-fg-muted">{msg}</span>}
+      </div>
+    </div>
+  );
+}
 const OP_LABEL: Record<ExploreFilterOp, string> = {
   equals: 'is',
   notEquals: 'is not',
@@ -220,7 +298,12 @@ export const ExplorePage: React.FC = () => {
   const [name, setName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
 
-  const cat = catalog ? catalog[source] : null;
+  const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
+  const [datasetLimit, setDatasetLimit] = useState(0);
+  const dataset = source === 'data' ? datasets.find((d) => d.id === spec.datasetId) : undefined;
+  const cat: ExploreCatalogSource | null = source === 'data'
+    ? (dataset ? { ...dataset.catalog, maxDimensions: 3, maxMetrics: 6 } : null)
+    : catalog ? catalog[source] : null;
 
   const loadSaved = useCallback(async () => {
     try {
@@ -234,6 +317,7 @@ export const ExplorePage: React.FC = () => {
     let live = true;
     apiClient.getExploreCatalog().then((c) => live && setCatalog(c)).catch((e) => live && setError({ message: errMessage(e) }));
     void loadSaved();
+    apiClient.listDatasets().then((r) => { if (live) { setDatasets(r.datasets); setDatasetLimit(r.limit); } }).catch(() => undefined);
     return () => { live = false; };
   }, [loadSaved]);
 
@@ -243,7 +327,7 @@ export const ExplorePage: React.FC = () => {
 
   const switchSource = (next: ExploreSource) => {
     setSource(next);
-    setSpec(defaultSpec(next));
+    setSpec(next === 'data' ? defaultDataSpec(datasets[0]) : defaultSpec(next));
     setResult(null);
     setActiveId(null);
     setName('');
@@ -269,7 +353,12 @@ export const ExplorePage: React.FC = () => {
   const open = (r: SavedReport) => {
     if (!catalog) return;
     setSource(r.source);
-    setSpec(sanitiseSavedSpec(r.spec, catalog[r.source]));
+    if (r.source === 'data') {
+      const ds = datasets.find((d) => d.id === r.spec.datasetId);
+      setSpec(ds ? { ...sanitiseSavedSpec(r.spec, { ...ds.catalog, maxDimensions: 3, maxMetrics: 6 }), datasetId: r.spec.datasetId, aggregate: r.spec.aggregate ?? 'sum' } : r.spec);
+    } else {
+      setSpec(sanitiseSavedSpec(r.spec, catalog[r.source]));
+    }
     setActiveId(r.id);
     setName(r.name);
     setResult(null);
@@ -327,7 +416,7 @@ export const ExplorePage: React.FC = () => {
       </div>
 
       <div role="tablist" aria-label="Data source" className="inline-flex rounded-lg border border-line p-0.5 bg-fill-1">
-        {(['ga4', 'search_console', 'meta'] as ExploreSource[]).map((s) => (
+        {(['ga4', 'search_console', 'meta', 'data'] as ExploreSource[]).map((s) => (
           <button key={s} role="tab" aria-selected={source === s} onClick={() => switchSource(s)} className={`px-3 py-2 min-h-[36px] text-xs font-medium rounded-md ${source === s ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}>
             {SOURCE_LABEL[s]}
           </button>
@@ -340,12 +429,24 @@ export const ExplorePage: React.FC = () => {
           <ul className="flex flex-wrap gap-2">
             {saved.map((r) => (
               <li key={r.id} className={`inline-flex items-center rounded-lg border text-xs ${r.id === activeId ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-muted'}`}>
-                <button type="button" onClick={() => open(r)} className="px-3 py-2 min-h-[36px] hover:text-fg">{r.name} <span className="text-fg-subtle">· {r.source === 'ga4' ? 'GA4' : r.source === 'meta' ? 'Meta' : 'Search'}</span></button>
+                <button type="button" onClick={() => open(r)} className="px-3 py-2 min-h-[36px] hover:text-fg">{r.name} <span className="text-fg-subtle">· {r.source === 'ga4' ? 'GA4' : r.source === 'meta' ? 'Meta' : r.source === 'data' ? 'Data' : 'Search'}</span></button>
                 <button type="button" aria-label={`Delete ${r.name}`} onClick={() => void remove(r)} className="px-2 py-2 hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
               </li>
             ))}
           </ul>
         </div>
+      )}
+
+      {source === 'data' && (
+        <DataPanel
+          datasets={datasets}
+          limit={datasetLimit}
+          spec={spec}
+          onPick={(id) => { setSpec(defaultDataSpec(datasets.find((d) => d.id === id))); setResult(null); setActiveId(null); setName(''); setError(null); }}
+          onAggregate={(aggregate) => setSpec((s) => ({ ...s, aggregate }))}
+          onUploaded={(d) => { setDatasets((cur) => [d, ...cur]); setSpec(defaultDataSpec(d)); setResult(null); setError(null); }}
+          onDeleted={(id) => { const rest = datasets.filter((d) => d.id !== id); setDatasets(rest); setSpec(defaultDataSpec(rest[0])); setResult(null); }}
+        />
       )}
 
       {cat ? (
@@ -354,7 +455,7 @@ export const ExplorePage: React.FC = () => {
             <FieldPicker title="Break down by" hint="Rows — for example channel, page or country" fields={cat.dimensions} selected={spec.dimensions} max={cat.maxDimensions} onChange={(dimensions) => setSpec((s) => normaliseSpec({ ...s, dimensions }))} />
             <FieldPicker title="Numbers to show" hint="Columns — for example sessions or clicks" fields={cat.metrics} selected={spec.metrics} max={cat.maxMetrics} onChange={(metrics) => setSpec((s) => normaliseSpec({ ...s, metrics }))} />
           </div>
-          <FilterEditor filters={spec.filters} dimensions={source === 'meta' ? cat.dimensions.filter((d) => ['campaign', 'adset', 'ad'].includes(d.key)) : cat.dimensions} allowStartsWith={source === 'ga4'} onChange={(filters) => setSpec((s) => ({ ...s, filters }))} />
+          <FilterEditor filters={spec.filters} dimensions={source === 'meta' ? cat.dimensions.filter((d: { key: string }) => ['campaign', 'adset', 'ad'].includes(d.key)) : cat.dimensions} allowStartsWith={source === 'ga4'} onChange={(filters) => setSpec((s) => ({ ...s, filters }))} />
 
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-xs text-fg-muted space-y-1">
@@ -396,7 +497,7 @@ export const ExplorePage: React.FC = () => {
             {notice && <span role="status" className="text-xs text-fg-muted">{notice}</span>}
           </div>
         </div>
-      ) : !error ? (
+      ) : !error && source !== 'data' ? (
         <p className="text-sm text-fg-muted">Loading the report builder…</p>
       ) : null}
 

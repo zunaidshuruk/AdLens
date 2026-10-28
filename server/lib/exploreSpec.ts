@@ -201,7 +201,7 @@ export const scSpecSchema = z.object({
 export interface ExploreColumn { key: string; label: string; type: ColumnType; role: 'dimension' | 'metric' }
 export type ExploreCell = string | number | null;
 export interface ExploreResult {
-  source: 'ga4' | 'search_console' | 'meta';
+  source: 'ga4' | 'search_console' | 'meta' | 'data';
   columns: ExploreColumn[];
   rows: Record<string, ExploreCell>[];
   /** Totals for the metrics across the rows returned (GA4: reported by Google; Search Console: summed, position weighted). */
@@ -229,8 +229,8 @@ const ga4Met = lookup(GA4_METRICS);
 const scDim = lookup(SC_DIMENSIONS);
 const scMet = lookup(SC_METRICS);
 
-export const fieldLabel = (source: 'ga4' | 'search_console' | 'meta', key: string): string =>
-  (source === 'ga4' ? ga4Dim.get(key) ?? ga4Met.get(key) : source === 'meta' ? metaDim.get(key) ?? metaMet.get(key) : scDim.get(key) ?? scMet.get(key))?.label ?? key;
+export const fieldLabel = (source: 'ga4' | 'search_console' | 'meta' | 'data', key: string): string =>
+  (source === 'ga4' ? ga4Dim.get(key) ?? ga4Met.get(key) : source === 'meta' ? metaDim.get(key) ?? metaMet.get(key) : source === 'data' ? undefined : scDim.get(key) ?? scMet.get(key))?.label ?? key;
 
 // ---------------------------------------------------------------------------
 // GA4

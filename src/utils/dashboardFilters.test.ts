@@ -24,6 +24,7 @@ test('Stage 20 — filters: each source gets only the filters it supports', () =
   assert.equal(sc[1].value, 'MOBILE');
   assert.deepEqual(filtersForSource('meta', all), [{ field: 'campaign', op: 'contains', value: 'eid' }]);
   assert.deepEqual(filtersForSource('meta', { country: 'India' }), []);
+  assert.deepEqual(filtersForSource('data', all), []);
 });
 
 test('Stage 20 — filters: added to the panel own filters, never past five, original untouched', () => {

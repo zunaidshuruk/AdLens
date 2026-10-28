@@ -311,7 +311,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -333,7 +333,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -774,8 +774,19 @@ export const apiClient = {
   },
 
   runExplore(source: ExploreSource, body: Record<string, unknown>): Promise<ExploreResult> {
-    const path = source === 'ga4' ? '/api/explore/ga4/run' : source === 'meta' ? '/api/explore/meta/run' : '/api/explore/search-console/run';
+    const path = source === 'ga4' ? '/api/explore/ga4/run' : source === 'meta' ? '/api/explore/meta/run' : source === 'data' ? '/api/explore/data/run' : '/api/explore/search-console/run';
     return apiRequest<ExploreResult>(path, { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  async listDatasets(): Promise<{ datasets: import('../types/explore.js').DatasetInfo[]; limit: number }> {
+    return apiRequest('/api/datasets');
+  },
+  async createDataset(name: string, csv: string): Promise<import('../types/explore.js').DatasetInfo> {
+    const res = await apiRequest<{ dataset: import('../types/explore.js').DatasetInfo }>('/api/datasets', { method: 'POST', body: JSON.stringify({ name, csv }) });
+    return res.dataset;
+  },
+  async deleteDataset(id: string): Promise<void> {
+    await apiRequest<void>(`/api/datasets/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   async listSavedReports(): Promise<SavedReport[]> {
