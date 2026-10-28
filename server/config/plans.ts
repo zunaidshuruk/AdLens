@@ -47,14 +47,15 @@ export interface ContentLimits {
   maxDatasets: number;
   /** Alert rules per project. */
   maxAlertRules: number;
+  maxShareLinks: number;
   maxAgents: number;
 }
 
 export const CONTENT_LIMITS: Record<string, ContentLimits> = {
-  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxAgents: 3 },
-  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAlertRules: 1, maxAgents: 0 },
-  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxAgents: 3 },
-  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAlertRules: 50, maxAgents: 10 },
+  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxAgents: 3 },
+  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAlertRules: 1, maxShareLinks: 1, maxAgents: 0 },
+  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxAgents: 3 },
+  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAlertRules: 50, maxShareLinks: 50, maxAgents: 10 },
 };
 
 export function getContentLimits(plan: string | undefined | null): ContentLimits {

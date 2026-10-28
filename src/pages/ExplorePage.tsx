@@ -1,6 +1,7 @@
-import { Download, Play, Plus, RefreshCw, Save, Trash2, Upload, X } from 'lucide-react';
+import { Download, Play, Plus, RefreshCw, Save, Share2, Trash2, Upload, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../api/client';
+import { ShareDialog } from '../components/ShareDialog';
 import { ConnectPanel } from '../components/ConnectPanel';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
@@ -314,6 +315,7 @@ export const ExplorePage: React.FC = () => {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<{ code?: string; message: string } | null>(null);
   const [saved, setSaved] = useState<SavedReport[]>([]);
+  const [sharingReport, setSharingReport] = useState<SavedReport | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -443,6 +445,7 @@ export const ExplorePage: React.FC = () => {
         ))}
       </div>
 
+      {sharingReport && <ShareDialog kind="report" targetId={sharingReport.id} title={sharingReport.name} onClose={() => setSharingReport(null)} />}
       {saved.length > 0 && (
         <div className="rounded-xl border border-line bg-surface p-4">
           <h3 className="text-sm font-semibold text-fg mb-2">Saved reports</h3>
@@ -450,6 +453,7 @@ export const ExplorePage: React.FC = () => {
             {saved.map((r) => (
               <li key={r.id} className={`inline-flex items-center rounded-lg border text-xs ${r.id === activeId ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-muted'}`}>
                 <button type="button" onClick={() => open(r)} className="px-3 py-2 min-h-[36px] hover:text-fg">{r.name} <span className="text-fg-subtle">· {r.source === 'ga4' ? 'GA4' : r.source === 'meta' ? 'Meta' : r.source === 'data' ? 'Data' : 'Search'}</span></button>
+                <button type="button" aria-label={`Share ${r.name}`} onClick={() => setSharingReport(r)} className="px-2 py-2 hover:text-fg"><Share2 className="w-3.5 h-3.5" /></button>
                 <button type="button" aria-label={`Delete ${r.name}`} onClick={() => void remove(r)} className="px-2 py-2 hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
               </li>
             ))}

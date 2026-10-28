@@ -311,7 +311,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -333,7 +333,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -400,6 +400,28 @@ export interface AlertRuleInfo {
   lastError?: string;
 }
 export type AlertRuleInput = Omit<AlertRuleInfo, 'id' | 'webhookHost' | 'status' | 'lastCheckedAt' | 'lastValue' | 'lastMessage' | 'lastTriggeredAt' | 'lastError'> & { webhookUrl?: string };
+
+export interface ShareInfo {
+  id: string;
+  kind: 'dashboard' | 'report';
+  targetId: string;
+  title: string;
+  rangeDays: 7 | 28 | 90;
+  autoRefresh: boolean;
+  hasPassword: boolean;
+  expiresAt?: string;
+  views: number;
+  lastViewedAt?: string;
+  createdAt: string;
+  refreshedAt: string;
+  refreshError?: string;
+  url: string | null;
+}
+export interface ShareInput { kind: 'dashboard' | 'report'; targetId: string; rangeDays: 7 | 28 | 90; password?: string; expiresInDays?: number; autoRefresh: boolean }
+export interface SharedSnapshot {
+  title: string; description: string; kind: 'dashboard' | 'report'; range: { startDate: string; endDate: string }; generatedAt: string;
+  widgets: { id: string; title: string; layout: { x: number; y: number; w: number; h: number }; kind: import('../types/dashboard.js').DashboardWidget['kind']; days?: number; target?: number; text?: string; result?: import('../types/explore.js').ExploreResult; error?: string }[];
+}
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -806,6 +828,25 @@ export const apiClient = {
   },
   async testAlert(id: string): Promise<{ delivered: unknown; wouldTrigger: boolean; value: number | null; message: string }> {
     return apiRequest(`/api/alerts/${encodeURIComponent(id)}/test`, { method: 'POST' });
+  },
+
+  async listShares(): Promise<{ shares: ShareInfo[]; limit: number }> { return apiRequest('/api/shares'); },
+  async createShare(input: ShareInput): Promise<ShareInfo> { return (await apiRequest<{ share: ShareInfo }>('/api/shares', { method: 'POST', body: JSON.stringify(input) })).share; },
+  async refreshShare(id: string): Promise<ShareInfo> { return (await apiRequest<{ share: ShareInfo }>(`/api/shares/${encodeURIComponent(id)}/refresh`, { method: 'POST' })).share; },
+  async deleteShare(id: string): Promise<void> { await apiRequest<void>(`/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  /** Public: no sign-in. */
+  async sharedMeta(token: string): Promise<{ title: string; kind: 'dashboard' | 'report'; needsPassword: boolean }> {
+    const r = await fetch(`/api/shared/${encodeURIComponent(token)}`);
+    if (!r.ok) throw new Error('This link is not available. It may have expired or been turned off.');
+    return r.json();
+  },
+  async sharedOpen(token: string, password?: string): Promise<{ snapshot: SharedSnapshot; expiresAt: string | null }> {
+    const r = await fetch(`/api/shared/${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+    if (!r.ok) {
+      const j = (await r.json().catch(() => null)) as { error?: { message?: string } } | null;
+      throw new Error(j?.error?.message || 'This link is not available.');
+    }
+    return r.json();
   },
 
   getExploreCatalog(): Promise<ExploreCatalog> {

@@ -33,6 +33,7 @@ const AITrafficPage = lazy(() => import('./pages/AITrafficPage').then((m) => ({ 
 const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })));
 const CrossChannelPage = lazy(() => import('./pages/CrossChannelPage').then((m) => ({ default: m.CrossChannelPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const SharedPage = lazy(() => import('./pages/SharedPage').then((m) => ({ default: m.SharedPage })));
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const DashboardsPage = lazy(() => import('./pages/DashboardsPage').then((m) => ({ default: m.DashboardsPage })));
 const ExplorePage = lazy(() => import('./pages/ExplorePage').then((m) => ({ default: m.ExplorePage })));
@@ -73,6 +74,7 @@ export default function App() {
               <Route path="/auth/action" element={<AuthActionPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/welcome" element={<LandingPage />} />
+              <Route path="/s/:token" element={<SharedPage />} />
               <Route path="/terms" element={<LegalPage kind="terms" />} />
               <Route path="/privacy" element={<LegalPage kind="privacy" />} />
               <Route path="/data-deletion" element={<DataDeletionPage />} />

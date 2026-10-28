@@ -44,8 +44,15 @@ function useWidgetData(widget: DashboardWidget, range: Props['range'], refreshKe
 export const DashboardWidgetView: React.FC<Props> = ({ widget: rawWidget, range: pageRange, refreshKey, large, filters }) => {
   const widget = useMemo<DashboardWidget>(() => (rawWidget.kind === 'text' || !filters ? rawWidget : { ...rawWidget, spec: applyDashboardFilters(rawWidget.source, rawWidget.spec, filters) }), [rawWidget, filters]);
   const range = useMemo(() => panelRange(widget.kind === 'text' ? undefined : widget.days, pageRange), [widget, pageRange]);
-  const { loading, error, result } = useWidgetData(widget, range, refreshKey);
+  const state = useWidgetData(widget, range, refreshKey);
+  return <WidgetCard widget={widget} state={state} large={large} />;
+};
 
+export interface WidgetState { loading: boolean; error: string | null; result: ExploreResult | null }
+
+/** Draws one panel from data that is already loaded. Used by the live dashboard and by shared snapshot pages. */
+export const WidgetCard: React.FC<{ widget: DashboardWidget; state: WidgetState; large?: boolean }> = ({ widget, state, large }) => {
+  const { loading, error, result } = state;
   const body = useMemo(() => {
     if (widget.kind === 'text') {
       return <p className={`whitespace-pre-wrap text-fg ${large ? 'text-xl' : 'text-sm'}`}>{widget.text}</p>;

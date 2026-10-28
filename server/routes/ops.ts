@@ -2,6 +2,8 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { productionDigestDeps } from '../lib/digestWiring.js';
 import { runDigests } from '../lib/digestRunner.js';
+import { refreshDueShares } from '../lib/shareWiring.js';
+import { getShareStore } from '../lib/shares.js';
 import { runAlertRules } from '../lib/alertRunner.js';
 import { productionAlertDeps } from '../lib/alertWiring.js';
 import { listAuditForUid } from '../lib/auditLog.js';
@@ -131,5 +133,7 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
   // Alert rules are checked in the same daily call, so one scheduled job covers both.
   let alerts: Awaited<ReturnType<typeof runAlertRules>> | { error: string };
   try { alerts = await runAlertRules(productionAlertDeps()); } catch { alerts = { error: 'alerts failed' }; }
-  res.json({ ...digests, alerts });
+  let shares: Awaited<ReturnType<typeof refreshDueShares>> | { error: string };
+  try { shares = await refreshDueShares(getShareStore()); } catch { shares = { error: 'shares failed' }; }
+  res.json({ ...digests, alerts, shares });
 });

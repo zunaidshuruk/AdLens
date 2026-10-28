@@ -1,7 +1,8 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, GripVertical, Maximize2, Pencil, Plus, RefreshCw, Save, Target, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, GripVertical, Maximize2, Pencil, Plus, RefreshCw, Save, Share2, Target, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
+import { ShareDialog } from '../components/ShareDialog';
 import { DashboardWidgetView } from '../components/DashboardWidgetView';
 import { ErrorState } from '../components/ErrorState';
 import { useDateRange } from '../hooks';
@@ -246,6 +247,7 @@ export const DashboardPage: React.FC = () => {
   const [saved, setSaved] = useState<SavedReport[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [presenting, setPresenting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -314,6 +316,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      {sharing && <ShareDialog kind="dashboard" targetId={dash.id} title={dash.name} onClose={() => setSharing(false)} />}
       <Link to="/dashboards" className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg"><ArrowLeft className="w-3.5 h-3.5" /> All dashboards</Link>
       <div className="flex flex-wrap items-center justify-between gap-3">
         {editing ? (
@@ -324,6 +327,7 @@ export const DashboardPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setRefreshKey((k) => k + 1)} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2"><RefreshCw className="w-3.5 h-3.5" /> Refresh</button>
           <button type="button" onClick={() => setPresenting(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2"><Maximize2 className="w-3.5 h-3.5" /> Present</button>
+          <button type="button" onClick={() => setSharing(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2"><Share2 className="w-3.5 h-3.5" /> Share</button>
           <button type="button" aria-pressed={editing} onClick={() => { setEditing((v) => !v); setAdding(false); }} className={`inline-flex items-center gap-1.5 rounded-lg border text-xs px-3 py-2 min-h-[36px] ${editing ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg hover:bg-fill-2'}`}><Pencil className="w-3.5 h-3.5" /> {editing ? 'Editing' : 'Edit'}</button>
         </div>
       </div>

@@ -1,0 +1,119 @@
+import { Copy, Link2, RefreshCw, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { apiClient, type ShareInfo } from '../api/client';
+
+const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+const field = 'rounded-lg border border-line bg-surface text-fg text-xs px-2 py-2 min-h-[36px] w-full';
+
+/** Make, copy, refresh and turn off read-only links for one dashboard or saved report. */
+export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: string; title: string; onClose: () => void }> = ({ kind, targetId, title, onClose }) => {
+  const [shares, setShares] = useState<ShareInfo[] | null>(null);
+  const [limit, setLimit] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [rangeDays, setRangeDays] = useState<7 | 28 | 90>(28);
+  const [password, setPassword] = useState('');
+  const [expires, setExpires] = useState('');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiClient.listShares();
+      setShares(r.shares.filter((s) => s.kind === kind && s.targetId === targetId));
+      setLimit(r.limit);
+    } catch (e) { setError(errMessage(e)); setShares([]); }
+  }, [kind, targetId]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy('new'); setError(null); setNote(null);
+    try {
+      const s = await apiClient.createShare({ kind, targetId, rangeDays, autoRefresh, ...(password ? { password } : {}), ...(expires ? { expiresInDays: Number(expires) } : {}) });
+      setPassword(''); setExpires('');
+      if (s.url) { try { await navigator.clipboard.writeText(s.url); setNote('Link made and copied.'); } catch { setNote('Link made. Copy it below.'); } }
+      await load();
+    } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const copy = async (s: ShareInfo) => {
+    if (!s.url) return;
+    try { await navigator.clipboard.writeText(s.url); setNote('Copied.'); } catch { setNote('Select the link and copy it.'); }
+  };
+  const refresh = async (s: ShareInfo) => {
+    setBusy(s.id); setError(null);
+    try { await apiClient.refreshShare(s.id); setNote('Snapshot updated.'); await load(); } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const off = async (s: ShareInfo) => {
+    if (!window.confirm('Turn this link off? Anyone who has it will lose access straight away.')) return;
+    setBusy(s.id); setError(null);
+    try { await apiClient.deleteShare(s.id); setNote('Link turned off.'); await load(); } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-fg/40 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={`Share ${title}`}>
+      <div className="w-full sm:max-w-lg max-h-[90vh] overflow-auto rounded-t-2xl sm:rounded-2xl bg-page border border-line p-4 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-fg">Share “{title}”</h2>
+            <p className="text-xs text-fg-muted">Anyone with the link can see a read-only copy of the numbers as they were when the link was made (refreshed daily if you leave that on). They cannot sign in to anything or see your connections.</p>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose} className="p-1 text-fg-muted hover:text-fg"><X className="w-4 h-4" /></button>
+        </div>
+        {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+        {note && <p role="status" className="text-xs text-success">{note}</p>}
+
+        <form onSubmit={(e) => void create(e)} className="rounded-xl border border-line bg-surface p-3 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-medium text-fg space-y-1">Show the last
+              <select className={field} value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value) as 7 | 28 | 90)}>
+                <option value={7}>7 days</option><option value={28}>28 days</option><option value={90}>90 days</option>
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-fg space-y-1">Link stops working
+              <select className={field} value={expires} onChange={(e) => setExpires(e.target.value)}>
+                <option value="">Never</option><option value="1">After 1 day</option><option value="7">After 7 days</option><option value="30">After 30 days</option><option value="90">After 90 days</option>
+              </select>
+            </label>
+          </div>
+          <label className="block text-xs font-medium text-fg space-y-1">Password (optional)
+            <input className={field} type="password" autoComplete="new-password" value={password} maxLength={72} placeholder="Leave empty for no password" onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-fg"><input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} /> Update the numbers every day</label>
+          <p className="text-[11px] text-fg-subtle">Anyone with the link sees these numbers, including tables you uploaded. Only share what you are happy for them to see.</p>
+          <button type="submit" disabled={busy === 'new' || (limit > 0 && (shares?.length ?? 0) >= limit)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">
+            <Link2 className="w-3.5 h-3.5" /> {busy === 'new' ? 'Making the link…' : 'Make a link'}
+          </button>
+        </form>
+
+        {shares && shares.length > 0 && (
+          <ul className="space-y-2">
+            {shares.map((s) => (
+              <li key={s.id} className="rounded-xl border border-line bg-surface p-3 space-y-2">
+                <input readOnly aria-label="Share link" value={s.url ?? 'Link unavailable'} onFocus={(e) => e.currentTarget.select()} className={`${field} font-mono`} />
+                <p className="text-[11px] text-fg-muted">
+                  Last {s.rangeDays} days · {s.hasPassword ? 'password protected' : 'no password'} · {s.expiresAt ? `ends ${new Date(s.expiresAt).toLocaleDateString()}` : 'never ends'} · opened {s.views} {s.views === 1 ? 'time' : 'times'} · updated {new Date(s.refreshedAt).toLocaleString()}
+                </p>
+                {s.refreshError && <p className="text-[11px] text-warning">{s.refreshError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => void copy(s)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2"><Copy className="w-3.5 h-3.5" /> Copy</button>
+                  <button type="button" disabled={busy === s.id} onClick={() => void refresh(s)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2 disabled:opacity-50"><RefreshCw className="w-3.5 h-3.5" /> Update now</button>
+                  <button type="button" disabled={busy === s.id} onClick={() => void off(s)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-danger hover:bg-danger-soft disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /> Turn off</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {limit > 0 && <p className="text-[11px] text-fg-subtle">Your plan allows {limit} share {limit === 1 ? 'link' : 'links'} per project.</p>}
+      </div>
+    </div>
+  );
+};
