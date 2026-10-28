@@ -1,6 +1,7 @@
 import {
   Bell,
   Bot,
+  Briefcase,
   Check,
   ChevronDown,
   Compass,
@@ -49,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/snapshot', label: 'Site snapshot', icon: Gauge },
   { to: '/search-console', label: 'Search Console', icon: Search },
   { to: '/seo', label: 'SEO tools', icon: ScanSearch },
+  { to: '/leads', label: 'Leads', icon: Briefcase },
   { to: '/search-intelligence', label: 'Search intelligence', icon: Compass },
   { to: '/pages', label: 'Pages', icon: FileText },
   { to: '/meta-ads', label: 'Meta Ads', icon: Megaphone },

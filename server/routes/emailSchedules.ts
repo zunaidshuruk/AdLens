@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getContentLimits, getPlanFeatures } from '../config/plans.js';
 import { getServerConfig } from '../config.js';
+import { activeBrand } from '../lib/branding.js';
 import { snapshotToPdf } from '../lib/pdf.js';
 import { buildScheduleEmail, pdfName, emailScheduleInputSchema, getScheduleStore, newScheduleId, productionSnapshot, type StoredSchedule } from '../lib/emailSchedules.js';
 import { getFirestoreStore } from '../lib/firestore.js';
@@ -102,8 +103,9 @@ emailSchedulesRouter.post('/:id/test', async (req, res) => {
     const to = req.user!.email;
     if (!to) return fail(res, 400, 'NO_EMAIL', 'Your account has no email address.');
     const { title, snapshot } = await productionSnapshot(cur, new Date());
-    const mail = buildScheduleEmail({ ...cur, title }, snapshot, req.project!.name, getServerConfig().appBaseUrl, to, true);
-    const r = await sendMail({ ...mail, to, ...(cur.attachPdf ? { attachments: [{ filename: pdfName(title, snapshot), content: snapshotToPdf(snapshot, req.project!.name) }] } : {}) });
+    const brand = activeBrand(await getFirestoreStore().getWorkspace(req.project!.workspaceId));
+    const mail = buildScheduleEmail({ ...cur, title }, snapshot, req.project!.name, getServerConfig().appBaseUrl, to, true, brand);
+    const r = await sendMail({ ...mail, to, ...(cur.attachPdf ? { attachments: [{ filename: pdfName(title, snapshot), content: snapshotToPdf(snapshot, req.project!.name, brand) }] } : {}) });
     res.json({ sent: r.ok, to, ...(r.ok ? {} : { reason: r.reason === 'not_configured' ? 'Email sending is not set up yet on this server.' : 'The email could not be sent.' }) });
   } catch { fail(res, 500, 'SCHEDULE_FAILED', 'Could not send the test email.'); }
 });

@@ -10,6 +10,7 @@ import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getPlanFeatures, getPlanLimits } from '../config/plans.js';
+import { brandingInputSchema } from '../lib/branding.js';
 import { deleteAuthUser } from '../lib/firebaseAdmin.js';
 import { twoStepStore } from '../lib/twoStep.js';
 import { guardWorkspaceParam, hasTwoStepOn } from '../lib/twoStepPolicy.js';
@@ -642,6 +643,32 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
       },
     });
   }
+});
+
+// GET/PUT /api/workspaces/:wsId/branding -> white-label settings (name, footer, colour). Changing them needs workspace settings permission and a plan with white label.
+workspacesRouter.get('/:wsId/branding', async (req: Request, res: Response) => {
+  try {
+    const wsId = String(req.params.wsId || '').trim();
+    const ws = await getFirestoreStore().getWorkspace(wsId);
+    if (!ws || !getMemberRole(ws, req.user!.uid)) { res.status(404).json({ error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found.' } }); return; }
+    res.json({ branding: ws.branding ?? { enabled: false, name: '', footer: '', accent: null }, allowed: getPlanFeatures(ws.plan).whiteLabel, canEdit: can(ws, req.user!.uid, 'workspace.settings'), hasLogo: Boolean(ws.hasLogo), workspaceName: ws.name });
+  } catch { res.status(500).json({ error: { code: 'BRANDING_FAILED', message: 'Failed to load branding.' } }); }
+});
+workspacesRouter.put('/:wsId/branding', async (req: Request, res: Response) => {
+  try {
+    const uid = req.user!.uid;
+    const wsId = String(req.params.wsId || '').trim();
+    const store = getFirestoreStore();
+    const ws = await store.getWorkspace(wsId);
+    if (!ws || !getMemberRole(ws, uid)) { res.status(404).json({ error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found.' } }); return; }
+    if (!can(ws, uid, 'workspace.settings')) { res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Your role does not allow changing workspace settings.' } }); return; }
+    if (!getPlanFeatures(ws.plan).whiteLabel) { res.status(403).json({ error: { code: 'PLAN_REQUIRED', message: 'White label is not included in your plan. Upgrade to use your own name and logo on reports.' } }); return; }
+    const parsed = brandingInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) { res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message || 'Check the branding settings.' } }); return; }
+    const updated = await store.updateWorkspace(wsId, { branding: parsed.data });
+    void recordAudit({ uid, action: 'workspace.branding', workspaceId: wsId, detail: parsed.data.enabled ? 'white label on' : 'white label off' });
+    res.json({ branding: updated.branding ?? parsed.data });
+  } catch { res.status(500).json({ error: { code: 'BRANDING_FAILED', message: 'Failed to save branding.' } }); }
 });
 
 // GET /api/workspaces/:wsId/logo -> members fetch workspace logo asset

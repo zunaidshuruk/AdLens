@@ -90,6 +90,9 @@ test('On-page and link-building APIs', async () => {
     assert.equal(chk.prospect.linkLive, true); assert.equal(chk.links[0].href, 'https://www.shop.com/guide');
     await call('PUT', `/api/links/prospects/${nolink.id}`, { pageUrl: 'https://nolink.example.org/' });
     assert.equal(((await (await call('POST', `/api/links/prospects/${nolink.id}/check`)).json()) as any).prospect.linkLive, false);
+    // Changing one field must leave the others alone.
+    const only = (await (await call('PUT', `/api/links/prospects/${blog.id}`, { status: 'replied' })).json()) as any;
+    assert.equal(only.prospect.status, 'replied'); assert.equal(only.prospect.notes, 'Emailed Sam'); assert.equal(only.prospect.pageUrl, 'https://blog.example.org/post');
     assert.equal((await call('PUT', `/api/links/prospects/${blog.id}`, { status: 'bogus' })).status, 400);
     assert.equal((await call('DELETE', `/api/links/prospects/${blog.id}`)).status, 200);
     assert.equal((await call('DELETE', `/api/links/prospects/${blog.id}`)).status, 404);

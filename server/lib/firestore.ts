@@ -94,10 +94,14 @@ export interface WorkspaceDoc {
   logoURL?: string | null;
   logoPath?: string | null;
   hasLogo?: boolean;
+  /** White-label settings (Business plans). */
+  branding?: WorkspaceBranding | null;
   defaults: WorkspaceDefaults;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface WorkspaceBranding { enabled: boolean; name: string; footer: string; accent: string | null }
 
 export interface ProjectDoc {
   id: string;
@@ -183,6 +187,7 @@ export interface FirestoreStoreAdapter {
       memberIds?: string[];
       logoURL?: string | null;
       logoPath?: string | null;
+      branding?: WorkspaceBranding | null;
       defaults?: WorkspaceDefaults;
     }
   ): Promise<WorkspaceDoc>;
@@ -340,6 +345,7 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     logoURL: typeof raw.logoURL === 'string' ? raw.logoURL : null,
     logoPath: typeof raw.logoPath === 'string' ? raw.logoPath : null,
     hasLogo: Boolean(raw.hasLogo),
+    branding: mapBranding(raw.branding),
     defaults: {
       currency: typeof defaultsRaw.currency === 'string' ? defaultsRaw.currency : 'USD',
       timezone: typeof defaultsRaw.timezone === 'string' ? defaultsRaw.timezone : 'UTC',
@@ -347,6 +353,12 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     createdAt: serializeTimestamp(raw.createdAt, nowIso),
     updatedAt: serializeTimestamp(raw.updatedAt, nowIso),
   };
+}
+
+function mapBranding(v: unknown): WorkspaceBranding | null {
+  if (!v || typeof v !== 'object') return null;
+  const b = v as Record<string, unknown>;
+  return { enabled: b.enabled === true, name: typeof b.name === 'string' ? b.name : '', footer: typeof b.footer === 'string' ? b.footer : '', accent: typeof b.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.accent) ? b.accent : null };
 }
 
 function mapCustomRoles(v: unknown): NonNullable<WorkspaceDoc['customRoles']> {
@@ -658,6 +670,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     if (patch.logoURL !== undefined) updateData.logoURL = patch.logoURL;
     if (patch.logoPath !== undefined) updateData.logoPath = patch.logoPath;
     if (patch.defaults !== undefined) updateData.defaults = patch.defaults;
+    if (patch.branding !== undefined) updateData.branding = patch.branding;
 
     await ref.update(updateData);
     const updated = await ref.get();
@@ -1245,6 +1258,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         ...(patch.logoURL !== undefined ? { logoURL: patch.logoURL } : {}),
         ...(patch.logoPath !== undefined ? { logoPath: patch.logoPath } : {}),
         ...(patch.defaults !== undefined ? { defaults: { ...patch.defaults } } : {}),
+        ...(patch.branding !== undefined ? { branding: patch.branding ? { ...patch.branding } : null } : {}),
         updatedAt: new Date().toISOString(),
       };
       workspaces.set(wsId, updated);

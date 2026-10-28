@@ -9,6 +9,7 @@ import { escapeHtml } from './digest.js';
 import type { ExploreCell, ExploreResult } from './exploreSpec.js';
 import { getAdminFirestore, getFirestoreStore } from './firestore.js';
 import type { MailMessage, MailResult } from './mailer.js';
+import { activeBrand } from './branding.js';
 import { snapshotToPdf } from './pdf.js';
 import { formatCell } from './snapshotFormat.js';
 import { snapshotForTarget } from './shareWiring.js';
@@ -93,20 +94,23 @@ function widgetBlock(w: Snapshot['widgets'][number]): { html: string; text: stri
   const rows = r.rows.slice(0, ROWS_IN_EMAIL);
   const th = r.columns.map((c) => `<th align="${c.role === 'metric' ? 'right' : 'left'}" style="padding:4px 8px;border-bottom:1px solid #ddd;font-size:12px;color:#666">${escapeHtml(c.label)}</th>`).join('');
   const body = rows.map((row) => `<tr>${r.columns.map((c) => `<td align="${c.role === 'metric' ? 'right' : 'left'}" style="padding:4px 8px;border-bottom:1px solid #eee;font-size:13px">${escapeHtml(cell(row[c.key], c.type))}</td>`).join('')}</tr>`).join('');
-  const more = r.rows.length > rows.length ? `<p style="margin:4px 0 0;color:#888;font-size:12px">Showing ${rows.length} of ${r.rows.length} rows. Open AdLens for the rest.</p>` : '';
+  const more = r.rows.length > rows.length ? `<p style="margin:4px 0 0;color:#888;font-size:12px">Showing ${rows.length} of ${r.rows.length} rows. Open the live report for the rest.</p>` : '';
   const text = `${w.title}\n${rows.map((row) => r.columns.map((c) => cell(row[c.key], c.type)).join(' | ')).join('\n')}`;
   return { html: `${head}<table cellspacing="0" style="border-collapse:collapse;width:100%"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>${more}`, text };
 }
 
-export function buildScheduleEmail(s: Pick<StoredSchedule, 'title' | 'frequency' | 'kind' | 'targetId'>, snap: Snapshot, projectName: string, appUrl: string, ownerEmail: string, test = false): Omit<MailMessage, 'to'> {
+export function buildScheduleEmail(s: Pick<StoredSchedule, 'title' | 'frequency' | 'kind' | 'targetId'>, snap: Snapshot, projectName: string, appUrl: string, ownerEmail: string, test = false, brand: { name: string; footer: string; accent: string | null } | null = null): Omit<MailMessage, 'to'> {
   const base = appUrl.replace(/\/+$/, '');
   const link = s.kind === 'dashboard' ? `${base}/dashboards/${s.targetId}` : `${base}/explore`;
   const blocks = snap.widgets.map(widgetBlock);
   const period = `${snap.range.startDate} to ${snap.range.endDate}`;
   const subject = `${test ? 'Test: ' : ''}${s.title} · ${s.frequency === 'weekly' ? 'weekly' : 'monthly'} snapshot (${projectName})`;
-  const foot = `Sent by AdLens because ${ownerEmail} scheduled it. To stop it, open ${s.kind === 'dashboard' ? 'the dashboard' : 'the report'} in AdLens, choose Share, and turn off the email.`;
-  const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#17181b"><h2 style="margin:0 0 2px">${escapeHtml(s.title)}</h2><p style="margin:0 0 4px;color:#666">${escapeHtml(projectName)} · ${escapeHtml(period)}</p>${test ? '<p style="color:#b45309">This is a test email.</p>' : ''}${blocks.map((b) => b.html).join('')}<p style="margin-top:20px"><a href="${escapeHtml(link)}">Open in AdLens</a></p><p style="color:#888;font-size:12px">${escapeHtml(foot)}</p></div>`;
-  const text = [`${s.title} — ${projectName} (${period})`, ...(test ? ['This is a test email.'] : []), ...blocks.map((b) => b.text), `Open in AdLens: ${link}`, foot].join('\n\n');
+  const who = brand ? brand.name : 'AdLens';
+  const foot = `Sent by ${who} because ${ownerEmail} scheduled it. To stop it, open ${s.kind === 'dashboard' ? 'the dashboard' : 'the report'} in ${brand ? 'the app' : 'AdLens'}, choose Share, and turn off the email.${brand?.footer ? ` ${brand.footer}` : ''}`;
+  const accent = brand?.accent ?? '#17181b';
+  const banner = brand ? `<p style="margin:0 0 10px;padding-bottom:8px;border-bottom:3px solid ${accent};font-weight:bold;font-size:16px;color:${accent}">${escapeHtml(brand.name)}</p>` : '';
+  const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#17181b">${banner}<h2 style="margin:0 0 2px">${escapeHtml(s.title)}</h2><p style="margin:0 0 4px;color:#666">${escapeHtml(projectName)} · ${escapeHtml(period)}</p>${test ? '<p style="color:#b45309">This is a test email.</p>' : ''}${blocks.map((b) => b.html).join('')}<p style="margin-top:20px"><a href="${escapeHtml(link)}">${brand ? 'Open the live report' : 'Open in AdLens'}</a></p><p style="color:#888;font-size:12px">${escapeHtml(foot)}</p></div>`;
+  const text = [`${s.title} — ${projectName} (${period})`, ...(test ? ['This is a test email.'] : []), ...blocks.map((b) => b.text), `${brand ? 'Open the live report' : 'Open in AdLens'}: ${link}`, ...(brand ? [brand.name] : []), foot].join('\n\n');
   return { subject, html, text };
 }
 
@@ -122,7 +126,7 @@ export interface RunSchedulesDeps {
   appUrl: string;
   sendMail(m: MailMessage): Promise<MailResult>;
   /** Null when the schedule should be dropped (project or owner gone). */
-  context(s: StoredSchedule): Promise<{ projectName: string; ownerEmail: string; emailAllowed: boolean } | null>;
+  context(s: StoredSchedule): Promise<{ projectName: string; ownerEmail: string; emailAllowed: boolean; brand?: { name: string; footer: string; accent: string | null } | null } | null>;
   snapshot(s: StoredSchedule, now: Date): Promise<{ title: string; snapshot: Snapshot }>;
   force?: boolean;
 }
@@ -138,8 +142,8 @@ export async function runEmailSchedules(deps: RunSchedulesDeps): Promise<{ check
     if (!ctx.emailAllowed) continue;
     try {
       const { title, snapshot } = await deps.snapshot(s, now);
-      const mail = buildScheduleEmail({ ...s, title }, snapshot, ctx.projectName, deps.appUrl, ctx.ownerEmail);
-      const attachments = s.attachPdf ? [{ filename: pdfName(title, snapshot), content: snapshotToPdf(snapshot, ctx.projectName) }] : undefined;
+      const mail = buildScheduleEmail({ ...s, title }, snapshot, ctx.projectName, deps.appUrl, ctx.ownerEmail, false, ctx.brand ?? null);
+      const attachments = s.attachPdf ? [{ filename: pdfName(title, snapshot), content: snapshotToPdf(snapshot, ctx.projectName, ctx.brand ?? null) }] : undefined;
       let ok = 0;
       for (const to of s.emails) if ((await deps.sendMail({ ...mail, to, ...(attachments ? { attachments } : {}) })).ok) ok++;
       if (ok > 0) { await deps.store.put({ ...s, title, lastSentAt: now.toISOString(), lastError: undefined }); out.sent++; }
@@ -159,6 +163,6 @@ export async function productionScheduleContext(s: StoredSchedule) {
   const project = await fs.getProject(s.workspaceId, s.projectId);
   if (!project) return null;
   const owner = await fs.getUser(s.createdBy).catch(() => null);
-  return { projectName: project.name, ownerEmail: (owner as { email?: string } | null)?.email ?? 'a member of your workspace', emailAllowed: getPlanFeatures(ws.plan).emailSummaries };
+  return { projectName: project.name, ownerEmail: (owner as { email?: string } | null)?.email ?? 'a member of your workspace', emailAllowed: getPlanFeatures(ws.plan).emailSummaries, brand: activeBrand(ws) };
 }
 export const productionSnapshot = (s: StoredSchedule, now: Date) => snapshotForTarget({ ...s, ownerUid: s.createdBy }, undefined, now);

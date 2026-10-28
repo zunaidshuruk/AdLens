@@ -1,4 +1,5 @@
 import { SessionsCard } from '../components/SessionsCard';
+import { WorkspaceBrandingCard } from '../components/WorkspaceBrandingCard';
 import { SsoSettingsCard } from '../components/SsoSettingsCard';
 import { WorkspaceActivityCard } from '../components/WorkspaceActivityCard';
 import { ensureFontLoaded } from '../utils/fontLoader';
@@ -2847,6 +2848,7 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {showSection('workspace') && <PlanCard />}
+      {showSection('workspace') && <WorkspaceBrandingCard />}
       {showSection('workspace') && <TeamCard />}
       {showSection('workspace') && <RolesCard />}
       {showSection('preferences') && <EmailSummariesCard />}

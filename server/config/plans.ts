@@ -59,13 +59,14 @@ export interface ContentLimits {
   /** Sprint 43: saved AI visibility questions and competitor watches. */
   maxAiPrompts: number;
   maxWatches: number;
+  maxLeads: number;
 }
 
 export const CONTENT_LIMITS: Record<string, ContentLimits> = {
-  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3, maxTrackedKeywords: 100, maxKeywordLists: 10, maxLinkProspects: 200, maxAiPrompts: 20, maxWatches: 5 },
-  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAlertRules: 1, maxShareLinks: 1, maxEmailSchedules: 0, maxCrawlPages: 25, maxAgents: 0, maxTrackedKeywords: 10, maxKeywordLists: 1, maxLinkProspects: 20, maxAiPrompts: 3, maxWatches: 1 },
-  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3, maxTrackedKeywords: 100, maxKeywordLists: 10, maxLinkProspects: 200, maxAiPrompts: 20, maxWatches: 5 },
-  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAlertRules: 50, maxShareLinks: 50, maxEmailSchedules: 50, maxCrawlPages: 300, maxAgents: 10, maxTrackedKeywords: 500, maxKeywordLists: 50, maxLinkProspects: 1000, maxAiPrompts: 100, maxWatches: 20 },
+  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3, maxTrackedKeywords: 100, maxKeywordLists: 10, maxLinkProspects: 200, maxAiPrompts: 20, maxWatches: 5, maxLeads: 200 },
+  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAlertRules: 1, maxShareLinks: 1, maxEmailSchedules: 0, maxCrawlPages: 25, maxAgents: 0, maxTrackedKeywords: 10, maxKeywordLists: 1, maxLinkProspects: 20, maxAiPrompts: 3, maxWatches: 1, maxLeads: 20 },
+  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3, maxTrackedKeywords: 100, maxKeywordLists: 10, maxLinkProspects: 200, maxAiPrompts: 20, maxWatches: 5, maxLeads: 200 },
+  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAlertRules: 50, maxShareLinks: 50, maxEmailSchedules: 50, maxCrawlPages: 300, maxAgents: 10, maxTrackedKeywords: 500, maxKeywordLists: 50, maxLinkProspects: 1000, maxAiPrompts: 100, maxWatches: 20, maxLeads: 1000 },
 };
 
 export function getContentLimits(plan: string | undefined | null): ContentLimits {
@@ -81,13 +82,15 @@ export interface PlanFeatures {
   historyDays: number | null;
   /** Weekly summary and unusual-day alert emails. */
   emailSummaries: boolean;
+  /** Own name, logo and colour on shared pages, PDFs and scheduled emails. */
+  whiteLabel: boolean;
 }
 
 export const PLAN_FEATURES: Record<string, PlanFeatures> = {
-  beta: { maxMembers: 10, maxMcpKeys: 10, historyDays: null, emailSummaries: true },
-  free: { maxMembers: 1, maxMcpKeys: 1, historyDays: 10, emailSummaries: false },
-  pro: { maxMembers: 3, maxMcpKeys: 5, historyDays: 487, emailSummaries: true },
-  business: { maxMembers: 15, maxMcpKeys: 10, historyDays: 487, emailSummaries: true },
+  beta: { maxMembers: 10, maxMcpKeys: 10, historyDays: null, emailSummaries: true, whiteLabel: true },
+  free: { maxMembers: 1, maxMcpKeys: 1, historyDays: 10, emailSummaries: false, whiteLabel: false },
+  pro: { maxMembers: 3, maxMcpKeys: 5, historyDays: 487, emailSummaries: true, whiteLabel: false },
+  business: { maxMembers: 15, maxMcpKeys: 10, historyDays: 487, emailSummaries: true, whiteLabel: true },
 };
 
 export function getPlanFeatures(plan: string | undefined | null): PlanFeatures {
@@ -195,6 +198,7 @@ export function validatePlanSettings(settings: Record<string, PlanSetting>): voi
     for (const [g] of groups) {
       for (const [k, v] of Object.entries(g ?? {})) {
         if (k === 'emailSummaries') { if (typeof v !== 'boolean') throw new Error('Email summaries must be on or off.'); continue; }
+        if (k === 'whiteLabel') { if (typeof v !== 'boolean') throw new Error('White label must be on or off.'); continue; }
         if (k === 'historyDays' && v === null) continue;
         if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1_000_000) throw new Error(`"${k}" must be a whole number from 0 up.`);
       }
@@ -231,6 +235,7 @@ export function applyPlanConfig(settings: Record<string, PlanSetting> | null | u
       maxMembers: f.maxMembers, maxMcpKeys: f.maxMcpKeys,
       historyDays: rawHist === null ? null : rawHist === undefined ? baseFeatures.historyDays : f.historyDays,
       emailSummaries: typeof (st.features as Record<string, unknown> | undefined)?.emailSummaries === 'boolean' ? Boolean((st.features as Record<string, unknown>).emailSummaries) : baseFeatures.emailSummaries,
+      whiteLabel: typeof (st.features as Record<string, unknown> | undefined)?.whiteLabel === 'boolean' ? Boolean((st.features as Record<string, unknown>).whiteLabel) : baseFeatures.whiteLabel,
     };
     PLAN_INFO[id] = {
       label: typeof st.label === 'string' && st.label.trim() ? st.label.trim().slice(0, 40) : info.label,

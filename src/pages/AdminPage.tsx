@@ -322,7 +322,7 @@ function Users({ onOpen, canReset }: { onOpen: (id: string) => void; canReset: b
 }
 
 const ACTION_TEXT: Record<string, string> = {
-  'twostep.enabled': 'Two-step turned on', 'twostep.disabled': 'Two-step turned off', 'twostep.backup_regenerated': 'New backup codes', 'twostep.reset_by_staff': 'Two-step reset by staff', 'workspace.two_step_policy': 'Two-step rule for owners and admins changed',
+  'twostep.enabled': 'Two-step turned on', 'twostep.disabled': 'Two-step turned off', 'twostep.backup_regenerated': 'New backup codes', 'twostep.reset_by_staff': 'Two-step reset by staff', 'workspace.two_step_policy': 'Two-step rule for owners and admins changed', 'workspace.branding': 'White-label settings changed',
   'plan.changed': 'Plan changed', 'plan.requested': 'Upgrade requested', 'invoice.recorded': 'Payment recorded',
   'member.added': 'Person added', 'member.invited': 'Person invited', 'member.removed': 'Person removed', 'member.role_changed': 'Role changed',
   'connection.google.connected': 'Google connected', 'connection.google.disconnected': 'Google disconnected',

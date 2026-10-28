@@ -314,7 +314,7 @@ function renderWidget(doc: PdfDoc, w: SnapshotWidget) {
   doc.y -= 6;
 }
 
-export function snapshotToPdf(snap: Snapshot, projectName?: string): Buffer {
+export function snapshotToPdf(snap: Snapshot, projectName?: string, brand?: { name: string; footer: string } | null): Buffer {
   const doc = new PdfDoc();
   doc.y -= 18;
   doc.text(MARGIN, doc.y, snap.title, 18, { bold: true });
@@ -325,5 +325,8 @@ export function snapshotToPdf(snap: Snapshot, projectName?: string): Buffer {
   doc.line(MARGIN, doc.y, MARGIN + CONTENT_W, doc.y);
   const widgets = [...snap.widgets].sort((a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x);
   for (const w of widgets) renderWidget(doc, w);
-  return doc.build(`AdLens · saved ${snap.generatedAt.slice(0, 10)}`);
+  const saved = `saved ${snap.generatedAt.slice(0, 10)}`;
+  // A white-label footer carries the customer's name and line instead of ours. Kept short so it never runs into the page number.
+  const foot = brand ? [brand.name, saved, brand.footer].filter(Boolean).join(' · ') : `AdLens · ${saved}`;
+  return doc.build(foot.length > 100 ? `${foot.slice(0, 99)}…` : foot);
 }

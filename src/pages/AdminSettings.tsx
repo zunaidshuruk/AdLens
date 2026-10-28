@@ -114,8 +114,10 @@ export function PlansEditor() {
               <Num label="Link building sites" value={p.content.maxLinkProspects} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxLinkProspects: v ?? 0 } }))} />
               <Num label="AI visibility questions" value={p.content.maxAiPrompts} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxAiPrompts: v ?? 0 } }))} />
               <Num label="Competitor watches" value={p.content.maxWatches} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxWatches: v ?? 0 } }))} />
+              <Num label="Leads in the lead list" value={p.content.maxLeads} onChange={(v) => patch(p.id, (x) => ({ ...x, content: { ...x.content, maxLeads: v ?? 0 } }))} />
               <Num label="Report history (days back)" nullable value={p.features.historyDays} hint="Leave empty for no limit" onChange={(v) => patch(p.id, (x) => ({ ...x, features: { ...x.features, historyDays: v } }))} />
               <label className="flex items-center gap-2 text-sm text-fg pt-6"><input type="checkbox" checked={p.features.emailSummaries} onChange={(e) => patch(p.id, (x) => ({ ...x, features: { ...x.features, emailSummaries: e.target.checked } }))} />Email summaries and alerts</label>
+              <label className="flex items-center gap-2 text-sm text-fg pt-6"><input type="checkbox" checked={p.features.whiteLabel} onChange={(e) => patch(p.id, (x) => ({ ...x, features: { ...x.features, whiteLabel: e.target.checked } }))} />White label (own name and logo on shared pages, PDFs and emails)</label>
             </div>
             <div className="flex flex-wrap gap-2">
               {!p.custom && <button type="button" className={btn} onClick={() => setResets((r) => new Set(r).add(p.id))} disabled={!view.saved[p.id] || resets.has(p.id)}>{resets.has(p.id) ? 'Will go back to the shipped numbers when you save' : 'Put back the shipped numbers'}</button>}

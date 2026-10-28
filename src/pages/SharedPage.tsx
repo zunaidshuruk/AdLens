@@ -1,7 +1,7 @@
 import { Download } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiClient, type SharedSnapshot } from '../api/client';
+import { apiClient, type PublicBrand, type SharedSnapshot } from '../api/client';
 import { AdLensLogo } from '../components/AdLensLogo';
 import { WidgetCard } from '../components/DashboardWidgetView';
 import { APP_NAME } from '../config/app';
@@ -14,6 +14,7 @@ export const SharedPage: React.FC = () => {
   const { token = '' } = useParams();
   const [phase, setPhase] = useState<'loading' | 'password' | 'ready' | 'gone'>('loading');
   const [title, setTitle] = useState('');
+  const [brand, setBrand] = useState<PublicBrand | null>(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -31,7 +32,7 @@ export const SharedPage: React.FC = () => {
 
   const open = async (pw?: string) => {
     setBusy(true); setError(null);
-    try { setData(await apiClient.sharedOpen(token, pw)); setUsedPassword(pw); setPhase('ready'); }
+    try { const r = await apiClient.sharedOpen(token, pw); setData(r); if (r.brand) setBrand(r.brand); setUsedPassword(pw); setPhase('ready'); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not open this page.'); }
     setBusy(false);
   };
@@ -39,6 +40,7 @@ export const SharedPage: React.FC = () => {
   useEffect(() => {
     apiClient.sharedMeta(token).then((m) => {
       setTitle(m.title);
+      if (m.brand) setBrand(m.brand);
       if (m.needsPassword) setPhase('password'); else void open();
     }).catch(() => setPhase('gone'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,8 +55,11 @@ export const SharedPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-page text-fg">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-2 font-semibold"><AdLensLogo className="w-6 h-6" /><span>{APP_NAME}</span><span className="text-xs font-normal text-fg-muted">· shared, read-only</span></div>
+      <header className="border-b border-line bg-surface" style={brand?.accent ? { borderBottom: `3px solid ${brand.accent}` } : undefined}>
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-2 font-semibold">
+          {brand ? (<>{brand.logo && <img src={brand.logo} alt="" className="h-7 max-w-[160px] object-contain" />}<span style={brand.accent ? { color: brand.accent } : undefined}>{brand.name}</span></>) : (<><AdLensLogo className="w-6 h-6" /><span>{APP_NAME}</span></>)}
+          <span className="text-xs font-normal text-fg-muted">· shared, read-only</span>
+        </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6 space-y-4">
         {phase === 'loading' && <div aria-busy="true" className="h-24 rounded-xl bg-fill-2 animate-pulse" />}
@@ -102,6 +107,7 @@ export const SharedPage: React.FC = () => {
           </>
         )}
       </main>
+      {brand?.footer && <footer className="mx-auto max-w-6xl px-4 pb-8 text-xs text-fg-muted">{brand.footer}</footer>}
     </div>
   );
 };

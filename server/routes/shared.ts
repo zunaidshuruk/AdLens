@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { brandForWorkspace } from '../lib/branding.js';
 import { pdfName } from '../lib/emailSchedules.js';
 import { snapshotToPdf } from '../lib/pdf.js';
 import { checkRateLimit } from '../lib/rateLimiter.js';
@@ -30,7 +31,7 @@ sharedRouter.get('/:token', async (req: Request, res: Response) => {
     if (!rl.allowed) return fail(res, 429, 'RATE_LIMITED', 'Too many requests. Try again in a minute.');
     const share = await find(String(req.params.token));
     if (!share) return notAvailable(res);
-    res.json({ title: share.title, kind: share.kind, needsPassword: Boolean(share.passwordHash) });
+    res.json({ title: share.title, kind: share.kind, needsPassword: Boolean(share.passwordHash), brand: await brandForWorkspace(share.workspaceId).catch(() => null) });
   } catch { fail(res, 500, 'SHARE_FAILED', 'Something went wrong.'); }
 });
 
@@ -51,7 +52,7 @@ sharedRouter.post('/:token', async (req: Request, res: Response) => {
     }
     const store = getShareStore();
     await store.put({ ...share, views: share.views + 1, lastViewedAt: new Date().toISOString() }).catch(() => undefined);
-    res.json({ snapshot: share.snapshot, expiresAt: share.expiresAt ?? null });
+    res.json({ snapshot: share.snapshot, expiresAt: share.expiresAt ?? null, brand: await brandForWorkspace(share.workspaceId).catch(() => null) });
   } catch { fail(res, 500, 'SHARE_FAILED', 'Something went wrong.'); }
 });
 
@@ -70,6 +71,6 @@ sharedRouter.post('/:token/pdf', async (req: Request, res: Response) => {
     if (share.passwordHash && !checkPassword(share, password)) return fail(res, 401, password ? 'WRONG_PASSWORD' : 'PASSWORD_REQUIRED', password ? 'That password is not right.' : 'This page needs a password.');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${pdfName(share.snapshot.title, share.snapshot)}"`);
-    res.send(snapshotToPdf(share.snapshot));
+    res.send(snapshotToPdf(share.snapshot, undefined, await brandForWorkspace(share.workspaceId).catch(() => null)));
   } catch { fail(res, 500, 'SHARE_FAILED', 'Something went wrong.'); }
 });

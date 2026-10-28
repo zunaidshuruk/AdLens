@@ -65,6 +65,12 @@ const fields = z.object({
   notes: z.string().trim().max(1000).default(''),
 });
 
+// Edits send only what changed. (Zod 4 fills defaults even inside .partial(), which would wipe the other fields, so this schema has none.)
+const patchFields = z.object({
+  pageUrl: z.string().trim().max(500), targetUrl: z.string().trim().max(500), status: z.enum(PROSPECT_STATUSES),
+  contactEmail: z.string().trim().max(120), notes: z.string().trim().max(1000),
+}).partial();
+
 linksRouter.get('/prospects', async (req, res) => {
   try {
     const s = await scope(req, res, false); if (!s) return;
@@ -101,7 +107,7 @@ linksRouter.put('/prospects/:id', async (req, res) => {
   try {
     const s = await scope(req, res, true); if (!s) return;
     if (!idOk.safeParse(req.params.id).success) return fail(res, 404, 'NOT_FOUND', 'That site was not found.');
-    const parsed = fields.partial().safeParse(req.body);
+    const parsed = patchFields.safeParse(req.body);
     if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', 'Check the details and try again.');
     const docs = getProjectDocsStore();
     const cur = await docs.get(s.ws, s.project, 'linkProspects', req.params.id!);

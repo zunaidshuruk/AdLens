@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { apiClient, type ContentBriefInfo, type SeoCrawlReport, type SeoIssueInfo, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
 import { ContentBrief, TopicResearch, WritingAssistant } from '../components/seo/Content';
+import { PpcPlanner } from '../components/seo/PpcPlanner';
 import { AiVisibility, CompetitorWatch, DomainOverview } from '../components/seo/AiAndCompetitors';
 import { BacklinkAudit, BacklinkGap, LinkBuilding } from '../components/seo/Backlinks';
 import { LogAnalyzer, OnPageChecker } from '../components/seo/OnPageAndLogs';
@@ -328,7 +329,7 @@ function SpeedTest() {
 
 const GROUPS = [
   { key: 'check', label: 'Check', tabs: [['page', 'Page checker'], ['onpage', 'On-page checker'], ['speed', 'Speed test'], ['site', 'Site audit'], ['opps', 'Search opportunities']] },
-  { key: 'keywords', label: 'Keywords', tabs: [['keywords', 'Keyword research'], ['gap', 'Topic gap'], ['lists', 'Keyword lists']] },
+  { key: 'keywords', label: 'Keywords', tabs: [['keywords', 'Keyword research'], ['gap', 'Topic gap'], ['lists', 'Keyword lists'], ['ppc', 'PPC keyword tool']] },
   { key: 'rank', label: 'Rankings and traffic', tabs: [['rank', 'Rank tracking'], ['traffic', 'Organic traffic'], ['logs', 'Log analyzer']] },
   { key: 'content', label: 'Content', tabs: [['topics', 'Topic research'], ['brief', 'Content brief'], ['writer', 'Writing assistant']] },
   { key: 'ai', label: 'AI and competitors', tabs: [['aivis', 'AI visibility'], ['domain', 'Domain overview'], ['watch', 'Competitor watch']] },
@@ -368,6 +369,7 @@ export const SeoPage: React.FC = () => {
         {tab === 'keywords' && <KeywordResearch />}
         {tab === 'gap' && <TopicGap />}
         {tab === 'lists' && <KeywordLists />}
+        {tab === 'ppc' && <PpcPlanner />}
         {tab === 'rank' && <RankTracking goToLists={() => go('lists')} />}
         {tab === 'traffic' && <TrafficInsights />}
         {tab === 'logs' && <LogAnalyzer />}

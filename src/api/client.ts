@@ -325,8 +325,8 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number };
-  features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number; maxLeads: number };
+  features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean; whiteLabel: boolean };
 }
 export interface BillingView {
   workspaceId: string; workspaceName: string; role: string | null; canRequestUpgrade: boolean; isOperator: boolean;
@@ -347,8 +347,8 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number };
-  features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number; maxLeads: number };
+  features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean; whiteLabel: boolean };
 }
 export interface AdminFlags {
   signupsOpen: boolean; maintenanceMode: boolean; maintenanceMessage: string;
@@ -489,6 +489,11 @@ export interface AiVisOverview { prompts: { id: string; text: string; runs: numb
 export interface DomainOverviewInfo { domain: string; url: string; status: number; title: string | null; description: string | null; lang: string | null; httpsOnly: boolean; ms: number; htmlKb: number; structuredData: string[]; social: { name: string; url: string }[]; tech: string[]; trackers: string[]; topTerms: string[]; robots: { found: boolean; sitemaps: string[]; blocksAll: boolean; blockedBots: string[] }; sitemap: { found: boolean; urls: number; truncated: boolean; sections: { section: string; urls: number }[]; latestChange: string | null } }
 export interface WatchInfo { id: string; domain: string; sitemapUrl: string | null; pages: string[]; enabled: boolean; createdAt: string; lastCheckedAt: string | null; lastError: string | null }
 export interface WatchEventInfo { id: string; watchId: string; at: string; type: string; url: string; detail: string }
+export interface BrandingInfo { enabled: boolean; name: string; footer: string; accent: string | null }
+export interface PublicBrand { name: string; footer: string; accent: string | null; logo: string | null }
+export interface LeadAuditInfo { url: string; score: number; at: string; issues: { title: string; severity: string }[] }
+export interface LeadInfo { id: string; name: string; website: string; email: string; phone: string; status: 'new' | 'contacted' | 'meeting' | 'proposal' | 'won' | 'lost'; value: number; followUp: string; notes: string; audit: LeadAuditInfo | null; createdAt: string; updatedAt: string }
+export type LeadInput = Partial<Pick<LeadInfo, 'name' | 'website' | 'email' | 'phone' | 'status' | 'value' | 'followUp' | 'notes'>>
 export interface LinkProspectInfo { id: string; domain: string; pageUrl: string; targetUrl: string; status: 'new' | 'contacted' | 'replied' | 'won' | 'lost'; contactEmail: string; notes: string; linkLive: boolean | null; checkedAt: string | null; createdBy: string; createdAt: string; updatedAt: string }
 
 export interface ContentBriefInfo { keyword: string; pages: { url: string; title: string | null; words: number; headings: string[] }[]; length: { median: number; min: number; max: number; recommended: number }; outline: { text: string; pages: number }[]; questions: string[]; terms: { term: string; pages: number; avgCount: number }[]; titles: string[] }
@@ -907,12 +912,12 @@ export const apiClient = {
   async refreshShare(id: string): Promise<ShareInfo> { return (await apiRequest<{ share: ShareInfo }>(`/api/shares/${encodeURIComponent(id)}/refresh`, { method: 'POST' })).share; },
   async deleteShare(id: string): Promise<void> { await apiRequest<void>(`/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   /** Public: no sign-in. */
-  async sharedMeta(token: string): Promise<{ title: string; kind: 'dashboard' | 'report'; needsPassword: boolean }> {
+  async sharedMeta(token: string): Promise<{ title: string; kind: 'dashboard' | 'report'; needsPassword: boolean; brand?: PublicBrand | null }> {
     const r = await fetch(`/api/shared/${encodeURIComponent(token)}`);
     if (!r.ok) throw new Error('This link is not available. It may have expired or been turned off.');
     return r.json();
   },
-  async sharedOpen(token: string, password?: string): Promise<{ snapshot: SharedSnapshot; expiresAt: string | null }> {
+  async sharedOpen(token: string, password?: string): Promise<{ snapshot: SharedSnapshot; expiresAt: string | null; brand?: PublicBrand | null }> {
     const r = await fetch(`/api/shared/${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
     if (!r.ok) {
       const j = (await r.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -942,6 +947,13 @@ export const apiClient = {
   async rankHistory(days: 28 | 90): Promise<{ days: number; summary: RankSummaryInfo; tracking: RankTrackingState | null; daysStored: number }> { return apiRequest(`/api/rank/history?days=${days}`); },
   async rankTraffic(): Promise<{ startDate: string; endDate: string; rows: RankPageTraffic[]; totals: { sessions: number; clicks: number; hiddenClicks: number; hiddenShare: number } }> { return apiRequest('/api/rank/traffic', { method: 'POST', body: '{}' }); },
   async seoOnPage(url: string, keyword: string, competitors: string[]): Promise<{ report: OnPageReportInfo; competitorErrors: string[] }> { return apiRequest('/api/seo/onpage', { method: 'POST', body: JSON.stringify({ url, keyword, competitors }) }); },
+  async getBranding(wsId: string): Promise<{ branding: BrandingInfo; allowed: boolean; canEdit: boolean; hasLogo: boolean }> { return apiRequest(`/api/workspaces/${encodeURIComponent(wsId)}/branding`); },
+  async saveBranding(wsId: string, b: BrandingInfo): Promise<{ branding: BrandingInfo }> { return apiRequest(`/api/workspaces/${encodeURIComponent(wsId)}/branding`, { method: 'PUT', body: JSON.stringify(b) }); },
+  async leadsList(): Promise<{ leads: LeadInfo[]; limit: number; canEdit: boolean }> { return apiRequest('/api/leads'); },
+  async leadCreate(input: LeadInput): Promise<{ lead: LeadInfo }> { return apiRequest('/api/leads', { method: 'POST', body: JSON.stringify(input) }); },
+  async leadUpdate(id: string, patch: LeadInput): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }); },
+  async leadDelete(id: string): Promise<void> { await apiRequest(`/api/leads/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async leadAudit(id: string): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}/audit`, { method: 'POST', body: '{}' }); },
   async aivisOverview(): Promise<AiVisOverview> { return apiRequest('/api/aivis/overview'); },
   async aivisAddPrompts(texts: string[]): Promise<{ added: number; skipped: number }> { return apiRequest('/api/aivis/prompts', { method: 'POST', body: JSON.stringify({ texts }) }); },
   async aivisDeletePrompt(id: string): Promise<void> { await apiRequest(`/api/aivis/prompts/${encodeURIComponent(id)}`, { method: 'DELETE' }); },

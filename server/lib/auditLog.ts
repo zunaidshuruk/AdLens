@@ -40,7 +40,8 @@ export type AuditAction =
   | 'twostep.disabled'
   | 'twostep.backup_regenerated'
   | 'twostep.reset_by_staff'
-  | 'workspace.two_step_policy';
+  | 'workspace.two_step_policy'
+  | 'workspace.branding';
 
 export interface AuditEvent {
   id: string;
