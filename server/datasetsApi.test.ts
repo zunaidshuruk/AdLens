@@ -56,6 +56,18 @@ test('Uploaded tables API: upload, list, query, isolation, plan limit and delete
     assert.equal(other.status, 404);
     assert.equal((await call('/api/explore/data/run', { method: 'POST', body: { datasetId: ds.id, metrics: ['c2'] } })).status, 400);
 
+    // connectors: the gallery, plain refusals, and nothing secret in any answer
+    const gallery = (await (await call('/api/datasets/connectors')).json()) as any;
+    assert.ok(gallery.connectors.some((c: any) => c.id === 'shopify' && c.status === 'live'));
+    assert.ok(gallery.connectors.some((c: any) => c.id === 'tiktok_ads' && c.status === 'soon'));
+    const soon = await call('/api/datasets/connect', { method: 'POST', body: { name: 'T', connector: 'tiktok_ads', values: {} } });
+    assert.equal(soon.status, 400);
+    assert.equal(((await soon.json()) as any).error.code, 'CONNECTOR_FAILED');
+    const missing = await call('/api/datasets/connect', { method: 'POST', body: { name: 'S', connector: 'shopify', values: { shop: 'x' } } });
+    assert.equal(missing.status, 400);
+    assert.equal((await call('/api/datasets/connect', { method: 'POST', body: { name: 'S', connector: 'google_sheets', values: { url: 'https://evil.com' } }, token: 'token-bob' })).status, 404);
+    assert.equal((await call(`/api/datasets/${ds.id}/refresh`, { method: 'POST' })).status, 400);
+
     // the beta test plan allows 10 tables, so the limit message is covered by the unit test; here delete works
     assert.equal((await call(`/api/datasets/${ds.id}`, { method: 'DELETE' })).status, 204);
     assert.equal((await call(`/api/datasets/${ds.id}`, { method: 'DELETE' })).status, 404);

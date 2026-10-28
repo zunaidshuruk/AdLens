@@ -23,11 +23,17 @@ export interface Dataset {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** Set when the table is pulled from an outside service (Sheets, Shopify…) and can be refreshed. Holds no secrets. */
+  connector?: { id: string; label: string; params: Record<string, string> };
+  /** The connector's secrets, sealed with the server key. Never sent to the browser. */
+  sealedSecret?: string;
+  syncedAt?: string;
+  note?: string;
 }
-export type DatasetSummary = Omit<Dataset, 'rows'>;
+export type DatasetSummary = Omit<Dataset, 'rows' | 'sealedSecret'>;
 
 export class DatasetError extends Error {
-  constructor(readonly code: 'INVALID_CSV' | 'LIMIT_REACHED' | 'NOT_FOUND' | 'INVALID_QUERY', message: string, readonly status: number) {
+  constructor(readonly code: 'INVALID_CSV' | 'LIMIT_REACHED' | 'NOT_FOUND' | 'INVALID_QUERY' | 'CONNECTOR_FAILED', message: string, readonly status: number) {
     super(message);
   }
 }
@@ -140,7 +146,8 @@ export const datasetInputSchema = z.object({
 });
 
 const asDataset = (d: StoredDoc): Dataset => d as unknown as Dataset;
-const summary = (d: Dataset): DatasetSummary => { const { rows: _r, ...rest } = d; return rest; };
+/** What the browser may see of a table: no rows, no secrets. */
+export const summary = (d: Dataset): DatasetSummary => { const { rows: _r, sealedSecret: _s, ...rest } = d; return rest; };
 
 export async function listDatasets(store: ProjectDocsStore, ws: string, project: string): Promise<DatasetSummary[]> {
   const docs = await store.list(ws, project, 'datasets');

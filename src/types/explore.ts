@@ -15,6 +15,20 @@ export interface DatasetInfo {
   columns: { key: string; label: string; type: 'text' | 'number' | 'date' }[];
   catalog: { dimensions: ExploreFieldInfo[]; metrics: ExploreFieldInfo[] };
   preview?: (string | number | null)[][];
+  /** Set for tables pulled from an outside service; they can be refreshed. */
+  connector?: { id: string; label: string };
+  syncedAt?: string;
+  note?: string;
+}
+
+export interface ConnectorInfo {
+  id: string;
+  label: string;
+  group: string;
+  status: 'live' | 'soon';
+  blurb: string;
+  fields: { key: string; label: string; secret?: boolean; placeholder?: string; help?: string }[];
+  steps?: string[];
 }
 
 export interface ExploreFilter { field: string; op: ExploreFilterOp; value: string }

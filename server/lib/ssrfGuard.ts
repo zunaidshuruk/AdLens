@@ -277,7 +277,11 @@ export function guardedRequest(url: URL, opts: GuardedRequestOptions = {}, deps:
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           res.resume();
-          return finish(() => reject(new SsrfError('REDIRECT_BLOCKED', 'The server tried to redirect the request, which is not allowed.')));
+          const err = new SsrfError('REDIRECT_BLOCKED', 'The server tried to redirect the request, which is not allowed.');
+          // Callers that may follow redirects to hosts they trust can read where it pointed (the guard itself never follows).
+          const loc = res.headers.location;
+          if (typeof loc === 'string') (err as SsrfError & { location?: string }).location = loc.slice(0, 2048);
+          return finish(() => reject(err));
         }
         const chunks: Buffer[] = [];
         let size = 0;

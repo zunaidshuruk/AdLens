@@ -785,6 +785,15 @@ export const apiClient = {
     const res = await apiRequest<{ dataset: import('../types/explore.js').DatasetInfo }>('/api/datasets', { method: 'POST', body: JSON.stringify({ name, csv }) });
     return res.dataset;
   },
+  async listConnectors(): Promise<import('../types/explore.js').ConnectorInfo[]> {
+    return (await apiRequest<{ connectors: import('../types/explore.js').ConnectorInfo[] }>('/api/datasets/connectors')).connectors;
+  },
+  async connectDataset(name: string, connector: string, values: Record<string, string>): Promise<import('../types/explore.js').DatasetInfo> {
+    return (await apiRequest<{ dataset: import('../types/explore.js').DatasetInfo }>('/api/datasets/connect', { method: 'POST', body: JSON.stringify({ name, connector, values }) })).dataset;
+  },
+  async refreshDataset(id: string): Promise<import('../types/explore.js').DatasetInfo> {
+    return (await apiRequest<{ dataset: import('../types/explore.js').DatasetInfo }>(`/api/datasets/${encodeURIComponent(id)}/refresh`, { method: 'POST' })).dataset;
+  },
   async deleteDataset(id: string): Promise<void> {
     await apiRequest<void>(`/api/datasets/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },

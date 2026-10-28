@@ -1,6 +1,7 @@
-import { Download, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react';
+import { Download, Play, Plus, RefreshCw, Save, Trash2, Upload, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../api/client';
+import { ConnectPanel } from '../components/ConnectPanel';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { useDateRange } from '../hooks';
@@ -30,7 +31,7 @@ import {
   validateSpec,
 } from '../utils/exploreState.js';
 
-const SOURCE_LABEL: Record<ExploreSource, string> = { ga4: 'Google Analytics 4', search_console: 'Search Console', meta: 'Meta Ads', data: 'Uploaded data' };
+const SOURCE_LABEL: Record<ExploreSource, string> = { ga4: 'Google Analytics 4', search_console: 'Search Console', meta: 'Meta Ads', data: 'Other sources' };
 const AGGREGATE_LABEL: Record<ExploreAggregate, string> = { sum: 'Add up', avg: 'Average', min: 'Smallest', max: 'Largest', count: 'Count (how many have a value)' };
 
 function DataPanel(props: {
@@ -41,8 +42,9 @@ function DataPanel(props: {
   onAggregate: (a: ExploreAggregate) => void;
   onUploaded: (d: DatasetInfo) => void;
   onDeleted: (id: string) => void;
+  onRefreshed: (d: DatasetInfo) => void;
 }) {
-  const { datasets, limit, spec, onPick, onAggregate, onUploaded, onDeleted } = props;
+  const { datasets, limit, spec, onPick, onAggregate, onUploaded, onDeleted, onRefreshed } = props;
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -57,6 +59,20 @@ function DataPanel(props: {
       setName('');
       onUploaded(d);
       setMsg(`Added “${d.name}” with ${d.rowCount.toLocaleString()} rows.`);
+    } catch (e) {
+      setMsg(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const refresh = async () => {
+    if (!current) return;
+    setMsg(null);
+    setBusy(true);
+    try {
+      const d = await apiClient.refreshDataset(current.id);
+      onRefreshed(d);
+      setMsg(`Refreshed “${d.name}”: ${d.rowCount.toLocaleString()} rows.`);
     } catch (e) {
       setMsg(errMessage(e));
     } finally {
@@ -90,8 +106,12 @@ function DataPanel(props: {
             {(Object.keys(AGGREGATE_LABEL) as ExploreAggregate[]).map((a) => <option key={a} value={a}>{AGGREGATE_LABEL[a]}</option>)}
           </select>
         </label>
+        {current?.connector && <button type="button" disabled={busy} onClick={() => void refresh()} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2 disabled:opacity-50"><RefreshCw className="w-3.5 h-3.5" /> Refresh from {current.connector.label}</button>}
         {current && <button type="button" onClick={() => void remove()} className="inline-flex items-center gap-1.5 text-xs text-danger hover:underline py-2"><Trash2 className="w-3.5 h-3.5" /> Delete table</button>}
       </div>
+      {current && (current.connector || current.note) && (
+        <p className="text-[11px] text-fg-subtle">{current.connector ? `From ${current.connector.label}${current.syncedAt ? `, last refreshed ${new Date(current.syncedAt).toLocaleString()}` : ''}. ` : ''}{current.note ?? ''}</p>
+      )}
       <div className="flex flex-wrap items-end gap-3 border-t border-line pt-3">
         <label className="text-xs text-fg-muted space-y-1">
           <span className="block">Name (optional)</span>
@@ -438,6 +458,9 @@ export const ExplorePage: React.FC = () => {
       )}
 
       {source === 'data' && (
+        <ConnectPanel onConnected={(d) => { setDatasets((cur) => [d, ...cur]); setSpec(defaultDataSpec(d)); setResult(null); setError(null); }} />
+      )}
+      {source === 'data' && (
         <DataPanel
           datasets={datasets}
           limit={datasetLimit}
@@ -445,6 +468,7 @@ export const ExplorePage: React.FC = () => {
           onPick={(id) => { setSpec(defaultDataSpec(datasets.find((d) => d.id === id))); setResult(null); setActiveId(null); setName(''); setError(null); }}
           onAggregate={(aggregate) => setSpec((s) => ({ ...s, aggregate }))}
           onUploaded={(d) => { setDatasets((cur) => [d, ...cur]); setSpec(defaultDataSpec(d)); setResult(null); setError(null); }}
+          onRefreshed={(d) => { setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x))); setResult(null); setSpec((s) => (s.datasetId === d.id ? { ...s, ...sanitiseSavedSpec(s, { ...d.catalog, maxDimensions: 3, maxMetrics: 6 }) } : s)); }}
           onDeleted={(id) => { const rest = datasets.filter((d) => d.id !== id); setDatasets(rest); setSpec(defaultDataSpec(rest[0])); setResult(null); }}
         />
       )}
