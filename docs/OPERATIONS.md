@@ -12,6 +12,7 @@ Everything here is optional. Nothing changes until you set the matching secret.
 | `RESEND_API_KEY`, `MAIL_FROM` | Sends the weekly summary and spike/drop alerts (Resend.com; the sending domain must be verified there). |
 | `DEFAULT_NEW_WORKSPACE_PLAN` | The plan new sign-ups start on. Default `free`. Set `beta`, `pro` or `business` and redeploy to change it. Existing workspaces never change. |
 | `CRON_SECRET` | At least 16 random characters. Protects the daily job address below. |
+| `PAGESPEED_API_KEY` | Optional but recommended. A free key for Google's PageSpeed Insights, used by the SEO Speed test tab. Create it in Google Cloud: APIs & Services, turn on "PageSpeed Insights API", then Credentials, Create API key (restrict it to that API). Without a key Google allows very few tests and the tab shows a "busy" message. |
 | `VITE_WEBLLM_MODULE_URL` | Build-time address of a self-hosted WebLLM file. Shows the optional "larger on-device model" choice in Private mode. Leave empty to hide it. |
 
 ## Daily job (email summaries and alerts)

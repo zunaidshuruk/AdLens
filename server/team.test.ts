@@ -6,6 +6,9 @@ import { createInMemoryBillingStore, setTestBillingStore } from './lib/billingSt
 import { setTestTokenVerifier } from './lib/firebaseAdmin.js';
 import { createInMemoryFirestoreStore, setTestFirestoreStore } from './lib/firestore.js';
 import { createInMemoryInviteStore, setTestInviteStore } from './lib/inviteStore.js';
+import { createInMemoryAlertStore, setTestAlertStore } from './lib/alertRules.js';
+import { createInMemoryScheduleStore, setTestScheduleStore } from './lib/emailSchedules.js';
+import { createInMemoryShareStore, setTestShareStore, type StoredShare } from './lib/shares.js';
 
 test('Sprint 20 — team: add by email, pending invites, same-company offers, roles, limits, and the admin panel', async () => {
   process.env.OPERATOR_EMAILS = 'boss@synesisit.com.bd';
@@ -87,7 +90,13 @@ test('Sprint 20 — team: add by email, pending invites, same-company offers, ro
     assert.equal((await api(`${T}/members/uid_boss`, 'boss', { method: 'DELETE' })).status, 409, 'the owner cannot leave their own workspace');
     assert.equal((await api(`${T}/members/uid_boss`, 'newbie', { method: 'DELETE' })).status, 403);
     assert.equal((await api(`${T}/members/uid_new`, 'newbie', { method: 'DELETE' })).status, 204, 'leaving');
+    // a public link made by the person being removed stops working with them; the owner's own link stays
+    const shares = createInMemoryShareStore();
+    setTestShareStore(shares); setTestScheduleStore(createInMemoryScheduleStore()); setTestAlertStore(createInMemoryAlertStore());
+    await shares.put({ id: 'sm', workspaceId: ws.id, projectId: 'p', createdBy: 'uid_mate', tokenHash: 'a', title: 'x' } as unknown as StoredShare);
+    await shares.put({ id: 'sb', workspaceId: ws.id, projectId: 'p', createdBy: 'uid_boss', tokenHash: 'b', title: 'y' } as unknown as StoredShare);
     assert.equal((await api(`${T}/members/uid_mate`, 'boss', { method: 'DELETE' })).status, 204);
+    assert.deepEqual((await shares.listAll()).map((x) => x.id), ['sb']);
     assert.equal(Object.keys((await fs.getWorkspace(ws.id))!.members).length, 1);
 
     // --- same company email: offered, never added silently, owner opt-in

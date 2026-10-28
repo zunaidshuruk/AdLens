@@ -1,6 +1,6 @@
 import { Copy, Search, Sparkles } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoKeywordIdea, type SeoOpportunity, type SeoPageResult } from '../api/client';
+import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoKeywordIdea, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
@@ -302,8 +302,91 @@ function Keywords() {
   );
 }
 
+const RATING: Record<SpeedMetricInfo['rating'], { label: string; cls: string }> = {
+  good: { label: 'Good', cls: 'bg-success-soft text-success' },
+  needs: { label: 'Needs work', cls: 'bg-warning-soft text-warning' },
+  poor: { label: 'Poor', cls: 'bg-danger-soft text-danger' },
+};
+
+function MetricGrid({ metrics }: { metrics: SpeedMetricInfo[] }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {metrics.map((m) => (
+        <div key={m.key} className="rounded-xl border border-line bg-surface p-3 space-y-1">
+          <div className="flex items-center justify-between gap-2"><p className="text-xs text-fg-muted">{m.label}</p><span className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${RATING[m.rating].cls}`}>{RATING[m.rating].label}</span></div>
+          <p className="text-2xl font-bold text-fg">{m.display}</p>
+          <p className="text-[11px] text-fg-subtle">{m.explain}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SpeedTest() {
+  const [url, setUrl] = useState('');
+  const [strategy, setStrategy] = useState<'mobile' | 'desktop'>('mobile');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [r, setR] = useState<SpeedReport | null>(null);
+  const run = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null); setR(null);
+    try { setR((await apiClient.seoSpeed(url.trim(), strategy)).report); } catch (err) { setError(errMessage(err)); }
+    setBusy(false);
+  };
+  const scores: [string, number | null][] = r ? [['Speed', r.scores.performance], ['SEO', r.scores.seo], ['Accessibility', r.scores.accessibility], ['Best practice', r.scores.bestPractices]] : [];
+  return (
+    <div className="space-y-4">
+      <form onSubmit={(e) => void run(e)} className="flex flex-wrap gap-2">
+        <input aria-label="Page address" className={`${field} flex-1 min-w-[220px]`} placeholder="example.com/some-page" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <select aria-label="Device" className={field} value={strategy} onChange={(e) => setStrategy(e.target.value as 'mobile' | 'desktop')}><option value="mobile">Phone</option><option value="desktop">Computer</option></select>
+        <button type="submit" disabled={busy || url.trim().length < 3} className={primary}><Search className="w-4 h-4" /> {busy ? 'Testing… up to a minute' : 'Run speed test'}</button>
+      </form>
+      <p className="text-xs text-fg-muted">Google opens the page in a real Chrome browser, runs its JavaScript and measures it, then we explain the result. Works on any public page. Takes 20 to 60 seconds.</p>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {busy && <div aria-busy="true" className="h-24 rounded-xl bg-fill-2 animate-pulse" />}
+      {r && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {scores.map(([k, v]) => <div key={k} className="rounded-xl border border-line bg-surface p-3"><p className="text-xs text-fg-muted">{k} score</p><p className="text-2xl">{v === null ? <span className="text-fg-subtle">n/a</span> : <ScoreBadge score={v} />}</p></div>)}
+          </div>
+          <AiSummary key={r.fetchedAt} payload={{ kind: 'speed', url: r.url, strategy: r.strategy, scores: r.scores, lab: r.lab.map((m) => ({ label: m.label, display: m.display, rating: m.rating })), field: { scope: r.field.scope, overall: r.field.overall, metrics: r.field.metrics.map((m) => ({ label: m.label, display: m.display, rating: m.rating })) }, opportunities: r.opportunities.map((o) => ({ title: o.title, savingsMs: o.savingsMs })), seoFailed: r.seoFailed.map((x) => ({ title: x.title })), javascript: r.javascript }} />
+          <section className="space-y-2">
+            <div><h3 className="text-sm font-semibold text-fg">Core Web Vitals: what real visitors experienced</h3>
+              <p className="text-xs text-fg-muted">{r.field.available ? (r.field.scope === 'page' ? 'Google\'s data from real Chrome users of this exact page over the last 28 days.' : 'Not enough visitors on this exact page, so this is Google\'s data for the whole site.') : 'Google has no visitor data for this page yet (it needs a good amount of traffic). The test below is a lab measurement instead.'}</p></div>
+            {r.field.available && <MetricGrid metrics={r.field.metrics} />}
+          </section>
+          <section className="space-y-2">
+            <div><h3 className="text-sm font-semibold text-fg">Lab test ({r.strategy === 'mobile' ? 'phone' : 'computer'})</h3><p className="text-xs text-fg-muted">One controlled load of the page. Results vary a little each time.</p></div>
+            <MetricGrid metrics={r.lab} />
+          </section>
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-fg">After JavaScript runs</h3>
+            <div className="rounded-xl border border-line bg-surface p-3 space-y-1.5">
+              <p className="text-xs"><span className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${r.javascript.level === 'heavy' ? 'bg-danger-soft text-danger' : r.javascript.level === 'some' ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success'}`}>{r.javascript.level === 'heavy' ? 'Mostly built by JavaScript' : r.javascript.level === 'some' ? 'Partly built by JavaScript' : 'Readable without JavaScript'}</span></p>
+              {r.javascript.notes.map((n) => <p key={n} className="text-xs text-fg">{n}</p>)}
+              <p className="text-[11px] text-fg-subtle">{[r.facts.pageWeightKb !== null ? `Page weight ${r.facts.pageWeightKb > 1024 ? `${(r.facts.pageWeightKb / 1024).toFixed(1)} MB` : `${r.facts.pageWeightKb} KB`}` : null, r.facts.requests !== null ? `${r.facts.requests} requests` : null, r.facts.domElements !== null ? `${n(r.facts.domElements)} page elements` : null, r.facts.scriptTimeMs !== null ? `${(r.facts.scriptTimeMs / 1000).toFixed(1)} s of script time` : null].filter(Boolean).join(' · ')}</p>
+            </div>
+            <h4 className="text-xs font-semibold text-fg pt-1">SEO checks on the finished page</h4>
+            {r.seoFailed.length === 0 ? <p className="text-sm text-success">All of Google's SEO checks passed on the finished page.</p> : (
+              <ul className="space-y-2">{r.seoFailed.map((x) => <li key={x.id} className="rounded-xl border border-line bg-surface p-3"><p className="text-sm font-medium text-fg">{x.title}</p>{x.detail && <p className="text-xs text-fg-muted mt-0.5">{x.detail}</p>}</li>)}</ul>
+            )}
+          </section>
+          {r.opportunities.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-fg">Biggest ways to make it faster</h3>
+              <ul className="space-y-2">{r.opportunities.map((o) => <li key={o.id} className="rounded-xl border border-line bg-surface p-3 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-fg">{o.title}</span><span className="text-xs text-success font-medium">could save about {(o.savingsMs / 1000).toFixed(1)} s{o.savingsKb > 0 ? ` and ${n(o.savingsKb)} KB` : ''}</span></li>)}</ul>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TABS = [
   { key: 'page', label: 'Page checker' },
+  { key: 'speed', label: 'Speed test' },
   { key: 'site', label: 'Site audit' },
   { key: 'opps', label: 'Search opportunities' },
   { key: 'keywords', label: 'Keyword ideas' },
@@ -324,6 +407,7 @@ export const SeoPage: React.FC = () => {
       </div>
       <div role="tabpanel">
         {tab === 'page' && <PageChecker />}
+        {tab === 'speed' && <SpeedTest />}
         {tab === 'site' && <SiteAudit />}
         {tab === 'opps' && <Opportunities />}
         {tab === 'keywords' && <Keywords />}

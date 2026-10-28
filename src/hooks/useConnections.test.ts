@@ -40,10 +40,15 @@ test('Task 9d-1 — parseMetaReturnParams maps URL query params to metaReturnSta
   assert.equal(denied.message, 'You cancelled Facebook sign-in. Nothing was connected.');
   assert.equal(denied.cleanedSearch, '?foo=bar');
 
-  const invalidState = parseMetaReturnParams('?error=invalid_state');
+  const invalidState = parseMetaReturnParams('?error=meta_invalid_state');
   assert.equal(invalidState.status, 'failed');
   assert.equal(invalidState.message, 'Facebook sign-in did not finish. Please try again.');
   assert.equal(invalidState.cleanedSearch, '');
+
+  // a failed Google sign-in (plain invalid_state) is not a Facebook problem: it is left for the Google message
+  const googleState = parseMetaReturnParams('?error=invalid_state');
+  assert.equal(googleState.status, null);
+  assert.equal(googleState.cleanedSearch, '?error=invalid_state');
 
   const exchangeFailed = parseMetaReturnParams('?error=meta_exchange_failed');
   assert.equal(exchangeFailed.status, 'failed');

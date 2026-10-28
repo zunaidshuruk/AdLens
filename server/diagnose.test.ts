@@ -26,6 +26,14 @@ test('Diagnose — verification email errors are explained, and only the owner c
   try {
     assert.equal((await fetch(`${base}/api/ops/diagnose`, { headers: { Authorization: 'Bearer other' } })).status, 403);
     assert.equal((await fetch(`${base}/api/ops/diagnose`)).status, 401);
+    process.env.CRON_SECRET = 'a-very-secret-cron-value-123';
+    const ok = await fetch(`${base}/api/ops/diagnose`, { headers: { Authorization: 'Bearer owner' } });
+    assert.equal(ok.status, 200);
+    const body = await ok.text();
+    const j = JSON.parse(body) as { checks: { id: string; ok: boolean }[] };
+    assert.ok(j.checks.length >= 8);
+    assert.equal(j.checks.find((c) => c.id === 'cron')?.ok, true);
+    assert.ok(!body.includes('a-very-secret-cron-value-123'), 'values are never sent');
   } finally { server.close(); }
 });
 

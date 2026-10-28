@@ -188,7 +188,7 @@ test('Sprint 9c-1 — Facebook Login /api/auth/meta/start, /api/auth/meta/callba
       }
     );
     assert.equal(resWrongState.status, 302);
-    assert.equal(resWrongState.headers.get('location'), '/connections?error=invalid_state');
+    assert.equal(resWrongState.headers.get('location'), '/connections?error=meta_invalid_state');
     assert.equal(map.size, 0);
 
     // 7. Good callback saves exactly one meta connection for user_meta_1 and redirects to /connections?connected=meta

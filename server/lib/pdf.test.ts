@@ -55,3 +55,34 @@ test('PDF: wrapping never exceeds the width and cuts words that are too long', (
   assert.ok(lines.length > 5);
   for (const l of lines) assert.ok(textWidth(l, 10) <= 300 + 0.01, l);
 });
+
+test('PDF: Bangla and Hindi text is embedded with real fonts, joined letters and clean line breaks', () => {
+  const bn = 'ট্রাফিক ক্ষত্রিয় বাংলাদেশ';
+  assert.ok(textWidth(bn, 10) > textWidth('?'.repeat(bn.length), 10) * 0.5, 'measured with the Bangla font, not as question marks');
+  // mixed text measures as the sum of its parts
+  assert.ok(Math.abs(textWidth(`Hello ${bn}`, 12) - (textWidth('Hello ', 12) + textWidth(bn, 12))) < 40);
+
+  const s = snapshotToPdf({ ...snap(1), title: 'সাপ্তাহিক রিপোর্ট नमस्ते', description: bn }, 'প্রজেক্ট').toString('latin1');
+  assert.match(s, /\/Subtype \/Type0/);
+  assert.match(s, /NotoSansBengali/);
+  assert.match(s, /NotoSansDevanagari/);
+  assert.match(s, /\/FontFile2/);
+  assert.match(s, /\/ToUnicode/);
+  const startxref = Number(/startxref\n(\d+)\n%%EOF/.exec(s)![1]);
+  const entries = [...s.slice(startxref).matchAll(/(\d{10}) 00000 n /g)].map((m) => Number(m[1]));
+  entries.forEach((off, i) => assert.equal(s.slice(off, off + `${i + 1} 0 obj`.length), `${i + 1} 0 obj`));
+
+  // a plain English document still needs no embedded font
+  assert.ok(!snapshotToPdf(snap(1)).toString('latin1').includes('/Type0'));
+
+  // long Bangla text wraps inside the width and never splits a joined letter from its marks
+  const d = new PdfDoc();
+  const lines = d.wrap('ক্ষত্রিয় '.repeat(40) + 'ক্ষ'.repeat(120), 10, 200);
+  assert.ok(lines.length > 4);
+  for (const l of lines) {
+    assert.ok(textWidth(l, 10) <= 200 + 0.01, l);
+    assert.ok(!l.startsWith('\u09cd') && !l.endsWith('\u09cd'), 'no line starts or ends in the middle of a joined letter');
+  }
+  // other scripts still fall back to a question mark
+  assert.equal(pdfString('日本').toString('latin1'), '??');
+});

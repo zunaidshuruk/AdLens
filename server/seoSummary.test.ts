@@ -69,3 +69,12 @@ test('SEO summary route: costs one AI question, refunds failures, validates inpu
     setTestFirestoreStore(null as never);
   }
 });
+
+test('Sprint 38 — AI summary also accepts a speed test, and rejects odd ratings', async () => {
+  const { summaryInputSchema, summaryPrompt } = await import('./lib/seoSummary.js');
+  const speed = { kind: 'speed', url: 'https://a.com/', strategy: 'mobile', scores: { performance: 54, seo: 80, accessibility: null, bestPractices: 100 }, lab: [{ label: 'Main content appears (LCP)', display: '4.4 s', rating: 'poor' }], field: { scope: 'none', overall: null, metrics: [] }, opportunities: [{ title: 'Eliminate render-blocking resources', savingsMs: 900 }], seoFailed: [{ title: 'No meta description' }], javascript: { level: 'heavy', notes: ['Most of this page is built by JavaScript.'] } };
+  const ok = summaryInputSchema.safeParse(speed);
+  assert.ok(ok.success);
+  assert.match(summaryPrompt(ok.data), /speed test/);
+  assert.equal(summaryInputSchema.safeParse({ ...speed, lab: [{ label: 'x', display: 'y', rating: 'terrible' }] }).success, false);
+});

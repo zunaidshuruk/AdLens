@@ -29,7 +29,7 @@ export interface ParsedMetaReturn {
 }
 
 /**
- * Pure helper: inspects URL search params (?connected=meta or ?error=meta_denied | invalid_state | meta_exchange_failed | meta_not_configured)
+ * Pure helper: inspects URL search params (?connected=meta or ?error=meta_denied | meta_invalid_state | meta_exchange_failed | meta_not_configured)
  * and returns the mapped MetaReturnStatus, plain-English message, and the cleaned query string with the consumed param removed.
  */
 export function parseMetaReturnParams(search: string | URLSearchParams): ParsedMetaReturn {
@@ -62,7 +62,7 @@ export function parseMetaReturnParams(search: string | URLSearchParams): ParsedM
   }
 
   if (
-    errorParam === 'invalid_state' ||
+    errorParam === 'meta_invalid_state' ||
     errorParam === 'meta_exchange_failed' ||
     errorParam === 'meta_not_configured'
   ) {
@@ -213,7 +213,7 @@ export function useConnections(): UseConnectionsResult {
   const [discovery, setDiscovery] = useState<GoogleSourceDiscoveryResponse | null>(null);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
 
-  // Read ?connected=meta and ?error=meta_denied|invalid_state|meta_exchange_failed once and clear query params
+  // Read ?connected=meta and ?error=meta_denied|meta_invalid_state|meta_exchange_failed once and clear query params
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const parsed = parseMetaReturnParams(window.location.search);

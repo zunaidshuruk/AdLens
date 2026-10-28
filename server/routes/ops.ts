@@ -6,6 +6,7 @@ import { getScheduleStore, productionScheduleContext, productionSnapshot, runEma
 import { sendMail } from '../lib/mailer.js';
 import { refreshDueShares } from '../lib/shareWiring.js';
 import { getShareStore } from '../lib/shares.js';
+import { cleanOrphans } from '../lib/memberCleanup.js';
 import { runAlertRules } from '../lib/alertRunner.js';
 import { productionAlertDeps } from '../lib/alertWiring.js';
 import { listAuditForUid } from '../lib/auditLog.js';
@@ -14,6 +15,7 @@ import { readUsage } from '../lib/usageMeter.js';
 import { extraOperators, operatorRoleOf } from '../lib/adminSettings.js';
 import { PLATFORM_ROLES, type PlatformPermission, type PlatformRoleId } from '../lib/platformRoles.js';
 import { getServerConfig } from '../config.js';
+import { buildHealthChecks } from '../lib/healthChecks.js';
 import { getAdminFirestore } from '../lib/firestore.js';
 import { requireUser } from '../middleware/requireUser.js';
 
@@ -85,7 +87,7 @@ opsRouter.get('/diagnose', requireUser, async (req: Request, res: Response) => {
     return;
   }
   const cfg = getServerConfig();
-  const out: Record<string, unknown> = { firebaseConfigured: cfg.firebaseConfigured, firebaseMissing: cfg.firebaseMissing };
+  const out: Record<string, unknown> = { firebaseConfigured: cfg.firebaseConfigured, firebaseMissing: cfg.firebaseMissing, checks: buildHealthChecks(cfg), checkedAt: new Date().toISOString() };
   try {
     const ref = getAdminFirestore().collection('_diagnostics').doc('ping');
     await ref.set({ at: new Date().toISOString() });
@@ -131,6 +133,9 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
     res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Not allowed.' } });
     return;
   }
+  // First delete links and scheduled emails whose owner or project is gone, so nothing stale is refreshed or sent.
+  let cleaned: Awaited<ReturnType<typeof cleanOrphans>> | { error: string };
+  try { cleaned = await cleanOrphans(); } catch { cleaned = { error: 'cleanup failed' }; }
   const digests = await runDigests(productionDigestDeps());
   // Alert rules are checked in the same daily call, so one scheduled job covers both.
   let alerts: Awaited<ReturnType<typeof runAlertRules>> | { error: string };
@@ -141,5 +146,5 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
   try {
     emails = await runEmailSchedules({ store: getScheduleStore(), appUrl: getServerConfig().appBaseUrl, sendMail: (m) => sendMail(m), context: productionScheduleContext, snapshot: productionSnapshot });
   } catch { emails = { error: 'emails failed' }; }
-  res.json({ ...digests, alerts, shares, emails });
+  res.json({ ...digests, alerts, cleaned, shares, emails });
 });

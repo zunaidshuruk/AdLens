@@ -17,6 +17,7 @@ import {
   MAX_CUSTOM_ROLES, PERMISSIONS, PERMISSION_INFO, allRoles, can, cleanPermissions, isSubset, newRoleId, permissionsOf, roleDef, roleIdOf, roleLabel,
 } from '../lib/permissions.js';
 import { guardWorkspaceParam } from '../lib/twoStepPolicy.js';
+import { removeContentOfMember } from '../lib/memberCleanup.js';
 import { requireUser } from '../middleware/requireUser.js';
 
 export const teamRouter = Router();
@@ -156,6 +157,8 @@ export async function removeMember(ws: WorkspaceDoc, targetUid: string): Promise
   if (!Object.prototype.hasOwnProperty.call(ws.members, targetUid)) return 'missing';
   if (ws.members[targetUid] === 'owner' || ws.ownerId === targetUid) return 'owner';
   await getFirestoreStore().removeWorkspaceMember(ws.id, targetUid);
+  // Their public links and scheduled emails stop with them (the daily job repeats this as a safety net).
+  await removeContentOfMember(ws.id, targetUid).catch(() => undefined);
   return 'ok';
 }
 

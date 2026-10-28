@@ -445,6 +445,17 @@ export interface SeoPageResult {
   url: string; requested: string; redirected: boolean; score: number; issues: SeoIssueInfo[];
   facts: { status: number; ms: number; title: string | null; titleLength: number; description: string | null; descriptionLength: number; h1: string[]; h2Count: number; canonical: string | null; wordCount: number; images: { total: number; missingAlt: number; missingSize: number }; internalLinks: number; externalLinks: number; noindex: boolean; structuredData: string[]; lang: string | null };
 }
+export interface SpeedMetricInfo { key: string; label: string; value: number; display: string; rating: 'good' | 'needs' | 'poor'; explain: string }
+export interface SpeedReport {
+  url: string; strategy: 'mobile' | 'desktop'; fetchedAt: string;
+  scores: { performance: number | null; seo: number | null; accessibility: number | null; bestPractices: number | null };
+  lab: SpeedMetricInfo[];
+  field: { available: boolean; scope: 'page' | 'site' | 'none'; overall: 'good' | 'needs' | 'poor' | null; metrics: SpeedMetricInfo[] };
+  opportunities: { id: string; title: string; savingsMs: number; savingsKb: number }[];
+  seoFailed: { id: string; title: string; detail: string }[];
+  facts: { pageWeightKb: number | null; requests: number | null; domElements: number | null; scriptTimeMs: number | null };
+  javascript: { level: 'none' | 'some' | 'heavy'; notes: string[] };
+}
 export interface SeoCrawlReport {
   startUrl: string; crawled: number; stoppedBecause: 'finished' | 'page_limit' | 'time_limit'; seconds: number; statusCounts: Record<string, number>; averageScore: number; robotsBlocked: number; sitemapFound: boolean;
   groups: { id: string; severity: 'error' | 'warning' | 'info'; title: string; fix: string; count: number; urls: string[] }[];
@@ -888,6 +899,7 @@ export const apiClient = {
   async seoPage(url: string): Promise<SeoPageResult> { return apiRequest('/api/seo/page', { method: 'POST', body: JSON.stringify({ url }) }); },
   async seoCrawl(url?: string): Promise<{ report: SeoCrawlReport; maxPages: number }> { return apiRequest('/api/seo/crawl', { method: 'POST', body: JSON.stringify(url ? { url } : {}) }); },
   async seoOpportunities(days: 28 | 90): Promise<{ days: number; rowsRead: number; truncated: boolean; opportunities: Record<SeoOpportunity['kind'], SeoOpportunity[]> }> { return apiRequest('/api/seo/opportunities', { method: 'POST', body: JSON.stringify({ days }) }); },
+  async seoSpeed(url: string, strategy: 'mobile' | 'desktop'): Promise<{ report: SpeedReport }> { return apiRequest('/api/seo/speed', { method: 'POST', body: JSON.stringify({ url, strategy }) }); },
   async seoSummary(payload: unknown): Promise<{ summary: string; quota: { used: number; limit: number | null } }> { return apiRequest('/api/seo/summary', { method: 'POST', body: JSON.stringify(payload) }); },
   async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
 
@@ -1098,6 +1110,7 @@ export const apiClient = {
   adminSaveOperators(operators: { email: string; role: string }[]): Promise<AdminSettingsView> {
     return apiRequest('/api/admin/operators', { method: 'PUT', body: JSON.stringify({ operators }) });
   },
+  opsDiagnose(): Promise<{ firestore?: { ok: boolean; reason?: string }; checks: { id: string; label: string; ok: boolean; required: boolean; fix: string }[]; checkedAt: string }> { return apiRequest('/api/ops/diagnose'); },
   billingWhoAmI(): Promise<{ isOperator: boolean }> {
     return apiRequest('/api/billing/whoami');
   },

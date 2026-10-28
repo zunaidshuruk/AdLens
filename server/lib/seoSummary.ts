@@ -9,7 +9,19 @@ const s = (max: number) => z.string().max(max).transform((v) => v.slice(0, max))
 const issue = z.object({ severity: z.enum(['error', 'warning', 'info']), title: s(120), detail: s(240).optional(), fix: s(240).optional(), count: z.number().int().min(0).max(100000).optional() });
 const opp = z.object({ query: s(120), page: s(200), impressions: z.number(), clicks: z.number(), position: z.number(), potentialClicks: z.number(), pages: z.array(s(200)).max(5).optional() });
 
+const metric = z.object({ label: s(60), display: s(20), rating: z.enum(['good', 'needs', 'poor']) });
+const nullableScore = z.number().min(0).max(100).nullable();
+
 export const summaryInputSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('speed'), url: s(300), strategy: z.enum(['mobile', 'desktop']),
+    scores: z.object({ performance: nullableScore, seo: nullableScore, accessibility: nullableScore, bestPractices: nullableScore }),
+    lab: z.array(metric).max(8),
+    field: z.object({ scope: z.enum(['page', 'site', 'none']), overall: z.enum(['good', 'needs', 'poor']).nullable(), metrics: z.array(metric).max(8) }),
+    opportunities: z.array(z.object({ title: s(100), savingsMs: z.number() })).max(6),
+    seoFailed: z.array(z.object({ title: s(120) })).max(10),
+    javascript: z.object({ level: z.enum(['none', 'some', 'heavy']), notes: z.array(s(300)).max(4) }),
+  }),
   z.object({ kind: z.literal('page'), url: s(300), score: z.number().min(0).max(100), title: s(200).nullable().optional(), wordCount: z.number().optional(), issues: z.array(issue).max(40) }),
   z.object({ kind: z.literal('site'), startUrl: s(300), crawled: z.number(), averageScore: z.number(), stoppedBecause: z.enum(['finished', 'page_limit', 'time_limit']), sitemapFound: z.boolean(), groups: z.array(issue).max(40) }),
   z.object({ kind: z.literal('opps'), days: z.number(), striking: z.array(opp).max(8), low_ctr: z.array(opp).max(8), no_clicks: z.array(opp).max(8), cannibal: z.array(opp).max(8) }),
@@ -25,7 +37,7 @@ export const SUMMARY_SYSTEM = [
 ].join('\n');
 
 export function summaryPrompt(input: SummaryInput): string {
-  const topic = input.kind === 'page' ? 'a check of one web page' : input.kind === 'site' ? 'an audit of a whole website' : 'opportunities found in Google Search Console data';
+  const topic = input.kind === 'speed' ? 'a speed test (Core Web Vitals, page speed and a check of what only appears after JavaScript runs) of one web page' : input.kind === 'page' ? 'a check of one web page' : input.kind === 'site' ? 'an audit of a whole website' : 'opportunities found in Google Search Console data';
   return `These are the results of ${topic}.\n<data>${JSON.stringify(input).replace(/<\/?data>/gi, '')}</data>`;
 }
 

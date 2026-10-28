@@ -7,6 +7,7 @@ import { RolesCard } from '../components/RolesCard';
 import { TeamCard } from '../components/TeamCard';
 import { EmailSummariesCard } from '../components/EmailSummariesCard';
 import { SecurityActivityCard } from '../components/SecurityActivityCard';
+import { ServerHealthCard } from '../components/ServerHealthCard';
 import { InstallAppSection } from '../components/InstallAppSection';
 import {
   AlertTriangle,
@@ -2853,6 +2854,7 @@ export const SettingsPage: React.FC = () => {
       {showSection('security') && <SsoSettingsCard />}
       {showSection('security') && <WorkspaceActivityCard />}
       {showSection('security') && <SecurityActivityCard />}
+      {showSection('security') && <ServerHealthCard />}
 
       {/* ------------------------------------------------------------- */}
       {/* 6. ABOUT CARD                                                 */}

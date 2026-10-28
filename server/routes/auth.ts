@@ -372,7 +372,7 @@ authRouter.get('/meta/callback', async (req: Request, res: Response) => {
   const decodedState = decodeOAuthStateCookie(rawStoredState, cfg.tokenEncryptionKey);
 
   if (!queryState || !decodedState || queryState !== decodedState.state) {
-    res.redirect('/connections?error=invalid_state');
+    res.redirect('/connections?error=meta_invalid_state');
     return;
   }
 

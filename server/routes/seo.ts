@@ -14,6 +14,7 @@ import { checkRateLimit } from '../lib/rateLimiter.js';
 import { buildReportContext } from '../lib/reportContext.js';
 import { crawlSite } from '../lib/seoCrawl.js';
 import { fetchFollowing, fetchOnce, normaliseInputUrl, type PageFetcher } from '../lib/seoFetch.js';
+import { countRawElements, parsePageSpeed, runPageSpeed, SpeedError, type PsiRequest } from '../lib/seoSpeed.js';
 import { keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
 import { findOpportunities, type QueryPageRow } from '../lib/seoOpportunities.js';
 import { analyzeHtml, pageIssues, scoreFor } from '../lib/seoPage.js';
@@ -29,9 +30,9 @@ export const seoRouter = Router();
 const fail = (res: Response, status: number, code: string, message: string): void => { res.status(status).json({ error: { code, message } }); };
 
 // Swappable in tests so no test touches the internet.
-const deps: { fetcher: PageFetcher; suggest: SuggestFetcher; now: () => number } = { fetcher: fetchOnce, suggest: googleSuggest, now: Date.now };
+const deps: { fetcher: PageFetcher; suggest: SuggestFetcher; now: () => number; psi: PsiRequest | undefined } = { fetcher: fetchOnce, suggest: googleSuggest, now: Date.now, psi: undefined };
 export function setSeoTestDeps(d: Partial<typeof deps> | null): void {
-  deps.fetcher = d?.fetcher ?? fetchOnce; deps.suggest = d?.suggest ?? googleSuggest; deps.now = d?.now ?? Date.now;
+  deps.fetcher = d?.fetcher ?? fetchOnce; deps.suggest = d?.suggest ?? googleSuggest; deps.now = d?.now ?? Date.now; deps.psi = d?.psi;
 }
 
 seoRouter.use(requireUser);
@@ -109,6 +110,32 @@ seoRouter.post('/crawl', async (req, res) => {
     const report = await crawlSite(start.toString(), deps.fetcher, { maxPages, timeBudgetMs: 45_000, now: deps.now });
     res.json({ report, maxPages });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while auditing the site.'); }
+});
+
+seoRouter.post('/speed', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'speed', 10, 3_600_000))) return;
+    const parsed = z.object({ url: z.string().min(3).max(2000), strategy: z.enum(['mobile', 'desktop']).default('mobile') }).safeParse(req.body);
+    if (!parsed.success) return urlError(res, null);
+    let start: URL;
+    try { start = normaliseInputUrl(parsed.data.url); } catch (e) { return urlError(res, e); }
+    // Google runs the page in a real browser; at the same time we read the first HTML ourselves to see what only appears after JavaScript.
+    const [psi, first] = await Promise.all([
+      runPageSpeed(start.toString(), parsed.data.strategy, { request: deps.psi, apiKey: process.env.PAGESPEED_API_KEY?.trim() || undefined }).then((json) => ({ json }), (error: unknown) => ({ error })),
+      fetchFollowing(start.toString(), deps.fetcher).catch(() => null),
+    ]);
+    if ('error' in psi) {
+      if (psi.error instanceof SpeedError) return fail(res, psi.error.status, psi.error.code, psi.error.message);
+      return fail(res, 502, 'SPEED_FAILED', 'The speed test could not run right now. Try again in a minute.');
+    }
+    let raw: { elements: number; title: string | null; description: string | null } | undefined;
+    if (first && !first.error && first.status >= 200 && first.status < 300 && /html|xml/.test(first.contentType || 'html')) {
+      const facts = analyzeHtml(first.text, first.url, { status: first.status, contentType: first.contentType, xRobots: first.xRobots, ms: first.ms, bytes: first.bytes });
+      raw = { elements: countRawElements(first.text), title: facts.title, description: facts.description };
+    }
+    res.json({ report: parsePageSpeed(psi.json, parsed.data.strategy, raw, new Date(deps.now())) });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while testing the page.'); }
 });
 
 function mapErr(res: Response, err: unknown): void {

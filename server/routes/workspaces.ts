@@ -23,6 +23,8 @@ import { clearOAuthState, clearSession } from '../lib/session.js';
 import { normalizeDomain } from '../lib/sourceMatcher.js';
 import { getMetaDeletionStore } from '../lib/metaDeletion.js';
 import { getVault } from '../lib/vault.js';
+import { removeContentOfMember, removeContentOfProject, removeContentOfWorkspace } from '../lib/memberCleanup.js';
+import { getProjectDocsStore } from '../lib/projectDocs.js';
 import { requireUser } from '../middleware/requireUser.js';
 import { validateAsset } from '../../src/utils/imageAssets.js';
 
@@ -536,8 +538,10 @@ meRouter.post('/delete', async (req: Request, res: Response) => {
       const isOwner = ws.ownerId === uid || role === 'owner';
       if (isOwner) {
         await store.deleteWorkspaceRecursive(ws.id);
+        await removeContentOfWorkspace(ws.id).catch(() => undefined);
       } else {
         await store.removeWorkspaceMember(ws.id, uid);
+        await removeContentOfMember(ws.id, uid).catch(() => undefined);
       }
     }
 
@@ -937,6 +941,9 @@ workspacesRouter.delete('/:wsId/projects/:id', async (req: Request, res: Respons
       return;
     }
 
+    // Take the project's saved reports, dashboards, tables, public links, scheduled emails and alerts with it.
+    await getProjectDocsStore().deleteAll(wsId, projectId).catch(() => undefined);
+    await removeContentOfProject(wsId, projectId).catch(() => undefined);
     void recordAudit({ uid, workspaceId: wsId, action: 'project.deleted', detail: `project ${projectId}` });
     res.json({ ok: true });
   } catch (err) {
