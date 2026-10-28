@@ -193,7 +193,12 @@ async function parseSuccessResponse<T>(response: Response): Promise<T> {
   if (!text) {
     return undefined as T;
   }
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // A web page came back instead of data: the running server is usually an older version without this feature.
+    throw new ApiClientError('The server sent back a web page instead of data. The app on the server is probably an older version: pull the latest code and redeploy, then reload this page.', response.status, 'BAD_SERVER_REPLY');
+  }
 }
 
 export async function apiRequest<T>(
