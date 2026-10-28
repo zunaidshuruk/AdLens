@@ -452,6 +452,7 @@ export const apiClient = {
       logoURL?: string | null;
       logoPath?: string | null;
       defaults?: { currency: string; timezone: string };
+      requireTwoStep?: boolean;
     }
   ): Promise<{ workspace: WorkspaceSummary }> {
     return apiRequest<{ workspace: WorkspaceSummary }>(

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { historyViolation } from '../config/plans.js';
 import { getFirestoreStore, type ProjectDoc } from '../lib/firestore.js';
 import { permissionsOf, type Permission } from '../lib/permissions.js';
+import { SETUP_REQUIRED, mustSetUpTwoStep } from '../lib/twoStepPolicy.js';
 
 declare global {
   namespace Express {
@@ -90,6 +91,11 @@ export async function loadProject(
     const permissions = permissionsOf(workspace, uid);
     if (!permissions.has('reports.view')) {
       res.status(403).json({ error: { code: 'NOT_ALLOWED', message: 'Your role in this workspace does not allow viewing its data.' } });
+      return;
+    }
+
+    if (await mustSetUpTwoStep(workspace, uid)) {
+      res.status(403).json({ error: { ...SETUP_REQUIRED } });
       return;
     }
 

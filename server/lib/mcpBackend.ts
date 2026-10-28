@@ -6,6 +6,7 @@ import { GoogleApiError } from './google.js';
 import { MetaApiError } from './meta.js';
 import { getFirestoreStore, type ProjectDoc } from './firestore.js';
 import { can } from './permissions.js';
+import { mustSetUpTwoStep } from './twoStepPolicy.js';
 import { McpToolError, type McpBackend, type ProjectSummary, type ReportSummary, type RunReportArgs } from './mcpProtocol.js';
 import type { McpPrincipal } from './mcpCredentials.js';
 import { buildReportContext } from './reportContext.js';
@@ -25,6 +26,7 @@ async function loadAllowedProject(p: McpPrincipal, key: { workspaceId: string; p
   if (!ws?.members || !Object.prototype.hasOwnProperty.call(ws.members, p.uid)) return null;
   // Checked at every call: if the person's role loses "Use the AI Analyst", their keys and connected apps stop reading this workspace.
   if (!can(ws, p.uid, 'ai.use')) return null;
+  if (await mustSetUpTwoStep(ws, p.uid)) return null; // the workspace requires two-step of owners/admins and this person has none
   return store.getProject(key.workspaceId, key.projectId);
 }
 

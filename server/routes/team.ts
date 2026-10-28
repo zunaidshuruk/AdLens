@@ -16,10 +16,12 @@ import { getInviteStore, newInviteId } from '../lib/inviteStore.js';
 import {
   MAX_CUSTOM_ROLES, PERMISSIONS, PERMISSION_INFO, allRoles, can, cleanPermissions, isSubset, newRoleId, permissionsOf, roleDef, roleIdOf, roleLabel,
 } from '../lib/permissions.js';
+import { guardWorkspaceParam } from '../lib/twoStepPolicy.js';
 import { requireUser } from '../middleware/requireUser.js';
 
 export const teamRouter = Router();
 teamRouter.use(requireUser);
+teamRouter.param('wsId', guardWorkspaceParam);
 
 const fail = (res: Response, status: number, code: string, message: string) => void res.status(status).json({ error: { code, message } });
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;

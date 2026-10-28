@@ -118,6 +118,7 @@ interface AppContextValue {
     logoURL?: string | null;
     logoPath?: string | null;
     defaults?: { currency: string; timezone: string };
+    requireTwoStep?: boolean;
   }) => Promise<WorkspaceSummary>;
   updateWorkspaceDefaults: (
     wsId: string,
@@ -684,6 +685,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       logoURL?: string | null;
       logoPath?: string | null;
       defaults?: { currency: string; timezone: string };
+      requireTwoStep?: boolean;
     }): Promise<WorkspaceSummary> => {
       const wsId = activeWorkspace?.id || workspaces[0]?.id;
       if (!wsId) {
@@ -695,6 +697,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { workspace } = await apiClient.updateWorkspace(wsId, {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.defaults !== undefined ? { defaults: patch.defaults } : {}),
+        ...(patch.requireTwoStep !== undefined ? { requireTwoStep: patch.requireTwoStep } : {}),
       });
       setWorkspaces((prev) => prev.map((w) => (w.id === workspace.id ? workspace : w)));
       return workspace;

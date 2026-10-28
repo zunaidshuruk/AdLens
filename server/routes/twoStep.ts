@@ -17,6 +17,7 @@ import {
   PROOF_HEADER, checkSecondStep, makeProof, openSecret, proofIsValid, sealSecret, twoStepStore, type TwoStepDoc,
 } from '../lib/twoStep.js';
 import { generateBackupCodes, generateSecret, hashBackupCode, otpauthUri, verifyTotp } from '../lib/totp.js';
+import { workspaceRequiringTwoStep } from '../lib/twoStepPolicy.js';
 import { requireUser, requireUserFirstStep } from '../middleware/requireUser.js';
 
 export const twoStepRouter = Router();
@@ -117,6 +118,8 @@ twoStepRouter.post('/disable', requireUser, async (req: Request, res: Response) 
   const body = codeBody.safeParse(req.body);
   if (!body.success) return fail(res, 400, 'VALIDATION_ERROR', 'Enter a code from your app.');
   if (!(await allowAttempt(req, res))) return;
+  const asked = await workspaceRequiringTwoStep(req.user!.uid).catch(() => null);
+  if (asked) return fail(res, 409, 'REQUIRED_BY_WORKSPACE', `The workspace "${asked.name}" requires owners and admins to use two-step verification, so it cannot be turned off while you are one.`);
   const result = await checkSecondStep(req.user!.uid, body.data.code);
   if (result === 'not_enabled') return res.status(204).end();
   if (result === 'wrong') { await noteWrong(req); return fail(res, 400, 'WRONG_CODE', 'That code is not right. Wait for the next code in your app and try again.'); }

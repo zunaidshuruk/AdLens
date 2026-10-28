@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { getPlanLimits } from '../config/plans.js';
 import { deleteAuthUser } from '../lib/firebaseAdmin.js';
 import { twoStepStore } from '../lib/twoStep.js';
+import { guardWorkspaceParam, hasTwoStepOn } from '../lib/twoStepPolicy.js';
 import {
   getFirestoreStore,
   type ProjectDoc,
@@ -182,6 +183,7 @@ export const patchWorkspaceSchema = z
       })
       .strict()
       .optional(),
+    requireTwoStep: z.boolean().optional(),
   })
   .strict();
 
@@ -258,6 +260,7 @@ async function buildMePayload(
       logoPath: ws.logoPath ?? null,
       hasLogo: Boolean(ws.hasLogo),
       defaults: ws.defaults,
+      requireTwoStep: ws.requireTwoStep === true,
       members: ws.members,
       memberIds: ws.memberIds,
     })),
@@ -267,6 +270,7 @@ async function buildMePayload(
 
 meRouter.use(requireUser);
 workspacesRouter.use(requireUser);
+workspacesRouter.param('wsId', guardWorkspaceParam);
 
 // POST /api/me/bootstrap (idempotent, in a Firestore transaction)
 meRouter.post('/bootstrap', async (req: Request, res: Response) => {
@@ -601,11 +605,22 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
     }
 
 
+    if (parsed.data.requireTwoStep === true && !(await hasTwoStepOn(uid))) {
+      res.status(409).json({ error: { code: 'TWO_STEP_SETUP_FIRST', message: 'Turn on two-step verification for your own account first (Settings, Security), so you are not locked out.' } });
+      return;
+    }
+
     const updated = await store.updateWorkspace(wsId, parsed.data);
+    if (parsed.data.requireTwoStep !== undefined && parsed.data.requireTwoStep !== (ws.requireTwoStep === true)) {
+      void recordAudit({ uid, action: 'workspace.two_step_policy', workspaceId: wsId, detail: parsed.data.requireTwoStep ? 'required for owners and admins' : 'no longer required' });
+    }
     res.json({
       workspace: {
         ...updated,
         role,
+        roleName: roleDef(updated, roleIdOf(updated, uid))?.name ?? 'Member',
+        permissions: [...permissionsOf(updated, uid)],
+        requireTwoStep: updated.requireTwoStep === true,
         limits: getPlanLimits(updated.plan),
       },
     });

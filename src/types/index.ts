@@ -478,6 +478,8 @@ export interface WorkspaceSummary {
     currency: string;
     timezone: string;
   };
+  /** True when this workspace asks owners and admins to use two-step verification. */
+  requireTwoStep?: boolean;
   members: Record<string, WorkspaceRole>;
   memberIds: string[];
 }

@@ -204,6 +204,7 @@ describe('workspaces', () => {
     await assertFails(updateDoc(ws, { ownerId: BOB, updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(ws, { [`members.${BOB}`]: 'admin', updatedAt: serverTimestamp() }));
     await assertFails(updateDoc(ws, { memberIds: [ALICE, BOB], updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ws, { requireTwoStep: false, updatedAt: serverTimestamp() })); // the two-step rule changes only through the server (it checks your own two-step first)
   });
 
   test('logo flag must be boolean; old URL fields rejected; defaults validated', async () => {

@@ -9,6 +9,7 @@ import { MobileNav } from './MobileNav';
 import { ProjectOnboardingModal } from './ProjectOnboardingModal';
 import { JoinOfferPrompt } from './JoinOfferPrompt';
 import { Sidebar } from './Sidebar';
+import { TwoStepRuleBanner } from './TwoStepRuleBanner';
 
 export const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,6 +27,7 @@ export const Layout: React.FC = () => {
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
 
         <main className="flex-1 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:px-6 lg:px-8 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 max-w-[1600px] w-full mx-auto">
+          <TwoStepRuleBanner />
           <InstallBanner />
           <Outlet />
         </main>

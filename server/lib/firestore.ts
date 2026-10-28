@@ -85,6 +85,8 @@ export interface WorkspaceDoc {
   planExpiresAt?: string | null;
   /** When set, people who sign in with a verified email on this domain are offered the chance to join. Never a free-mail domain. */
   joinDomain?: string | null;
+  /** When true, owners and admins must have two-step verification on to use the workspace (see lib/twoStepPolicy.ts). */
+  requireTwoStep?: boolean;
   members: Record<string, WorkspaceRole>;
   /** Roles the workspace's admins made. Keyed by role id. */
   customRoles?: Record<string, { name: string; description?: string; permissions: string[]; createdAt: string }>;
@@ -177,6 +179,7 @@ export interface FirestoreStoreAdapter {
       ownerId?: string;
       members?: Record<string, WorkspaceRole>;
       customRoles?: NonNullable<WorkspaceDoc['customRoles']>;
+      requireTwoStep?: boolean;
       memberIds?: string[];
       logoURL?: string | null;
       logoPath?: string | null;
@@ -332,6 +335,7 @@ function mapRawWorkspace(id: string, raw: Record<string, unknown>): WorkspaceDoc
     joinDomain: typeof raw.joinDomain === 'string' && raw.joinDomain ? raw.joinDomain : null,
     members: membersRaw,
     customRoles: mapCustomRoles(raw.customRoles),
+    requireTwoStep: raw.requireTwoStep === true,
     memberIds: memberIdsRaw,
     logoURL: typeof raw.logoURL === 'string' ? raw.logoURL : null,
     logoPath: typeof raw.logoPath === 'string' ? raw.logoPath : null,
@@ -649,6 +653,7 @@ const adminFirestoreStore: FirestoreStoreAdapter = {
     if (patch.ownerId !== undefined) updateData.ownerId = patch.ownerId;
     if (patch.members !== undefined) updateData.members = patch.members;
     if (patch.customRoles !== undefined) updateData.customRoles = patch.customRoles;
+    if (patch.requireTwoStep !== undefined) updateData.requireTwoStep = patch.requireTwoStep;
     if (patch.memberIds !== undefined) updateData.memberIds = patch.memberIds;
     if (patch.logoURL !== undefined) updateData.logoURL = patch.logoURL;
     if (patch.logoPath !== undefined) updateData.logoPath = patch.logoPath;
@@ -1235,6 +1240,7 @@ export function createInMemoryFirestoreStore(): FirestoreStoreAdapter {
         ...(patch.ownerId !== undefined ? { ownerId: patch.ownerId } : {}),
         ...(patch.members !== undefined ? { members: { ...patch.members } } : {}),
         ...(patch.customRoles !== undefined ? { customRoles: structuredClone(patch.customRoles) } : {}),
+        ...(patch.requireTwoStep !== undefined ? { requireTwoStep: patch.requireTwoStep } : {}),
         ...(patch.memberIds !== undefined ? { memberIds: [...patch.memberIds] } : {}),
         ...(patch.logoURL !== undefined ? { logoURL: patch.logoURL } : {}),
         ...(patch.logoPath !== undefined ? { logoPath: patch.logoPath } : {}),

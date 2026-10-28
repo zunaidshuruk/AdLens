@@ -4,6 +4,7 @@ import express, { Router, type NextFunction, type Request, type Response } from 
 import { getServerConfig } from '../config.js';
 import { getFirestoreStore } from '../lib/firestore.js';
 import { can } from '../lib/permissions.js';
+import { mustSetUpTwoStep } from '../lib/twoStepPolicy.js';
 import {
   cleanProjects,
   createAccessKey,
@@ -191,6 +192,7 @@ async function projectsOf(uid: string): Promise<ProjectOption[]> {
     if (!ws.members || !Object.prototype.hasOwnProperty.call(ws.members, uid)) continue;
     // Connecting an AI tool follows the "Use the AI Analyst" permission of the person's role in that workspace.
     if (!can(ws, uid, 'ai.use')) continue;
+    if (await mustSetUpTwoStep(ws, uid)) continue;
     for (const p of await store.listProjects(ws.id)) {
       if (p.isDemo) continue;
       out.push({ workspaceId: ws.id, projectId: p.id, workspaceName: ws.name, name: p.name, domain: p.domain });
