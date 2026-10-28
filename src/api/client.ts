@@ -325,7 +325,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -347,7 +347,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -463,6 +463,20 @@ export interface SeoCrawlReport {
 }
 export interface SeoOpportunity { kind: 'striking' | 'low_ctr' | 'no_clicks' | 'cannibal'; query: string; page: string; pages?: string[]; clicks: number; impressions: number; ctr: number; position: number; potentialClicks: number; why: string; action: string }
 export interface SeoKeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'alphabet' | 'seed'; intent: 'informational' | 'commercial' | 'transactional' | 'navigational'; words: number; ranking: { impressions: number; position: number; clicks: number } | null }
+
+
+export interface RankKeywordList { id: string; name: string; keywords: string[]; tracked: boolean; createdBy: string; createdAt: string; updatedAt: string }
+export interface RankTrackingState { enabled: boolean; refreshedAt: string | null; pausedReason: string | null }
+export interface RankKeywordRow { keyword: string; position: number | null; previous: number | null; change: number | null; clicks: number; impressions: number; best: number | null; intent: 'informational' | 'commercial' | 'transactional' | 'navigational'; trend: (number | null)[] }
+export interface RankSummaryInfo {
+  asOf: string; trackedCount: number; rankingCount: number;
+  buckets: { top3: number; top10: number; top20: number; top50: number; below50: number; notRanking: number };
+  visibility: number; visibilityPrevious: number | null; averagePosition: number | null;
+  series: { date: string; averagePosition: number | null; visibility: number; clicks: number; impressions: number }[];
+  volatility: { score: number; label: 'calm' | 'normal' | 'bumpy' | 'stormy' | 'unknown' };
+  keywords: RankKeywordRow[]; winners: RankKeywordRow[]; losers: RankKeywordRow[];
+}
+export interface RankPageTraffic { page: string; sessions: number; clicks: number; impressions: number; position: number | null; topQuery: string | null; hiddenClicks: number }
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -901,6 +915,15 @@ export const apiClient = {
   async seoOpportunities(days: 28 | 90): Promise<{ days: number; rowsRead: number; truncated: boolean; opportunities: Record<SeoOpportunity['kind'], SeoOpportunity[]> }> { return apiRequest('/api/seo/opportunities', { method: 'POST', body: JSON.stringify({ days }) }); },
   async seoSpeed(url: string, strategy: 'mobile' | 'desktop'): Promise<{ report: SpeedReport }> { return apiRequest('/api/seo/speed', { method: 'POST', body: JSON.stringify({ url, strategy }) }); },
   async seoSummary(payload: unknown): Promise<{ summary: string; quota: { used: number; limit: number | null } }> { return apiRequest('/api/seo/summary', { method: 'POST', body: JSON.stringify(payload) }); },
+  async rankLists(): Promise<{ lists: RankKeywordList[]; limits: { lists: number; tracked: number }; trackedCount: number; tracking: RankTrackingState | null; canEdit: boolean }> { return apiRequest('/api/rank/lists'); },
+  async rankSaveList(input: { id?: string; name: string; text: string; tracked: boolean }): Promise<{ list: RankKeywordList }> { return apiRequest(input.id ? `/api/rank/lists/${encodeURIComponent(input.id)}` : '/api/rank/lists', { method: input.id ? 'PUT' : 'POST', body: JSON.stringify({ name: input.name, text: input.text, tracked: input.tracked }) }); },
+  async rankDeleteList(id: string): Promise<void> { await apiRequest(`/api/rank/lists/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async rankCluster(text: string): Promise<{ clusters: { name: string; keywords: string[] }[] }> { return apiRequest('/api/rank/cluster', { method: 'POST', body: JSON.stringify({ text }) }); },
+  async rankStart(): Promise<{ days: number; tracked: number; refreshedAt: string }> { return apiRequest('/api/rank/tracking/start', { method: 'POST', body: '{}' }); },
+  async rankStop(): Promise<void> { await apiRequest('/api/rank/tracking/stop', { method: 'POST', body: '{}' }); },
+  async rankRefresh(): Promise<{ days: number; tracked: number; refreshedAt: string }> { return apiRequest('/api/rank/refresh', { method: 'POST', body: '{}' }); },
+  async rankHistory(days: 28 | 90): Promise<{ days: number; summary: RankSummaryInfo; tracking: RankTrackingState | null; daysStored: number }> { return apiRequest(`/api/rank/history?days=${days}`); },
+  async rankTraffic(): Promise<{ startDate: string; endDate: string; rows: RankPageTraffic[]; totals: { sessions: number; clicks: number; hiddenClicks: number; hiddenShare: number } }> { return apiRequest('/api/rank/traffic', { method: 'POST', body: '{}' }); },
   async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
 
   /** Downloads a PDF of a dashboard or saved report (numbers as of now). */

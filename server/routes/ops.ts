@@ -1,3 +1,4 @@
+import { runRankTracking } from '../lib/rankRunner.js';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { productionDigestDeps } from '../lib/digestWiring.js';
@@ -146,5 +147,7 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
   try {
     emails = await runEmailSchedules({ store: getScheduleStore(), appUrl: getServerConfig().appBaseUrl, sendMail: (m) => sendMail(m), context: productionScheduleContext, snapshot: productionSnapshot });
   } catch { emails = { error: 'emails failed' }; }
-  res.json({ ...digests, alerts, cleaned, shares, emails });
+  let rank: Awaited<ReturnType<typeof runRankTracking>> | { error: string };
+  try { rank = await runRankTracking(); } catch { rank = { error: 'rank tracking failed' }; }
+  res.json({ ...digests, alerts, cleaned, shares, emails, rank });
 });

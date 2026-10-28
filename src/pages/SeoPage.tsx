@@ -2,6 +2,7 @@ import { Copy, Search, Sparkles } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoKeywordIdea, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
+import { KeywordLists, RankTracking, TrafficInsights } from '../components/seo/RankTracking';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 const field = 'rounded-lg border border-line bg-surface text-fg text-sm px-3 py-2 min-h-[40px]';
@@ -390,6 +391,9 @@ const TABS = [
   { key: 'site', label: 'Site audit' },
   { key: 'opps', label: 'Search opportunities' },
   { key: 'keywords', label: 'Keyword ideas' },
+  { key: 'rank', label: 'Rank tracking' },
+  { key: 'lists', label: 'Keyword lists' },
+  { key: 'traffic', label: 'Organic traffic' },
 ] as const;
 
 export const SeoPage: React.FC = () => {
@@ -398,7 +402,7 @@ export const SeoPage: React.FC = () => {
     <div className="space-y-5">
       <div className="space-y-1">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">SEO tools</h1>
-        <p className="text-xs sm:text-sm text-fg-muted">Check a page, audit your whole site, find what to improve in Google, and get keyword ideas.</p>
+        <p className="text-xs sm:text-sm text-fg-muted">Check a page, audit your whole site, find what to improve in Google, get keyword ideas and track your rankings.</p>
       </div>
       <div role="tablist" aria-label="SEO tools" className="flex flex-wrap gap-1 border-b border-line">
         {TABS.map((t) => (
@@ -411,6 +415,9 @@ export const SeoPage: React.FC = () => {
         {tab === 'site' && <SiteAudit />}
         {tab === 'opps' && <Opportunities />}
         {tab === 'keywords' && <Keywords />}
+        {tab === 'rank' && <RankTracking goToLists={() => setTab('lists')} />}
+        {tab === 'lists' && <KeywordLists />}
+        {tab === 'traffic' && <TrafficInsights />}
       </div>
     </div>
   );

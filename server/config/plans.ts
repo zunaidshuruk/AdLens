@@ -51,13 +51,16 @@ export interface ContentLimits {
   maxEmailSchedules: number;
   maxCrawlPages: number;
   maxAgents: number;
+  /** Sprint 39: phrases checked every day, and saved keyword lists. */
+  maxTrackedKeywords: number;
+  maxKeywordLists: number;
 }
 
 export const CONTENT_LIMITS: Record<string, ContentLimits> = {
-  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3 },
-  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAlertRules: 1, maxShareLinks: 1, maxEmailSchedules: 0, maxCrawlPages: 25, maxAgents: 0 },
-  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3 },
-  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAlertRules: 50, maxShareLinks: 50, maxEmailSchedules: 50, maxCrawlPages: 300, maxAgents: 10 },
+  beta: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3, maxTrackedKeywords: 100, maxKeywordLists: 10 },
+  free: { maxDashboards: 2, maxWidgetsPerDashboard: 8, maxSavedReports: 2, maxDatasets: 1, maxAlertRules: 1, maxShareLinks: 1, maxEmailSchedules: 0, maxCrawlPages: 25, maxAgents: 0, maxTrackedKeywords: 10, maxKeywordLists: 1 },
+  pro: { maxDashboards: 10, maxWidgetsPerDashboard: 12, maxSavedReports: 50, maxDatasets: 10, maxAlertRules: 10, maxShareLinks: 10, maxEmailSchedules: 10, maxCrawlPages: 100, maxAgents: 3, maxTrackedKeywords: 100, maxKeywordLists: 10 },
+  business: { maxDashboards: 30, maxWidgetsPerDashboard: 20, maxSavedReports: 200, maxDatasets: 50, maxAlertRules: 50, maxShareLinks: 50, maxEmailSchedules: 50, maxCrawlPages: 300, maxAgents: 10, maxTrackedKeywords: 500, maxKeywordLists: 50 },
 };
 
 export function getContentLimits(plan: string | undefined | null): ContentLimits {
