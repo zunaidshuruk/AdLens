@@ -21,6 +21,7 @@ import { cseSearch, type SearchFn } from '../lib/seoSearch.js';
 import { buildBrief, buildTopicMap } from '../lib/seoContent.js';
 import { writeWith, writerInputSchema } from '../lib/seoWriter.js';
 import { onPageReport } from '../lib/seoOnPage.js';
+import { domainOverview } from '../lib/seoDomain.js';
 import { topicGap, visibleText } from '../lib/seoTopics.js';
 import { classifyIntent, keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
 import { findOpportunities, type QueryPageRow } from '../lib/seoOpportunities.js';
@@ -310,6 +311,21 @@ seoRouter.post('/onpage', async (req, res) => {
     }
     res.json({ report: onPageReport(page.text, page.url, parsed.data.keyword, rivalTexts, { status: page.status, ms: page.ms, bytes: page.bytes }), competitorErrors: rivalErrors });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while checking the page.'); }
+});
+
+// Free domain overview: what is publicly visible about any website (home page, robots, sitemap, tech). No traffic estimates: those need a paid data provider.
+seoRouter.post('/domain-overview', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'domain', 20, 3_600_000))) return;
+    const parsed = z.object({ domain: z.string().trim().min(3, 'Type a website address').max(253) }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Type a website address.');
+    let start: URL;
+    try { start = normaliseInputUrl(parsed.data.domain); } catch (e) { return urlError(res, e); }
+    const overview = await domainOverview(start.hostname.toLowerCase(), deps.fetcher);
+    if (!overview.reachable) return fail(res, 502, 'FETCH_FAILED', overview.error);
+    res.json({ overview });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while checking the website.'); }
 });
 
 // Topic map: sub-topics, questions people ask and headline ideas for a subject. Built from Google's suggestions (no AI used).

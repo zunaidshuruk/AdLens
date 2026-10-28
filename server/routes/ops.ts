@@ -1,4 +1,8 @@
 import { runRankTracking } from '../lib/rankRunner.js';
+import { getFirestoreStore as getWatchFirestore } from '../lib/firestore.js';
+import { getProjectDocsStore as getWatchDocs } from '../lib/projectDocs.js';
+import { fetchOnce } from '../lib/seoFetch.js';
+import { getWatchStore, runWatches } from '../lib/watches.js';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { productionDigestDeps } from '../lib/digestWiring.js';
@@ -149,5 +153,7 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
   } catch { emails = { error: 'emails failed' }; }
   let rank: Awaited<ReturnType<typeof runRankTracking>> | { error: string };
   try { rank = await runRankTracking(); } catch { rank = { error: 'rank tracking failed' }; }
-  res.json({ ...digests, alerts, cleaned, shares, emails, rank });
+  let watch: Awaited<ReturnType<typeof runWatches>> | { error: string };
+  try { watch = await runWatches({ store: getWatchStore(), docs: getWatchDocs(), fetcher: fetchOnce, now: Date.now, projectExists: async (ws, project) => Boolean(await getWatchFirestore().getProject(ws, project)) }); } catch { watch = { error: 'competitor watch failed' }; }
+  res.json({ ...digests, alerts, cleaned, shares, emails, rank, watch });
 });

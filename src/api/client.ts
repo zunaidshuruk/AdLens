@@ -325,7 +325,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -347,7 +347,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -483,6 +483,12 @@ export interface RankPageTraffic { page: string; sessions: number; clicks: numbe
 
 export interface OnPageCheck { id: string; status: 'good' | 'warn' | 'bad'; title: string; detail: string; fix: string }
 export interface OnPageReportInfo { url: string; keyword: string; score: number; facts: { title: string | null; description: string | null; h1: string[]; wordCount: number; urlPath: string }; placement: { title: boolean; h1: boolean; description: boolean; url: boolean; firstParagraph: boolean; h2: number; imageAlt: number }; occurrences: number; density: number; readability: { sentences: number; avgSentenceWords: number; flesch: number | null; level: 'easy' | 'ok' | 'hard' | 'unknown' }; checks: OnPageCheck[]; related: { missing: { term: string; competitors: number; avgCount: number }[]; note: string } | null }
+export interface AiAnalysisInfo { mentioned: boolean; rank: number | null; competitors: { name: string; mentioned: boolean }[]; sentiment: 'positive' | 'neutral' | 'negative' | null; sources: string[]; citedOwn: boolean; excerpt: string }
+export interface AiRunInfo { id: string; promptId: string; engine: string; at: string; analysis: AiAnalysisInfo }
+export interface AiVisOverview { prompts: { id: string; text: string; runs: number; latest: AiRunInfo | null }[]; competitors: string[]; brandTerms: string[]; ownDomain: string | null; summary: { run: number; visibility: number; shareOfVoice: number | null; citedOwn: number; sentiment: { positive: number; neutral: number; negative: number } }; trend: { date: string; rate: number }[]; limit: number; canEdit: boolean; canAi: boolean; agents: { id: string; name: string }[] }
+export interface DomainOverviewInfo { domain: string; url: string; status: number; title: string | null; description: string | null; lang: string | null; httpsOnly: boolean; ms: number; htmlKb: number; structuredData: string[]; social: { name: string; url: string }[]; tech: string[]; trackers: string[]; topTerms: string[]; robots: { found: boolean; sitemaps: string[]; blocksAll: boolean; blockedBots: string[] }; sitemap: { found: boolean; urls: number; truncated: boolean; sections: { section: string; urls: number }[]; latestChange: string | null } }
+export interface WatchInfo { id: string; domain: string; sitemapUrl: string | null; pages: string[]; enabled: boolean; createdAt: string; lastCheckedAt: string | null; lastError: string | null }
+export interface WatchEventInfo { id: string; watchId: string; at: string; type: string; url: string; detail: string }
 export interface LinkProspectInfo { id: string; domain: string; pageUrl: string; targetUrl: string; status: 'new' | 'contacted' | 'replied' | 'won' | 'lost'; contactEmail: string; notes: string; linkLive: boolean | null; checkedAt: string | null; createdBy: string; createdAt: string; updatedAt: string }
 
 export interface ContentBriefInfo { keyword: string; pages: { url: string; title: string | null; words: number; headings: string[] }[]; length: { median: number; min: number; max: number; recommended: number }; outline: { text: string; pages: number }[]; questions: string[]; terms: { term: string; pages: number; avgCount: number }[]; titles: string[] }
@@ -936,6 +942,18 @@ export const apiClient = {
   async rankHistory(days: 28 | 90): Promise<{ days: number; summary: RankSummaryInfo; tracking: RankTrackingState | null; daysStored: number }> { return apiRequest(`/api/rank/history?days=${days}`); },
   async rankTraffic(): Promise<{ startDate: string; endDate: string; rows: RankPageTraffic[]; totals: { sessions: number; clicks: number; hiddenClicks: number; hiddenShare: number } }> { return apiRequest('/api/rank/traffic', { method: 'POST', body: '{}' }); },
   async seoOnPage(url: string, keyword: string, competitors: string[]): Promise<{ report: OnPageReportInfo; competitorErrors: string[] }> { return apiRequest('/api/seo/onpage', { method: 'POST', body: JSON.stringify({ url, keyword, competitors }) }); },
+  async aivisOverview(): Promise<AiVisOverview> { return apiRequest('/api/aivis/overview'); },
+  async aivisAddPrompts(texts: string[]): Promise<{ added: number; skipped: number }> { return apiRequest('/api/aivis/prompts', { method: 'POST', body: JSON.stringify({ texts }) }); },
+  async aivisDeletePrompt(id: string): Promise<void> { await apiRequest(`/api/aivis/prompts/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async aivisSetCompetitors(competitors: string[]): Promise<{ competitors: string[] }> { return apiRequest('/api/aivis/settings', { method: 'PUT', body: JSON.stringify({ competitors }) }); },
+  async aivisHistory(id: string): Promise<{ runs: AiRunInfo[] }> { return apiRequest(`/api/aivis/history/${encodeURIComponent(id)}`); },
+  async aivisRun(promptIds: string[], agentId?: string): Promise<{ runs: AiRunInfo[]; errors: string[]; quota: { used: number; limit: number | null } | null }> { return apiRequest('/api/aivis/run', { method: 'POST', body: JSON.stringify({ promptIds, ...(agentId ? { agentId } : {}) }) }); },
+  async seoDomainOverview(domain: string): Promise<{ overview: DomainOverviewInfo }> { return apiRequest('/api/seo/domain-overview', { method: 'POST', body: JSON.stringify({ domain }) }); },
+  async watchList(): Promise<{ watches: WatchInfo[]; events: WatchEventInfo[]; limit: number; canEdit: boolean }> { return apiRequest('/api/watch'); },
+  async watchAdd(domain: string, sitemapUrl: string, pages: string[]): Promise<{ watch: WatchInfo }> { return apiRequest('/api/watch', { method: 'POST', body: JSON.stringify({ domain, sitemapUrl, pages }) }); },
+  async watchSetEnabled(id: string, enabled: boolean): Promise<{ watch: WatchInfo }> { return apiRequest(`/api/watch/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ enabled }) }); },
+  async watchDelete(id: string): Promise<void> { await apiRequest(`/api/watch/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async watchCheck(id: string): Promise<{ result: { baseline: boolean; events: number; urls: number }; watch: WatchInfo }> { return apiRequest(`/api/watch/${encodeURIComponent(id)}/check`, { method: 'POST', body: '{}' }); },
   async linkProspects(): Promise<{ prospects: LinkProspectInfo[]; limit: number; canEdit: boolean }> { return apiRequest('/api/links/prospects'); },
   async linkAddProspects(domains: string[]): Promise<{ added: number; skipped: number; prospects: LinkProspectInfo[] }> { return apiRequest('/api/links/prospects', { method: 'POST', body: JSON.stringify({ domains }) }); },
   async linkUpdateProspect(id: string, patch: Partial<Pick<LinkProspectInfo, 'status' | 'notes' | 'pageUrl' | 'targetUrl' | 'contactEmail'>>): Promise<{ prospect: LinkProspectInfo }> { return apiRequest(`/api/links/prospects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }); },

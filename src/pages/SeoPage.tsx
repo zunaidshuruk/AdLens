@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { apiClient, type ContentBriefInfo, type SeoCrawlReport, type SeoIssueInfo, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
 import { ContentBrief, TopicResearch, WritingAssistant } from '../components/seo/Content';
+import { AiVisibility, CompetitorWatch, DomainOverview } from '../components/seo/AiAndCompetitors';
 import { BacklinkAudit, BacklinkGap, LinkBuilding } from '../components/seo/Backlinks';
 import { LogAnalyzer, OnPageChecker } from '../components/seo/OnPageAndLogs';
 import { KeywordResearch, TopicGap } from '../components/seo/KeywordResearch';
@@ -330,6 +331,7 @@ const GROUPS = [
   { key: 'keywords', label: 'Keywords', tabs: [['keywords', 'Keyword research'], ['gap', 'Topic gap'], ['lists', 'Keyword lists']] },
   { key: 'rank', label: 'Rankings and traffic', tabs: [['rank', 'Rank tracking'], ['traffic', 'Organic traffic'], ['logs', 'Log analyzer']] },
   { key: 'content', label: 'Content', tabs: [['topics', 'Topic research'], ['brief', 'Content brief'], ['writer', 'Writing assistant']] },
+  { key: 'ai', label: 'AI and competitors', tabs: [['aivis', 'AI visibility'], ['domain', 'Domain overview'], ['watch', 'Competitor watch']] },
   { key: 'links', label: 'Links', tabs: [['audit', 'Backlink audit'], ['linkgap', 'Link gap'], ['outreach', 'Link building']] },
 ] as const;
 type TabKey = (typeof GROUPS)[number]['tabs'][number][0];
@@ -372,6 +374,9 @@ export const SeoPage: React.FC = () => {
         {tab === 'topics' && <TopicResearch useInBrief={(k) => { setBriefKeyword(k); go('brief'); }} />}
         {tab === 'brief' && <ContentBrief key={briefKeyword} initialKeyword={briefKeyword} sendToWriter={(b) => { setBrief(b); go('writer'); }} />}
         {visited.has('writer') && <div hidden={tab !== 'writer'}><WritingAssistant key={brief?.keyword ?? ''} brief={brief} /></div>}
+        {tab === 'aivis' && <AiVisibility />}
+        {tab === 'domain' && <DomainOverview />}
+        {tab === 'watch' && <CompetitorWatch />}
         {tab === 'audit' && <BacklinkAudit />}
         {tab === 'linkgap' && <BacklinkGap goOutreach={() => go('outreach')} />}
         {tab === 'outreach' && <LinkBuilding />}
