@@ -4,6 +4,8 @@ import { getContentLimits } from '../config/plans.js';
 import { getServerConfig } from '../config.js';
 import { getFirestoreStore } from '../lib/firestore.js';
 import { can } from '../lib/permissions.js';
+import { pdfName } from '../lib/emailSchedules.js';
+import { snapshotToPdf } from '../lib/pdf.js';
 import { ShareSourceError, refreshShare, snapshotForTarget } from '../lib/shareWiring.js';
 import { getShareStore, hashPassword, hashToken, newToken, publicShare, shareInputSchema, type StoredShare } from '../lib/shares.js';
 import { openAgentSecret, sealAgentSecret } from '../lib/tokenVault.js';
@@ -75,6 +77,23 @@ sharesRouter.post('/', async (req, res) => {
     await store.put(share);
     res.status(201).json({ share: withUrl(share) });
   } catch { fail(res, 500, 'SHARE_FAILED', 'Could not make the link.'); }
+});
+
+/** A PDF of a dashboard or saved report, made now from live numbers. Nothing is stored. */
+sharesRouter.post('/pdf', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s) return;
+    const parsed = shareInputSchema.pick({ kind: true, targetId: true, rangeDays: true }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_SHARE', parsed.error.issues[0]?.message || 'The settings are not valid.');
+    let built;
+    try { built = await snapshotForTarget({ ...parsed.data, workspaceId: s.ws, projectId: s.project, ownerUid: s.uid }); }
+    catch (e) { if (e instanceof ShareSourceError) return fail(res, 404, 'NOT_FOUND', e.message); throw e; }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdfName(built.title, built.snapshot)}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(snapshotToPdf(built.snapshot, req.project?.name));
+  } catch { fail(res, 500, 'SHARE_FAILED', 'Could not make the PDF.'); }
 });
 
 async function load(req: Request, res: Response, s: Scope): Promise<StoredShare | null> {

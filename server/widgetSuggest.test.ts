@@ -7,7 +7,8 @@ import { setTestTokenVerifier } from './lib/firebaseAdmin.js';
 import { createInMemoryFirestoreStore, setTestFirestoreStore } from './lib/firestore.js';
 import { createInMemoryProjectDocsStore, setTestProjectDocsStore } from './lib/projectDocs.js';
 import { getVault, resetVaultSingleton } from './lib/vault.js';
-import { buildSuggestPrompt, extractJsonObject, suggestWidget } from './lib/widgetSuggest.js';
+import type { DatasetSummary } from './lib/datasets.js';
+import { buildSuggestPrompt, extractJsonObject, suggestWidget, type SuggestSource } from './lib/widgetSuggest.js';
 import { clearAiRateLimit, setTestAiRequest } from './routes/ai.js';
 
 const fake = (text: string): AgentProvider => ({ complete: async () => ({ text, toolCalls: [] }) });
@@ -53,6 +54,47 @@ test('Sprint 15a-3 — describe a widget: JSON is extracted, checked and tidied'
   assert.equal((await suggestWidget('x'.repeat(301), { provider: fake(good), sources })).ok, false);
   assert.ok(!buildSuggestPrompt(['ga4']).includes('Search Console metrics'));
   assert.ok(buildSuggestPrompt(['search_console']).includes('Search Console metrics'));
+});
+
+const table: DatasetSummary = { id: 'ds1', name: 'Sales "Q3"', rowCount: 3, createdBy: 'u', createdAt: 'x', updatedAt: 'x', columns: [{ key: 'c1', label: 'Region', type: 'text' }, { key: 'c2', label: 'Revenue', type: 'number' }] };
+
+test('Sprint 37 — AI builder: Meta Ads, uploaded tables and the new chart kinds', async () => {
+  const sources: SuggestSource[] = ['ga4', 'meta', 'data'];
+  const run = (obj: unknown, srcs: SuggestSource[] = sources, datasets: DatasetSummary[] = [table]) => suggestWidget('x', { provider: fake(JSON.stringify(obj)), sources: srcs, datasets });
+
+  const meta = await run({ title: 'Spend by campaign', kind: 'pie', source: 'meta', spec: { dimensions: ['campaign', 'age'], metrics: ['spend', 'clicks'], filters: [], limit: 6 } });
+  assert.ok(meta.ok);
+  if (meta.ok) { assert.deepEqual(meta.widget.spec.dimensions, ['campaign']); assert.deepEqual(meta.widget.spec.metrics, ['spend']); }
+
+  const stacked = await run({ title: 'Clicks by platform and device', kind: 'stacked', source: 'meta', spec: { dimensions: ['platform', 'device', 'age'], metrics: ['clicks'], filters: [], limit: 40 } });
+  assert.ok(stacked.ok);
+  if (stacked.ok) assert.equal(stacked.widget.spec.dimensions.length, 2);
+  // heat maps and stacked bars need two breakdowns
+  assert.equal((await run({ title: 'x', kind: 'heatmap', source: 'meta', spec: { dimensions: ['age'], metrics: ['clicks'], filters: [], limit: 40 } })).ok, false);
+
+  // a gauge is one number and keeps its goal; other kinds drop a stray target
+  const gauge = await run({ title: 'Spend goal', kind: 'gauge', target: 5000, source: 'meta', spec: { dimensions: ['date'], metrics: ['spend'], filters: [], limit: 5 } });
+  assert.ok(gauge.ok);
+  if (gauge.ok) { assert.equal(gauge.widget.target, 5000); assert.deepEqual(gauge.widget.spec.dimensions, []); }
+  const kpi = await run({ title: 'Spend', kind: 'kpi', target: 10, source: 'meta', spec: { dimensions: [], metrics: ['spend'], filters: [], limit: 1 } });
+  assert.ok(kpi.ok && kpi.widget.target === undefined);
+
+  // uploaded table: real table and real columns only
+  const good = await run({ title: 'Revenue by region', kind: 'bar', source: 'data', spec: { datasetId: 'ds1', dimensions: ['c1'], metrics: ['c2'], aggregate: 'sum', filters: [], limit: 8 } });
+  assert.ok(good.ok);
+  const rows = await run({ title: 'Rows', kind: 'kpi', source: 'data', spec: { datasetId: 'ds1', dimensions: [], metrics: ['__rows'], aggregate: 'sum', filters: [], limit: 1 } });
+  assert.ok(rows.ok);
+  assert.equal((await run({ title: 'x', kind: 'bar', source: 'data', spec: { datasetId: 'other', dimensions: ['c1'], metrics: ['c2'], aggregate: 'sum', filters: [], limit: 8 } })).ok, false);
+  assert.equal((await run({ title: 'x', kind: 'bar', source: 'data', spec: { datasetId: 'ds1', dimensions: ['c9'], metrics: ['c2'], aggregate: 'sum', filters: [], limit: 8 } })).ok, false);
+  assert.equal((await run({ title: 'x', kind: 'bar', source: 'data', spec: { datasetId: 'ds1', dimensions: ['c1'], metrics: ['c1'], aggregate: 'sum', filters: [], limit: 8 } })).ok, false);
+  // a source the project does not have is refused
+  assert.equal((await run({ title: 'x', kind: 'bar', source: 'meta', spec: { dimensions: ['campaign'], metrics: ['spend'], filters: [], limit: 5 } }, ['ga4'])).ok, false);
+
+  // the prompt lists only what exists, and cannot be broken out of by a table name
+  const p = buildSuggestPrompt(['data'], [table]);
+  assert.ok(p.includes('ds1') && p.includes('Region') && !p.includes('GA4 dimensions') && !p.includes('Meta Ads'));
+  assert.ok(!p.includes('"Q3"'));
+  assert.ok(buildSuggestPrompt(['meta']).includes('Amount spent'));
 });
 
 test('Sprint 15a-3 — suggest-widget route: uses one AI question, refunds failures, needs a connected source', async () => {
@@ -107,6 +149,15 @@ test('Sprint 15a-3 — suggest-widget route: uses one AI question, refunds failu
     assert.equal((await call({ description: '' })).status, 400);
     assert.equal((await call({ description: 'top pages' }, bare)).status, 409);
     assert.equal(await used(), 1);
+
+    // a project with only an uploaded table can now use the builder too
+    const up = await fetch(`${baseUrl}/api/datasets`, { method: 'POST', body: JSON.stringify({ name: 'Sales', csv: 'region,revenue\nNorth,10\nSouth,20\n' }), headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json', 'X-AdLens-Project': `${bare.workspaceId}/${bare.id}` } });
+    assert.equal(up.status, 201);
+    const ds = ((await up.json()) as any).dataset;
+    reply = JSON.stringify({ title: 'Revenue by region', kind: 'pie', source: 'data', spec: { datasetId: ds.id, dimensions: [ds.columns[0].key], metrics: [ds.columns[1].key], aggregate: 'sum', filters: [], limit: 5 } });
+    const dr = await call({ description: 'revenue by region' }, bare);
+    assert.equal(dr.status, 200);
+    assert.equal(((await dr.json()) as any).widget.source, 'data');
   } finally {
     server.close();
     setTestAiRequest(null);

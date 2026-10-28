@@ -1,4 +1,4 @@
-import { Copy, Link2, Mail, RefreshCw, Send, Trash2, X } from 'lucide-react';
+import { Copy, Download, Link2, Mail, RefreshCw, Send, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiClient, type EmailScheduleInfo, type ShareInfo } from '../api/client';
 
@@ -23,6 +23,7 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
   const [freq, setFreq] = useState<'weekly' | 'monthly'>('weekly');
   const [mailRange, setMailRange] = useState<7 | 28 | 90>(7);
   const [mailTo, setMailTo] = useState('');
+  const [attachPdf, setAttachPdf] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -61,7 +62,7 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
     e.preventDefault();
     setBusy('mail'); setError(null); setNote(null);
     try {
-      await apiClient.createEmailSchedule({ kind, targetId, frequency: freq, rangeDays: mailRange, enabled: true, emails: mailTo.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) });
+      await apiClient.createEmailSchedule({ kind, targetId, frequency: freq, rangeDays: mailRange, enabled: true, attachPdf, emails: mailTo.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) });
       setNote(freq === 'weekly' ? 'Scheduled. It goes out every Monday.' : 'Scheduled. It goes out on the 1st of each month.');
       await loadSched();
     } catch (err) { setError(errMessage(err)); }
@@ -81,6 +82,11 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
     if (!window.confirm('Delete this scheduled email?')) return;
     setBusy(x.id); setError(null);
     try { await apiClient.deleteEmailSchedule(x.id); await loadSched(); } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const pdf = async () => {
+    setBusy('pdf'); setError(null); setNote(null);
+    try { await apiClient.downloadPdf(kind, targetId, rangeDays); setNote('PDF downloaded.'); } catch (err) { setError(errMessage(err)); }
     setBusy(null);
   };
   const copy = async (s: ShareInfo) => {
@@ -112,6 +118,10 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
         {error && <p role="alert" className="text-xs text-danger">{error}</p>}
         {note && <p role="status" className="text-xs text-success">{note}</p>}
 
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3">
+          <p className="text-xs text-fg-muted flex-1 min-w-[180px]">Need a file? Download a PDF of the numbers as of now (uses the “Show the last” setting below).</p>
+          <button type="button" disabled={busy === 'pdf'} onClick={() => void pdf()} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2 disabled:opacity-50"><Download className="w-3.5 h-3.5" /> {busy === 'pdf' ? 'Making the PDF…' : 'Download PDF'}</button>
+        </div>
         <form onSubmit={(e) => void create(e)} className="rounded-xl border border-line bg-surface p-3 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-medium text-fg space-y-1">Show the last
@@ -177,6 +187,7 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
               <label className="block text-xs font-medium text-fg space-y-1">Send to (up to 3 addresses, separated by commas)
                 <input className={field} value={mailTo} placeholder={userEmail ?? 'you@company.com'} onChange={(e) => setMailTo(e.target.value)} />
               </label>
+              <label className="flex items-center gap-2 text-xs text-fg"><input type="checkbox" checked={attachPdf} onChange={(e) => setAttachPdf(e.target.checked)} /> Attach the snapshot as a PDF</label>
               <button type="submit" disabled={busy === 'mail' || (schedLimit > 0 && sched.length >= schedLimit)} className="inline-flex items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">
                 <Mail className="w-3.5 h-3.5" /> {busy === 'mail' ? 'Saving…' : 'Schedule the email'}
               </button>
@@ -186,7 +197,7 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
             <ul className="space-y-2">
               {sched.map((x) => (
                 <li key={x.id} className="rounded-xl border border-line bg-surface p-3 space-y-2">
-                  <p className="text-xs text-fg">{x.frequency === 'weekly' ? 'Every Monday' : '1st of every month'} · last {x.rangeDays} days · {x.emails.join(', ')}{x.enabled ? '' : ' (paused)'}</p>
+                  <p className="text-xs text-fg">{x.frequency === 'weekly' ? 'Every Monday' : '1st of every month'} · last {x.rangeDays} days{x.attachPdf ? ' · PDF attached' : ''} · {x.emails.join(', ')}{x.enabled ? '' : ' (paused)'}</p>
                   <p className="text-[11px] text-fg-muted">{x.lastSentAt ? `Last sent ${new Date(x.lastSentAt).toLocaleDateString()}` : 'Not sent yet'}</p>
                   {x.lastError && <p className="text-[11px] text-warning">{x.lastError}</p>}
                   <div className="flex gap-2">

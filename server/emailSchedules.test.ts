@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { app } from './app.js';
+import { sendMail } from './lib/mailer.js';
 import { buildScheduleEmail, createInMemoryScheduleStore, isDue, runEmailSchedules, setTestScheduleStore, type StoredSchedule } from './lib/emailSchedules.js';
 import { setTestTokenVerifier } from './lib/firebaseAdmin.js';
 import { createInMemoryFirestoreStore, setTestFirestoreStore } from './lib/firestore.js';
@@ -19,7 +20,7 @@ const snap: Snapshot = {
   ],
 };
 
-const sched = (o: Partial<StoredSchedule> = {}): StoredSchedule => ({ id: 's1', workspaceId: 'w', projectId: 'p', createdBy: 'u', createdAt: '2026-10-01T00:00:00Z', title: 'Board', kind: 'dashboard', targetId: 'd1', frequency: 'weekly', rangeDays: 7, emails: ['a@b.com', 'c@d.com'], enabled: true, ...o });
+const sched = (o: Partial<StoredSchedule> = {}): StoredSchedule => ({ id: 's1', workspaceId: 'w', projectId: 'p', createdBy: 'u', createdAt: '2026-10-01T00:00:00Z', title: 'Board', kind: 'dashboard', targetId: 'd1', frequency: 'weekly', rangeDays: 7, emails: ['a@b.com', 'c@d.com'], enabled: true, attachPdf: false, ...o });
 
 test('Scheduled emails: weekly on Mondays, monthly on the 1st, once per period', () => {
   assert.equal(isDue(sched(), MON), true);
@@ -64,6 +65,28 @@ test('Scheduled emails: runner sends once, drops orphans, respects plan, records
   assert.ok((await store.get('s1'))!.lastSentAt);
   const again = await runEmailSchedules({ ...deps, now: new Date('2026-10-26T20:00:00Z') });
   assert.equal(again.sent, 0);
+});
+
+test('Scheduled emails: a PDF is attached only when asked, and the mail provider receives it as base64', async () => {
+  const store = createInMemoryScheduleStore();
+  await store.put(sched({ id: 'with', attachPdf: true }));
+  await store.put(sched({ id: 'without', attachPdf: false, projectId: 'p2' }));
+  const seen: Record<string, { filename: string; content: Buffer }[] | undefined> = {};
+  await runEmailSchedules({
+    store, appUrl: 'https://app.example.com', now: MON,
+    sendMail: async (m) => { seen[m.subject] = m.attachments; return { ok: true as const }; },
+    context: async () => ({ projectName: 'P', ownerEmail: 'me@x.com', emailAllowed: true }),
+    snapshot: async (s) => ({ title: s.id === 'with' ? 'With pdf' : 'Without pdf', snapshot: snap }),
+  });
+  const withKey = Object.keys(seen).find((k) => k.startsWith('With pdf'))!;
+  const withoutKey = Object.keys(seen).find((k) => k.startsWith('Without pdf'))!;
+  assert.equal(seen[withoutKey], undefined);
+  assert.equal(seen[withKey]!.length, 1);
+  assert.match(seen[withKey]![0].filename, /^with-pdf-2026-10-25\.pdf$/);
+  assert.equal(seen[withKey]![0].content.subarray(0, 5).toString(), '%PDF-');
+  let body = '';
+  await sendMail({ to: 'a@b.com', subject: 's', text: 't', html: 'h', attachments: [{ filename: 'x.pdf', content: Buffer.from('%PDF-1') }] }, { env: { RESEND_API_KEY: 'k', MAIL_FROM: 'AdLens <a@b.com>' }, fetchFn: (async (_u: unknown, init: { body: string }) => { body = init.body; return { ok: true }; }) as never });
+  assert.deepEqual(JSON.parse(body).attachments, [{ filename: 'x.pdf', content: Buffer.from('%PDF-1').toString('base64') }]);
 });
 
 test('Scheduled emails API: create, list, update, test, delete, isolation', async () => {

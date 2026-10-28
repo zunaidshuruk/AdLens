@@ -9,6 +9,8 @@ import { escapeHtml } from './digest.js';
 import type { ExploreCell, ExploreResult } from './exploreSpec.js';
 import { getAdminFirestore, getFirestoreStore } from './firestore.js';
 import type { MailMessage, MailResult } from './mailer.js';
+import { snapshotToPdf } from './pdf.js';
+import { formatCell } from './snapshotFormat.js';
 import { snapshotForTarget } from './shareWiring.js';
 import type { Snapshot } from './shares.js';
 
@@ -19,6 +21,7 @@ export const emailScheduleInputSchema = z.object({
   rangeDays: z.union([z.literal(7), z.literal(28), z.literal(90)]).default(7),
   emails: z.array(z.string().trim().toLowerCase().email().max(120)).min(1, 'Add at least one email address').max(3, 'Up to 3 email addresses'),
   enabled: z.boolean().default(true),
+  attachPdf: z.boolean().default(false),
 });
 export type EmailScheduleInput = z.infer<typeof emailScheduleInputSchema>;
 
@@ -72,15 +75,7 @@ export function isDue(s: Pick<StoredSchedule, 'frequency' | 'lastSentAt' | 'enab
   return now.getUTCDate() === 1 && s.lastSentAt?.slice(0, 7) !== today.slice(0, 7);
 }
 
-function cell(v: ExploreCell | undefined, type: string): string {
-  if (v === null || v === undefined || v === '') return '—';
-  if (typeof v === 'string') return v;
-  if (!Number.isFinite(v)) return '—';
-  if (type === 'percent') return `${v.toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
-  if (type === 'seconds') { const s = Math.round(v); return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`; }
-  if (type === 'decimal' || type === 'position') return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
-}
+const cell = formatCell;
 
 const ROWS_IN_EMAIL = 10;
 function widgetBlock(w: Snapshot['widgets'][number]): { html: string; text: string } {
@@ -115,6 +110,12 @@ export function buildScheduleEmail(s: Pick<StoredSchedule, 'title' | 'frequency'
   return { subject, html, text };
 }
 
+/** A safe file name such as board-2026-10-26.pdf. */
+export function pdfName(title: string, snap: { range: { endDate: string } }): string {
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'snapshot';
+  return `${base}-${snap.range.endDate}.pdf`;
+}
+
 export interface RunSchedulesDeps {
   store: ScheduleStore;
   now?: Date;
@@ -138,8 +139,9 @@ export async function runEmailSchedules(deps: RunSchedulesDeps): Promise<{ check
     try {
       const { title, snapshot } = await deps.snapshot(s, now);
       const mail = buildScheduleEmail({ ...s, title }, snapshot, ctx.projectName, deps.appUrl, ctx.ownerEmail);
+      const attachments = s.attachPdf ? [{ filename: pdfName(title, snapshot), content: snapshotToPdf(snapshot, ctx.projectName) }] : undefined;
       let ok = 0;
-      for (const to of s.emails) if ((await deps.sendMail({ ...mail, to })).ok) ok++;
+      for (const to of s.emails) if ((await deps.sendMail({ ...mail, to, ...(attachments ? { attachments } : {}) })).ok) ok++;
       if (ok > 0) { await deps.store.put({ ...s, title, lastSentAt: now.toISOString(), lastError: undefined }); out.sent++; }
       else { await deps.store.put({ ...s, lastError: 'The email could not be sent.' }); out.failed++; }
     } catch {

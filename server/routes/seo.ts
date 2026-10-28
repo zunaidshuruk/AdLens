@@ -1,3 +1,7 @@
+import { getServerConfig } from '../config.js';
+import { createAgentProvider } from '../lib/agentProviders.js';
+import { summarise, summaryInputSchema, type SummaryOutcome } from '../lib/seoSummary.js';
+import { aiRateLimitMiddleware, getAiRequest } from './ai.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getContentLimits } from '../config/plans.js';
@@ -160,5 +164,34 @@ seoRouter.post('/keywords', async (req, res) => {
       } catch { /* optional */ }
     }
     res.json({ seed: parsed.data.seed, ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null })), note: 'Ideas come from what people type into Google. Search volumes are not included.' });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});
+
+// POST /api/seo/summary: the built-in AI explains a tool result in plain words (uses one AI question, refunded if it fails).
+seoRouter.post('/summary', aiRateLimitMiddleware, async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s) return;
+    const parsed = summaryInputSchema.safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', 'There is nothing to summarise.');
+    const cfg = getServerConfig();
+    const keys = [cfg.geminiApiKey, cfg.geminiApiKey2].filter((k): k is string => Boolean(k));
+    if (keys.length === 0 || !cfg.geminiModel) return fail(res, 503, 'CLOUD_NOT_CONFIGURED', 'The built-in AI is not set up on this server yet.');
+    const store = getFirestoreStore();
+    const ws = req.project!.workspaceId;
+    const quota = await store.consumeAiQuota(ws);
+    if (!quota.ok) return fail(res, 429, 'QUOTA_EXCEEDED', "You've used all AI questions for this month.");
+    let outcome: SummaryOutcome | null = null;
+    for (const apiKey of keys) {
+      const provider = createAgentProvider({ kind: 'gemini', model: cfg.geminiModel, apiKey, agent: { id: 'seo-summary', name: 'SEO summary' }, temperature: 0.3 }, { request: getAiRequest() });
+      outcome = await summarise(parsed.data, provider);
+      const retryable = !outcome.ok && outcome.code === 'PROVIDER_ERROR' && ['PROVIDER_AUTH', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE'].includes(outcome.providerCode ?? '');
+      if (!retryable) break;
+    }
+    if (!outcome || !outcome.ok) {
+      await store.refundAiQuota(ws);
+      return fail(res, 502, 'AI_FAILED', outcome && !outcome.ok ? outcome.message : 'The AI could not be reached.');
+    }
+    res.json({ summary: outcome.text, quota: { used: quota.used, limit: quota.limit } });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
 });

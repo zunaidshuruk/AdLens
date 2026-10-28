@@ -6,7 +6,8 @@ import {
 import { dashboardInputSchema } from '../lib/dashboardSpec.js';
 import { createAgentProvider } from '../lib/agentProviders.js';
 import { getFirestoreStore } from '../lib/firestore.js';
-import { suggestWidget, type SuggestOutcome } from '../lib/widgetSuggest.js';
+import { suggestWidget, type SuggestOutcome, type SuggestSource } from '../lib/widgetSuggest.js';
+import { listDatasets } from '../lib/datasets.js';
 import { getServerConfig } from '../config.js';
 import { aiRateLimitMiddleware, getAiRequest, resolveConnectedSourcesForProject } from './ai.js';
 import { getProjectDocsStore } from '../lib/projectDocs.js';
@@ -99,8 +100,10 @@ dashboardsRouter.post('/suggest-widget', aiRateLimitMiddleware, async (req, res)
     const keys = [cfg.geminiApiKey, cfg.geminiApiKey2].filter((k): k is string => Boolean(k));
     if (keys.length === 0 || !cfg.geminiModel) return fail(res, 503, 'CLOUD_NOT_CONFIGURED', 'The built-in AI is not set up on this server yet.');
     const connected = await resolveConnectedSourcesForProject(req.user!.uid, req.user?.email, req.project);
-    const sources = connected.filter((c): c is 'ga4' | 'search_console' => c === 'ga4' || c === 'search_console');
-    if (sources.length === 0) return fail(res, 409, 'NO_DATA_SOURCES', 'Connect Google Analytics or Search Console to this project first.');
+    const datasets = (await listDatasets(getProjectDocsStore(), s.ws, s.project)).slice(0, 10);
+    const sources: SuggestSource[] = connected.filter((c): c is 'ga4' | 'search_console' | 'meta' => c === 'ga4' || c === 'search_console' || c === 'meta');
+    if (datasets.some((d) => d.columns.length > 0)) sources.push('data');
+    if (sources.length === 0) return fail(res, 409, 'NO_DATA_SOURCES', 'Connect Google Analytics, Search Console or Meta Ads, or upload a table, first.');
 
     const description = (req.body as { description?: unknown } | undefined)?.description;
     if (typeof description !== 'string' || !description.trim()) return fail(res, 400, 'INVALID_DESCRIPTION', 'Describe the widget you want first.');
@@ -115,7 +118,7 @@ dashboardsRouter.post('/suggest-widget', aiRateLimitMiddleware, async (req, res)
         { kind: 'gemini', model: cfg.geminiModel, apiKey, agent: { id: 'widget-builder', name: 'Widget builder' }, temperature: 0.1 },
         { request: getAiRequest() }
       );
-      outcome = await suggestWidget(description, { provider, sources });
+      outcome = await suggestWidget(description, { provider, sources, datasets });
       const retryable = !outcome.ok && outcome.code === 'PROVIDER_ERROR' && ['PROVIDER_AUTH', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE'].includes(outcome.providerCode ?? '');
       if (!retryable) break;
     }

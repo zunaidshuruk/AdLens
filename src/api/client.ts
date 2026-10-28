@@ -155,6 +155,15 @@ async function performFetch(
   }
 }
 
+function saveBlob(blob: Blob, disposition: string | null): void {
+  const name = /filename="([^"]+)"/.exec(disposition ?? '')?.[1] ?? 'snapshot.pdf';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 async function parseErrorResponse(response: Response): Promise<{ code: string; message: string }> {
   let errorCode = 'API_ERROR';
   let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
@@ -423,8 +432,8 @@ export interface SharedSnapshot {
   widgets: { id: string; title: string; layout: { x: number; y: number; w: number; h: number }; kind: import('../types/dashboard.js').DashboardWidget['kind']; days?: number; target?: number; text?: string; result?: import('../types/explore.js').ExploreResult; error?: string }[];
 }
 
-export interface EmailScheduleInfo { id: string; kind: 'dashboard' | 'report'; targetId: string; title: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean; lastSentAt?: string; lastError?: string }
-export interface EmailScheduleInput { kind: 'dashboard' | 'report'; targetId: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean }
+export interface EmailScheduleInfo { attachPdf?: boolean; id: string; kind: 'dashboard' | 'report'; targetId: string; title: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean; lastSentAt?: string; lastError?: string }
+export interface EmailScheduleInput { attachPdf?: boolean; kind: 'dashboard' | 'report'; targetId: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean }
 
 export interface SeoIssueInfo { id: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string; fix: string }
 export interface SeoPageResult {
@@ -874,7 +883,21 @@ export const apiClient = {
   async seoPage(url: string): Promise<SeoPageResult> { return apiRequest('/api/seo/page', { method: 'POST', body: JSON.stringify({ url }) }); },
   async seoCrawl(url?: string): Promise<{ report: SeoCrawlReport; maxPages: number }> { return apiRequest('/api/seo/crawl', { method: 'POST', body: JSON.stringify(url ? { url } : {}) }); },
   async seoOpportunities(days: 28 | 90): Promise<{ days: number; rowsRead: number; truncated: boolean; opportunities: Record<SeoOpportunity['kind'], SeoOpportunity[]> }> { return apiRequest('/api/seo/opportunities', { method: 'POST', body: JSON.stringify({ days }) }); },
+  async seoSummary(payload: unknown): Promise<{ summary: string; quota: { used: number; limit: number | null } }> { return apiRequest('/api/seo/summary', { method: 'POST', body: JSON.stringify(payload) }); },
   async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
+
+  /** Downloads a PDF of a dashboard or saved report (numbers as of now). */
+  async downloadPdf(kind: 'dashboard' | 'report', targetId: string, rangeDays: 7 | 28 | 90): Promise<void> {
+    const res = await performFetch('/api/shares/pdf', { method: 'POST', body: JSON.stringify({ kind, targetId, rangeDays }) }, false);
+    if (!res.ok) throw new Error((await parseErrorResponse(res)).message);
+    saveBlob(await res.blob(), res.headers.get('content-disposition'));
+  },
+  /** Public: the PDF of a shared snapshot. */
+  async sharedPdf(token: string, password?: string): Promise<void> {
+    const res = await fetch(`/api/shared/${encodeURIComponent(token)}/pdf`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+    if (!res.ok) throw new Error((await parseErrorResponse(res)).message);
+    saveBlob(await res.blob(), res.headers.get('content-disposition'));
+  },
 
   getExploreCatalog(): Promise<ExploreCatalog> {
     return apiRequest<ExploreCatalog>('/api/explore/catalog');
@@ -975,7 +998,7 @@ export const apiClient = {
     return apiRequest<AgentTestResult>(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' });
   },
 
-  suggestWidget(description: string): Promise<{ widget: { title: string; kind: 'kpi' | 'bar' | 'line' | 'table'; source: 'ga4' | 'search_console'; spec: import('../types/explore.js').ExploreSpec }; quota: { used: number; limit: number } }> {
+  suggestWidget(description: string): Promise<{ widget: { title: string; kind: 'kpi' | 'bar' | 'line' | 'table' | 'stacked' | 'pie' | 'gauge' | 'heatmap'; target?: number; source: 'ga4' | 'search_console' | 'meta' | 'data'; spec: Record<string, unknown> }; quota: { used: number; limit: number } }> {
     return apiRequest('/api/dashboards/suggest-widget', { method: 'POST', body: JSON.stringify({ description }) });
   },
 

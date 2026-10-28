@@ -1,3 +1,4 @@
+import { Download } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiClient, type SharedSnapshot } from '../api/client';
@@ -16,6 +17,8 @@ export const SharedPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [usedPassword, setUsedPassword] = useState<string | undefined>(undefined);
   const [data, setData] = useState<{ snapshot: SharedSnapshot; expiresAt: string | null } | null>(null);
   const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches);
 
@@ -28,7 +31,7 @@ export const SharedPage: React.FC = () => {
 
   const open = async (pw?: string) => {
     setBusy(true); setError(null);
-    try { setData(await apiClient.sharedOpen(token, pw)); setPhase('ready'); }
+    try { setData(await apiClient.sharedOpen(token, pw)); setUsedPassword(pw); setPhase('ready'); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not open this page.'); }
     setBusy(false);
   };
@@ -73,7 +76,11 @@ export const SharedPage: React.FC = () => {
         {phase === 'ready' && data && (
           <>
             <div className="space-y-1">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{data.snapshot.title}</h1>
+              <div className="flex items-start justify-between gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{data.snapshot.title}</h1>
+                <button type="button" disabled={pdfBusy} onClick={() => { setPdfBusy(true); setError(null); apiClient.sharedPdf(token, usedPassword).catch((e) => setError(e instanceof Error ? e.message : 'Could not make the PDF.')).finally(() => setPdfBusy(false)); }} className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2 disabled:opacity-50"><Download className="w-3.5 h-3.5" /> {pdfBusy ? 'Making PDF…' : 'Download PDF'}</button>
+              </div>
+              {error && <p role="alert" className="text-xs text-danger">{error}</p>}
               {data.snapshot.description && <p className="text-sm text-fg-muted">{data.snapshot.description}</p>}
               <p className="text-xs text-fg-subtle">
                 Numbers for {formatShortDate(data.snapshot.range.startDate)} to {formatShortDate(data.snapshot.range.endDate)} · saved {new Date(data.snapshot.generatedAt).toLocaleString()}

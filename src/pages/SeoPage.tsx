@@ -1,4 +1,4 @@
-import { Copy, Search } from 'lucide-react';
+import { Copy, Search, Sparkles } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoKeywordIdea, type SeoOpportunity, type SeoPageResult } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
@@ -35,6 +35,29 @@ function IssueList({ issues }: { issues: SeoIssueInfo[] }) {
     </ul>
   );
 }
+
+function AiSummary({ payload }: { payload: unknown }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [text, setText] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true); setError(null);
+    try { setText((await apiClient.seoSummary(payload)).summary); } catch (err) { setError(errMessage(err)); }
+    setBusy(false);
+  };
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h3 className="text-sm font-semibold text-fg">Explain in plain words</h3><p className="text-xs text-fg-muted">An AI reads these results and tells you what to do first. Uses 1 AI question.</p></div>
+        <button type="button" disabled={busy} onClick={() => void run()} className={primary}><Sparkles className="w-4 h-4" /> {busy ? 'Writing…' : text ? 'Write again' : 'Explain for me'}</button>
+      </div>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {text && <p className="text-sm text-fg whitespace-pre-wrap">{text}</p>}
+    </div>
+  );
+}
+
+const top = (list: SeoOpportunity[]) => list.slice(0, 8).map((o) => ({ query: o.query, page: o.page, impressions: o.impressions, clicks: o.clicks, position: o.position, potentialClicks: o.potentialClicks, pages: o.pages?.slice(0, 5) }));
 
 function PageChecker() {
   const [url, setUrl] = useState('');
@@ -73,6 +96,7 @@ function PageChecker() {
             ].map(([k, v]) => <div key={k} className="rounded-lg border border-line bg-surface p-3"><dt className="text-fg-muted">{k}</dt><dd className="text-sm font-semibold text-fg mt-0.5">{v}</dd></div>)}
           </dl>
           {f.description && <p className="text-xs text-fg-muted"><span className="font-medium text-fg">Description: </span>{f.description}</p>}
+          <AiSummary key={r.url + r.score} payload={{ kind: 'page', url: r.url, score: r.score, title: f.title, wordCount: f.wordCount, issues: r.issues.slice(0, 40).map((i) => ({ severity: i.severity, title: i.title, detail: i.detail, fix: i.fix })) }} />
           <IssueList issues={r.issues} />
         </div>
       )}
@@ -116,6 +140,7 @@ function SiteAudit() {
             {r.robotsBlocked > 0 ? ` ${r.robotsBlocked} pages are blocked by robots.txt and were skipped.` : ''}
             {' '}Statuses: {Object.entries(r.statusCounts).map(([k, v]) => `${v} × ${k}`).join(', ') || 'none'}.
           </p>
+          <AiSummary key={r.startUrl + r.seconds} payload={{ kind: 'site', startUrl: r.startUrl, crawled: r.crawled, averageScore: r.averageScore, stoppedBecause: r.stoppedBecause, sitemapFound: r.sitemapFound, groups: r.groups.slice(0, 40).map((g) => ({ severity: g.severity, title: g.title, count: g.count, fix: g.fix })) }} />
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-fg">What to fix</h3>
             {r.groups.length === 0 && <p className="text-sm text-success">No problems found.</p>}
@@ -181,6 +206,7 @@ function Opportunities() {
       </div>
       <p className="text-xs text-fg-muted">Uses your Search Console data to point at the pages and searches most worth improving. “Possible extra clicks” is a rough planning estimate, not a promise.</p>
       {error && <ErrorState title="SEO opportunities" message={error} onRetry={() => void run()} />}
+      {data && <AiSummary key={`${data.days}-${data.rowsRead}`} payload={{ kind: 'opps', days: data.days, striking: top(data.opportunities.striking), low_ctr: top(data.opportunities.low_ctr), no_clicks: top(data.opportunities.no_clicks), cannibal: top(data.opportunities.cannibal) }} />}
       {data && (['striking', 'low_ctr', 'no_clicks', 'cannibal'] as const).map((k) => {
         const list = data.opportunities[k];
         return (

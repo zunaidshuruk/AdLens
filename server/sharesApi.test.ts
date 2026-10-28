@@ -68,6 +68,19 @@ test('Share links: make, open publicly, password, expiry, refresh, turn off, iso
     assert.equal((await pub('/api/shared/not-a-real-token-value-12345')).status, 404);
     assert.equal((await pub('/api/shared/short')).status, 404);
 
+    // PDFs: owner (live) and public (saved snapshot)
+    const ownerPdf = await call('/api/shares/pdf', { method: 'POST', body: { kind: 'dashboard', targetId: dash.id, rangeDays: 7 } });
+    assert.equal(ownerPdf.status, 200);
+    assert.equal(ownerPdf.headers.get('content-type'), 'application/pdf');
+    assert.match(ownerPdf.headers.get('content-disposition') ?? '', /board-\d{4}-\d{2}-\d{2}\.pdf/);
+    assert.equal(Buffer.from(await ownerPdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+    assert.equal((await call('/api/shares/pdf', { method: 'POST', body: { kind: 'dashboard', targetId: 'nope', rangeDays: 7 } })).status, 404);
+    assert.equal((await call('/api/shares/pdf', { method: 'POST', body: { kind: 'dashboard', targetId: dash.id, rangeDays: 7 }, token: 'token-bob' })).status, 404);
+    const pubPdf = await pub(`/api/shared/${token}/pdf`, {});
+    assert.equal(pubPdf.status, 200);
+    assert.equal(Buffer.from(await pubPdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+    assert.equal((await pub('/api/shared/not-a-real-token-value-12345/pdf', {})).status, 404);
+
     // list is per project and shows the view
     const listed = (await (await call('/api/shares')).json()) as any;
     assert.equal(listed.shares.length, 1);
@@ -84,6 +97,8 @@ test('Share links: make, open publicly, password, expiry, refresh, turn off, iso
     assert.equal(((await none.json()) as any).error.code, 'PASSWORD_REQUIRED');
     assert.equal(((await (await pub(`/api/shared/${t2}`, { password: 'nope' })).json()) as any).error.code, 'WRONG_PASSWORD');
     assert.equal((await pub(`/api/shared/${t2}`, { password: 'secret1' })).status, 200);
+    assert.equal((await pub(`/api/shared/${t2}/pdf`, {})).status, 401);
+    assert.equal((await pub(`/api/shared/${t2}/pdf`, { password: 'secret1' })).status, 200);
     const stored = await getShareStore().get(locked.id);
     await getShareStore().put({ ...stored!, expiresAt: new Date(Date.now() - 1000).toISOString() });
     assert.equal((await pub(`/api/shared/${t2}`, { password: 'secret1' })).status, 404);
