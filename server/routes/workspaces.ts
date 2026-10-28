@@ -2,7 +2,8 @@ import { acceptPendingInvites } from './team.js';
 import { getFlags } from '../lib/adminSettings.js';
 import { can, permissionsOf, roleDef, roleIdOf } from '../lib/permissions.js';
 import { getInviteStore } from '../lib/inviteStore.js';
-import { isOperator } from './ops.js';
+import { explainDatabaseError, isOperator } from './ops.js';
+import { reportError } from '../lib/errorReporter.js';
 import { getBillingStore } from '../lib/billingStore.js';
 import { getDigestStore } from '../lib/digestStore.js';
 import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
@@ -297,6 +298,9 @@ meRouter.post('/bootstrap', async (req: Request, res: Response) => {
     const payload = await buildMePayload(uid, email, displayName, photoURL);
     res.json(payload);
   } catch (err) {
+    const why = explainDatabaseError(err);
+    console.error('[bootstrap] could not create the workspace; database error code', why.code); // the cause is in the server log, never sent to the browser
+    void reportError(err, { method: 'POST', path: '/api/me/bootstrap' });
     res.status(500).json({
       error: {
         code: 'BOOTSTRAP_FAILED',

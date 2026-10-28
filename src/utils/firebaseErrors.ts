@@ -94,6 +94,11 @@ export function mapFirebaseErrorMessage(errOrCode: unknown): string {
       return 'This sign-in method is already linked to your account.';
     case 'auth/invalid-email':
       return 'Please enter a valid email address.';
+    case 'auth/unauthorized-continue-uri':
+    case 'auth/invalid-continue-uri':
+      return 'We could not send the verification email from this web address. The site owner needs to add this domain under Firebase, Authentication, Settings, Authorized domains.';
+    case 'auth/quota-exceeded':
+      return 'The daily limit for verification emails was reached. Please try again tomorrow, or contact the site owner.';
     case 'auth/user-disabled':
       return 'This account has been disabled. Please contact your administrator.';
     default:

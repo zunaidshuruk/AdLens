@@ -113,6 +113,23 @@ function isUserVerified(user: User | null, providers: string[]): boolean {
   return providers.some((p) => SSO_VERIFIED_PROVIDERS.has(p) || /^(saml|oidc)\./.test(p));
 }
 
+/**
+ * Sends the verification email. First with a link back to this site; if Firebase refuses that address (the domain is not in its
+ * "Authorized domains" list) it sends the plain version, whose link opens Firebase's own confirmation page, so the person still gets an email.
+ */
+async function sendVerificationWithFallback(user: Parameters<typeof sendEmailVerification>[0]): Promise<void> {
+  try {
+    await sendEmailVerification(user, { url: `${window.location.origin}/`, handleCodeInApp: false });
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === 'auth/unauthorized-continue-uri' || code === 'auth/invalid-continue-uri' || code === 'auth/missing-continue-uri') {
+      await sendEmailVerification(user);
+      return;
+    }
+    throw err;
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authInstance, setAuthInstance] = useState<Auth | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -266,10 +283,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (fullName.trim()) {
           await updateProfile(cred.user, { displayName: fullName.trim() });
         }
-        await sendEmailVerification(cred.user, {
-          url: `${window.location.origin}/`,
-          handleCodeInApp: false,
-        });
+        // The account exists now. If the email cannot be sent, do not fail the sign-up: the verify page offers "resend" and shows the reason.
+        await sendVerificationWithFallback(cred.user).catch(() => undefined);
         await cred.user.reload().catch(() => {});
         setUser(auth.currentUser);
         forceUserRefresh();
@@ -416,10 +431,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Please sign in first to resend the verification email.');
     }
     try {
-      await sendEmailVerification(current, {
-        url: `${window.location.origin}/`,
-        handleCodeInApp: false,
-      });
+      await sendVerificationWithFallback(current);
     } catch (err) {
       throw new Error(mapFirebaseErrorMessage(err));
     }

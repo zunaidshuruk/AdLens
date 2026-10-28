@@ -751,6 +751,8 @@ Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves
 
 **Require two-step for owners and admins (Sprint 25, 28 Oct 2026, 487 tests):** new workspace setting in Settings → Security (off by default). Turning it on needs your own two-step first (no lock-out). While on, an owner or admin without two-step can sign in and read the team list but gets `TWO_STEP_SETUP_REQUIRED` (403) on all project data, MCP keys and every change to the workspace, team and roles, and sees a banner pointing to Settings → Security; they cannot switch their own two-step off (`REQUIRED_BY_WORKSPACE`). Members and moderators are not asked. Changes are logged. The browser cannot write the field directly (rules check added). Code: `server/lib/twoStepPolicy.ts`, `WorkspaceTwoStepRule.tsx`, `TwoStepRuleBanner.tsx`.
 
+**Sign-up email and workspace-creation fixes (Sprint 26, 28 Oct 2026, 489 tests):** (1) If Firebase refuses the verification email's return address (domain not in Authorized domains) the app now resends the plain version, so the email still goes out; sign-up no longer fails after the account is made, and the verify page shows a clear reason when resend fails. (2) New owner-only `GET /api/ops/diagnose` writes, reads and deletes a scratch Firestore document and explains in plain words what is wrong (no database, missing service-account role, bad key, quota). (3) The workspace-creation failure now logs its real database error code on the server (and goes to the error webhook) instead of being silent. Settings checks are in the chat answer.
+
 **Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
 
 ---
@@ -769,6 +771,7 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
 | 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
 | 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 17 | `stage-17-signup-fixes` | Sprint 26: verification email fallback, owner database check, real cause logged when workspace creation fails | Sprint 26: sign-up email and workspace fixes |
 | 16 | `stage-16-two-step-rule` | Sprint 25: workspace setting that requires two-step for owners and admins | Sprint 25: require two-step for owners and admins |
 | 15 | `stage-15-open-fixes` | Sprint 24: flood protection, unsubscribe link, generic errors, trimmed health page, MCP keys follow roles, two-step stale-token fix, rules checks | Sprint 24: open audit fixes and flood protection |
 | 14 | `stage-14-hardening` | Sprint 23: security headers, dependency fixes, 2FA key-rotation fix, safe redirect, logo size limit | Sprint 23: security hardening |
