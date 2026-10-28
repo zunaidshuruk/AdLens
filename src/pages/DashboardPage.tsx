@@ -1,12 +1,13 @@
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, GripVertical, Maximize2, Pencil, Plus, RefreshCw, Save, Target, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { DashboardWidgetView } from '../components/DashboardWidgetView';
 import { ErrorState } from '../components/ErrorState';
 import { useDateRange } from '../hooks';
 import type { Dashboard, DashboardWidget, WidgetKind } from '../types/dashboard.js';
 import type { SavedReport } from '../types/explore.js';
+import { activeFilterCount, DEVICE_OPTIONS, parseFilters, writeFilters, type DashboardFilters } from '../utils/dashboardFilters.js';
 import { addWidget, duplicateWidget, gridStep, stepsFromDrag, PANEL_DAY_OPTIONS, setWidgetDays, DEFAULT_SIZE, mobileOrder, placeWidget, removeWidget, resizeWidget } from '../utils/dashboardLayout.js';
 
 const ROW_PX = 72;
@@ -31,10 +32,11 @@ function Grid(props: {
   range: { startDate: string; endDate: string };
   refreshKey: number;
   large?: boolean;
+  filters?: DashboardFilters;
   editing?: boolean;
   onChange?: (next: DashboardWidget[]) => void;
 }) {
-  const { widgets, range, refreshKey, large, editing, onChange } = props;
+  const { widgets, range, refreshKey, large, editing, onChange, filters } = props;
   const desktop = useIsDesktop();
   const rowPx = large ? 96 : ROW_PX;
   const list = desktop ? widgets : mobileOrder(widgets);
@@ -70,7 +72,7 @@ function Grid(props: {
           className={`relative ${drag?.id === w.id ? 'z-20 opacity-80 ring-2 ring-accent rounded-xl' : ''}`}
           style={desktop ? { ...(drag?.id === w.id && drag.mode === 'move' ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` } : {}), ...(drag?.id === w.id && drag.mode === 'resize' ? { width: `calc(100% + ${drag.dx}px)`, height: `calc(100% + ${drag.dy}px)` } : {}), gridColumn: `${w.layout.x + 1} / span ${w.layout.w}`, gridRow: `${w.layout.y + 1} / span ${w.layout.h}` } : { minHeight: Math.max(1, w.layout.h) * 56 }}
         >
-          <DashboardWidgetView widget={w} range={range} refreshKey={refreshKey} large={large} />
+          <DashboardWidgetView widget={w} range={range} refreshKey={refreshKey} large={large} filters={filters} />
           {editing && onChange && desktop && (
             <>
               <button type="button" aria-label={`Drag ${w.title} to move it`} title="Drag to move" onPointerDown={(e) => startDrag(e, w.id, 'move')} onPointerMove={moveDrag} onPointerUp={() => endDrag(true)} onPointerCancel={() => endDrag(false)} className="absolute top-1 left-1 p-1.5 rounded-md bg-surface border border-line text-fg-muted hover:text-fg cursor-grab active:cursor-grabbing touch-none"><GripVertical className="w-3.5 h-3.5" /></button>
@@ -204,10 +206,37 @@ function AddWidgetPanel({ saved, count, onAdd, onClose }: { saved: SavedReport[]
   );
 }
 
+function FilterBar({ value, onApply }: { value: DashboardFilters; onApply: (f: DashboardFilters) => void }) {
+  const [draft, setDraft] = useState<DashboardFilters>(value);
+  useEffect(() => setDraft(value), [value]);
+  const field = 'block rounded-lg border border-line bg-surface text-fg text-xs px-2 py-1.5 min-h-[34px] w-full';
+  return (
+    <form className="flex flex-wrap items-end gap-2 rounded-xl border border-line bg-surface p-3" aria-label="Dashboard filters" onSubmit={(e) => { e.preventDefault(); onApply(draft); }}>
+      <label className="text-[11px] text-fg-muted space-y-1 w-36"><span>Country</span>
+        <input value={draft.country ?? ''} maxLength={100} placeholder="e.g. Bangladesh" onChange={(e) => setDraft({ ...draft, country: e.target.value })} className={field} />
+      </label>
+      <label className="text-[11px] text-fg-muted space-y-1 w-40"><span>Campaign (GA4)</span>
+        <input value={draft.campaign ?? ''} maxLength={100} placeholder="name contains…" onChange={(e) => setDraft({ ...draft, campaign: e.target.value })} className={field} />
+      </label>
+      <label className="text-[11px] text-fg-muted space-y-1 w-32"><span>Device</span>
+        <select value={draft.device ?? ''} onChange={(e) => setDraft({ ...draft, device: e.target.value || undefined })} className={field}>
+          <option value="">All devices</option>
+          {DEVICE_OPTIONS.map((d) => <option key={d} value={d}>{d[0].toUpperCase() + d.slice(1)}</option>)}
+        </select>
+      </label>
+      <button type="submit" className="rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[34px]">Apply</button>
+      {activeFilterCount(value) > 0 && <button type="button" onClick={() => onApply({})} className="text-xs text-fg-muted hover:text-fg underline py-2">Clear filters</button>}
+    </form>
+  );
+}
+
 export const DashboardPage: React.FC = () => {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { dateRange } = useDateRange();
+  const [params, setParams] = useSearchParams();
+  const filters = useMemo(() => parseFilters(params), [params]);
+  const applyFilters = (f: DashboardFilters) => setParams(writeFilters(params, f), { replace: true });
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [name, setName] = useState('');
@@ -278,7 +307,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <button type="button" onClick={() => setPresenting(false)} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-sm px-4 py-2 min-h-[40px] text-fg hover:bg-fill-2"><X className="w-4 h-4" /> Exit (Esc)</button>
         </div>
-        <Grid widgets={dash.widgets} range={dateRange} refreshKey={refreshKey} large />
+        <Grid widgets={dash.widgets} range={dateRange} refreshKey={refreshKey} filters={filters} large />
       </div>
     );
   }
@@ -299,6 +328,8 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
       <p className="text-xs text-fg-muted">Showing {dateRange.startDate} to {dateRange.endDate}. Change the dates at the top of the page.</p>
+      <FilterBar value={filters} onApply={applyFilters} />
+      {activeFilterCount(filters) > 0 && <p className="text-[11px] text-fg-subtle">Filters apply to every panel that has that field. Campaign only applies to GA4 panels.</p>}
 
       {editing && (
         <div className="flex flex-wrap items-center gap-2">
@@ -316,7 +347,7 @@ export const DashboardPage: React.FC = () => {
       {widgets.length === 0 ? (
         <p className="text-sm text-fg-muted">This dashboard is empty. {editing ? 'Use “Add widget” to put something on it.' : 'Press Edit to add widgets.'}</p>
       ) : (
-        <Grid widgets={widgets} range={dateRange} refreshKey={refreshKey} editing={editing} onChange={setWidgets} />
+        <Grid widgets={widgets} range={dateRange} refreshKey={refreshKey} filters={filters} editing={editing} onChange={setWidgets} />
       )}
     </div>
   );

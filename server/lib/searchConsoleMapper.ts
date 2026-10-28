@@ -119,6 +119,27 @@ export function alpha3ToCountryName(rawCode: string): { country: string; code: s
   return { country: upper, code: upper };
 }
 
+/**
+ * The opposite of alpha3ToCountryName: accepts a country name ("Bangladesh"), a 2-letter or a 3-letter code,
+ * and returns the lowercase 3-letter code Search Console filters use. Unknown text is returned as typed (lowercase).
+ */
+export function countryToAlpha3(input: string): string {
+  const raw = (input || '').trim();
+  const lower = raw.toLowerCase();
+  if (!raw) return lower;
+  const upper = raw.toUpperCase();
+  if (upper.length === 3 && ALPHA3_TO_ALPHA2[upper]) return lower;
+  for (const [a3, a2] of Object.entries(ALPHA3_TO_ALPHA2)) {
+    if (upper.length === 2 && a2 === upper) return a3.toLowerCase();
+    try {
+      if ((regionDisplayNames.of(a2) || '').toLowerCase() === lower) return a3.toLowerCase();
+    } catch {
+      // ignore a code the runtime cannot name
+    }
+  }
+  return lower;
+}
+
 function summarizeOverviewReport(report?: SearchConsoleQueryResponse): {
   clicks: number;
   impressions: number;

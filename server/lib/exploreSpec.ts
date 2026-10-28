@@ -4,7 +4,7 @@
  * Pure functions: input validation, request building and result mapping. No network here.
  */
 import { z } from 'zod';
-import { alpha3ToCountryName } from './searchConsoleMapper.js';
+import { alpha3ToCountryName, countryToAlpha3 } from './searchConsoleMapper.js';
 
 export type ColumnType = 'text' | 'integer' | 'decimal' | 'percent' | 'seconds' | 'date' | 'position';
 export interface FieldInfo { key: string; label: string; type: ColumnType; group: string }
@@ -262,7 +262,7 @@ export function buildSCExplorePayload(input: SCExploreInput): { startDate: strin
   if (input.filters.length > 0) {
     payload.dimensionFilterGroups = [{
       groupType: 'and',
-      filters: input.filters.map((f) => ({ dimension: f.field, operator: f.op, expression: f.value })),
+      filters: input.filters.map((f) => ({ dimension: f.field, operator: f.op, expression: f.field === 'country' && (f.op === 'equals' || f.op === 'notEquals') ? countryToAlpha3(f.value) : f.value })),
     }];
   }
   return payload;

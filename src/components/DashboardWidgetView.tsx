@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieCh
 import { apiClient } from '../api/client';
 import type { DashboardWidget } from '../types/dashboard.js';
 import type { ExploreResult } from '../types/explore.js';
+import { applyDashboardFilters, type DashboardFilters } from '../utils/dashboardFilters.js';
 import { gaugeFraction, heatGrid, pieSlices, pivotTwoDimensions } from '../utils/chartShapes.js';
 import { panelRange } from '../utils/dashboardLayout.js';
 import { formatShortDate } from '../utils/dateUtils';
@@ -15,6 +16,8 @@ interface Props {
   refreshKey: number;
   /** Bigger text for presentation mode. */
   large?: boolean;
+  /** Dashboard-wide filters (country, campaign, device). */
+  filters?: DashboardFilters;
 }
 
 const SERIES = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--chart-6)', 'var(--chart-7)', 'var(--chart-8)'];
@@ -38,7 +41,8 @@ function useWidgetData(widget: DashboardWidget, range: Props['range'], refreshKe
   return state;
 }
 
-export const DashboardWidgetView: React.FC<Props> = ({ widget, range: pageRange, refreshKey, large }) => {
+export const DashboardWidgetView: React.FC<Props> = ({ widget: rawWidget, range: pageRange, refreshKey, large, filters }) => {
+  const widget = useMemo<DashboardWidget>(() => (rawWidget.kind === 'text' || !filters ? rawWidget : { ...rawWidget, spec: applyDashboardFilters(rawWidget.source, rawWidget.spec, filters) }), [rawWidget, filters]);
   const range = useMemo(() => panelRange(widget.kind === 'text' ? undefined : widget.days, pageRange), [widget, pageRange]);
   const { loading, error, result } = useWidgetData(widget, range, refreshKey);
 
