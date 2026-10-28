@@ -2,6 +2,8 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { productionDigestDeps } from '../lib/digestWiring.js';
 import { runDigests } from '../lib/digestRunner.js';
+import { runAlertRules } from '../lib/alertRunner.js';
+import { productionAlertDeps } from '../lib/alertWiring.js';
 import { listAuditForUid } from '../lib/auditLog.js';
 import { getSharedStore } from '../lib/sharedStore.js';
 import { readUsage } from '../lib/usageMeter.js';
@@ -125,5 +127,9 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
     res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Not allowed.' } });
     return;
   }
-  res.json(await runDigests(productionDigestDeps()));
+  const digests = await runDigests(productionDigestDeps());
+  // Alert rules are checked in the same daily call, so one scheduled job covers both.
+  let alerts: Awaited<ReturnType<typeof runAlertRules>> | { error: string };
+  try { alerts = await runAlertRules(productionAlertDeps()); } catch { alerts = { error: 'alerts failed' }; }
+  res.json({ ...digests, alerts });
 });

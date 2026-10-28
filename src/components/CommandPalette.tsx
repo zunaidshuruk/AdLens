@@ -183,6 +183,14 @@ export const CommandPalette: React.FC = () => {
         run: () => navigate('/dashboards'),
       },
       {
+        id: 'nav:alerts',
+        label: 'Alerts',
+        group: 'Navigate',
+        keywords: ['alert', 'alerts', 'notify', 'notification', 'threshold', 'slack', 'webhook', 'email'],
+        hint: '/alerts',
+        run: () => navigate('/alerts'),
+      },
+      {
         id: 'nav:explore',
         label: 'Explore (build a report)',
         group: 'Navigate',

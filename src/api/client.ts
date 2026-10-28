@@ -311,7 +311,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -333,7 +333,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAgents: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxAgents: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -377,6 +377,29 @@ export interface AdminAuditEvent { id: string; at: string; action: string; detai
 
 export interface McpKeyInfo { id: string; name: string; prefix: string; projects: { workspaceId: string; projectId: string }[]; createdAt: string; lastUsedAt: string | null }
 export interface McpConnectedApp { familyId: string; clientName: string; connectedAt: string; projects: { workspaceId: string; projectId: string }[] }
+
+export interface AlertRuleInfo {
+  id: string;
+  name: string;
+  source: 'ga4' | 'search_console' | 'meta' | 'data';
+  metric: string;
+  filter?: { field: string; op: 'equals' | 'notEquals' | 'contains' | 'notContains' | 'startsWith'; value: string };
+  datasetId?: string;
+  aggregate?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  condition: 'above' | 'below' | 'rises_pct' | 'falls_pct';
+  threshold: number;
+  windowDays: 1 | 7 | 28;
+  emails: string[];
+  webhookHost?: string;
+  enabled: boolean;
+  status: 'new' | 'ok' | 'triggered' | 'nodata' | 'error';
+  lastCheckedAt?: string;
+  lastValue?: number | null;
+  lastMessage?: string;
+  lastTriggeredAt?: string;
+  lastError?: string;
+}
+export type AlertRuleInput = Omit<AlertRuleInfo, 'id' | 'webhookHost' | 'status' | 'lastCheckedAt' | 'lastValue' | 'lastMessage' | 'lastTriggeredAt' | 'lastError'> & { webhookUrl?: string };
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -767,6 +790,22 @@ export const apiClient = {
       },
       { allowStatuses: [429] }
     );
+  },
+
+  async listAlerts(): Promise<{ rules: AlertRuleInfo[]; limit: number; emailAllowed: boolean; userEmail: string | null }> {
+    return apiRequest('/api/alerts');
+  },
+  async createAlert(input: AlertRuleInput): Promise<AlertRuleInfo> {
+    return (await apiRequest<{ rule: AlertRuleInfo }>('/api/alerts', { method: 'POST', body: JSON.stringify(input) })).rule;
+  },
+  async updateAlert(id: string, input: AlertRuleInput): Promise<AlertRuleInfo> {
+    return (await apiRequest<{ rule: AlertRuleInfo }>(`/api/alerts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) })).rule;
+  },
+  async deleteAlert(id: string): Promise<void> {
+    await apiRequest<void>(`/api/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  async testAlert(id: string): Promise<{ delivered: unknown; wouldTrigger: boolean; value: number | null; message: string }> {
+    return apiRequest(`/api/alerts/${encodeURIComponent(id)}/test`, { method: 'POST' });
   },
 
   getExploreCatalog(): Promise<ExploreCatalog> {

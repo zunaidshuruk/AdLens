@@ -1,4 +1,5 @@
 import {
+  Bell,
   Bot,
   Check,
   ChevronDown,
@@ -52,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/cross-channel', label: 'Ads vs website', icon: GitCompare },
   { to: '/dashboards', label: 'Dashboards', icon: LayoutGrid },
   { to: '/explore', label: 'Explore', icon: SlidersHorizontal },
+  { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/ai-analyst', label: 'AI Analyst', icon: Sparkles },
   { to: '/agents', label: 'AI Agents', icon: Bot },
   { to: '/connections', label: 'Connections', icon: Link2 },

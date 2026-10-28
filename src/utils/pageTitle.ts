@@ -8,6 +8,7 @@ const TITLES: [prefix: string, title: string][] = [
   ['/ga4', 'Google Analytics'],
   ['/explore', 'Explore'],
   ['/dashboards', 'Dashboards'],
+  ['/alerts', 'Alerts'],
   ['/connections', 'Connections'],
   ['/settings', 'Settings'],
   ['/agents', 'AI Agents'],
