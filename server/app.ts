@@ -4,6 +4,7 @@ import { teamRouter } from './routes/team.js';
 import { twoStepRouter } from './routes/twoStep.js';
 import { adminRouter } from './routes/admin.js';
 import { featureGate } from './middleware/featureGate.js';
+import { securityHeaders } from './middleware/securityHeaders.js';
 import { digestRouter } from './routes/digest.js';
 import { reportError } from './lib/errorReporter.js';
 import { opsRouter } from './routes/ops.js';
@@ -41,6 +42,8 @@ export const app = express();
 
 // Enable Secure cookies behind reverse proxy / Cloud Run / Vercel
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use(securityHeaders);
 
 // Sign-in helper served from our own address (only when AUTH_PROXY=on). Checked on every request so the switch needs no restart.
 let authProxyApp: express.Express | null = null;
@@ -55,7 +58,8 @@ app.use((req, res, next) => {
   return authProxyApp(req, res, next);
 });
 
-app.use(express.json());
+// 256 KB: a workspace logo is a data URL of up to 200,000 characters (the default 100 KB limit refused logos between 100 and 200 KB).
+app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
 
 // Normalize Vercel rewrite { "source": "/api/(.*)", "destination": "/api" } so Express always sees /api/<subpath>

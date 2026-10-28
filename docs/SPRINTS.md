@@ -745,6 +745,8 @@ Existing beta workspaces keep today's limits as a "Beta" plan until Zunaid moves
 - **Lost phone.** Staff with "people in a workspace" permission can use Admin → Users → "Reset two-step" (switches it off and signs the person out everywhere). Do this only after confirming it is really them.
 - Needs: nothing new to configure. Adds the `qrcode` package. Limits: a sign-in token made before someone turned two-step on stays valid for up to one hour without the flag; the in-app code screen still appears at once.
 
+**Pre-launch security audit and hardening (Sprint 23, 27 Oct 2026, 475 tests):** full report in the Claude doc "AdLens Pre-Launch Security Audit". Fixed in `stage-14-hardening`: browser security headers (server and `vercel.json`, content-security policy in report-only mode), production dependency fixes (body-parser, gRPC override, fast-uri), two-step secrets now open with `TOKEN_ENCRYPTION_KEY_PREVIOUS`, sign-in `redirect` limited to AdLens paths, request limit 256 KB (logos), `X-Powered-By` removed. Must-do before publishing (settings): Firestore rules live and not in test mode, production environment settings, Upstash shared store, backups plus Firebase email-enumeration protection, check the CSP console lines once. Open (not blocking): trim public `/api/health`, generic error messages in about 17 routes, API-wide rate limit, unsubscribe header on summary emails, MCP keys vs role permissions, optional two-step for owners, enforce CSP, run `npm run test:rules`.
+
 **Open items:** confirm Pro/Business numbers and prices; whether Business includes company sign-in later; tax and invoice details for Bangladesh and overseas customers (ask the accountant).
 
 ---
@@ -763,6 +765,7 @@ Upload in this order (each zip is applied over the repo, then committed):
 | 6 | `stage-6-sprints-10-to-19` | Sprints 10, 11, 12, 15c, 17, 18, 19 (see below) | Sprints 10-19: launch readiness, search intelligence, MCP, hardening, enterprise SSO |
 | 6b | `stage-6b-missing-files` | 20 files that did not reach GitHub from stages 1 and 6 | Add missing files |
 | 7 | `stage-7-billing-20abc` | Sprint 20a–20c: plans, limits, billing and operator API | Sprint 20: plans and limits (server) |
+| 14 | `stage-14-hardening` | Sprint 23: security headers, dependency fixes, 2FA key-rotation fix, safe redirect, logo size limit | Sprint 23: security hardening |
 | 13 | `stage-13-two-step` | Sprint 22: authenticator-app two-step for everyone, Google-only admin login (adds `qrcode`) | Sprint 22: two-step verification and Google-only admin |
 | 12 | `stage-12-roles` | Sprint 21: workspace roles and permissions, custom roles, AdLens staff roles | Sprint 21: roles and permissions |
 | 11 | `stage-11-fonts` | Font choice in Appearance (adds 5 font packages) | Add font choice |

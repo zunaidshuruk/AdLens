@@ -36,10 +36,9 @@ export const SignInPage: React.FC = () => {
   const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
   const company = useCompanySso(email);
 
-  const redirectTarget =
-    searchParams.get('redirect') ||
-    (location.state as { from?: string } | null)?.from ||
-    '/';
+  // Only a path inside AdLens ("/settings"), never another website ("//evil.com", "https://...", "/\\evil.com").
+  const wanted = searchParams.get('redirect') || (location.state as { from?: string } | null)?.from || '/';
+  const redirectTarget = /^\/(?![/\\])/.test(wanted) ? wanted : '/';
 
   const accountDeletedMessage =
     (location.state as { accountDeletedMessage?: string } | null)?.accountDeletedMessage ||

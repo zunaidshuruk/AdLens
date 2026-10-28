@@ -12,6 +12,7 @@ import { getServerConfig } from '../config.js';
 import { decryptPayload, encryptPayload } from './crypto.js';
 import { getAdminFirestore } from './firestore.js';
 import { hashBackupCode, looksLikeBackupCode, verifyTotp } from './totp.js';
+import { parsePreviousSecrets } from './tokenVault.js';
 
 export interface TwoStepDoc {
   uid: string;
@@ -62,7 +63,19 @@ function key(): string {
 }
 
 export const sealSecret = (secret: string): string => encryptPayload(secret, key());
-export const openSecret = (sealed: string): string => decryptPayload(sealed, key());
+/** Opens a stored secret with the current key, or an older one kept in TOKEN_ENCRYPTION_KEY_PREVIOUS (so rotating the key never locks anyone out). */
+export function openSecret(sealed: string): string {
+  const keys = [key(), ...parsePreviousSecrets(process.env.TOKEN_ENCRYPTION_KEY_PREVIOUS ?? '')];
+  let last: unknown;
+  for (const k of keys) {
+    try {
+      return decryptPayload(sealed, k);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last instanceof Error ? last : new Error('Could not open the secret.');
+}
 
 // ---------- the proof the browser carries ----------
 
@@ -107,8 +120,10 @@ export async function checkSecondStep(uid: string, code: string, nowMs = Date.no
     await store.put({ ...doc, backupHashes: doc.backupHashes.filter((h) => h !== hash) });
     return 'backup';
   }
-  const step = verifyTotp(openSecret(doc.secretEnc), code, nowMs, doc.lastStep);
+  const secret = openSecret(doc.secretEnc);
+  const step = verifyTotp(secret, code, nowMs, doc.lastStep);
   if (step === null) return 'wrong';
-  await store.put({ ...doc, lastStep: step });
+  // Always re-seal with the current key, so an old key can be retired after a few days.
+  await store.put({ ...doc, lastStep: step, secretEnc: sealSecret(secret) });
   return 'ok';
 }
