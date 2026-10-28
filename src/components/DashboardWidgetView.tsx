@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { apiClient } from '../api/client';
 import type { DashboardWidget } from '../types/dashboard.js';
 import type { ExploreResult } from '../types/explore.js';
+import { panelRange } from '../utils/dashboardLayout.js';
 import { formatShortDate } from '../utils/dateUtils';
 import { formatExploreCell } from '../utils/exploreFormat.js';
 import { buildRunRequest } from '../utils/exploreState.js';
@@ -34,7 +35,8 @@ function useWidgetData(widget: DashboardWidget, range: Props['range'], refreshKe
   return state;
 }
 
-export const DashboardWidgetView: React.FC<Props> = ({ widget, range, refreshKey, large }) => {
+export const DashboardWidgetView: React.FC<Props> = ({ widget, range: pageRange, refreshKey, large }) => {
+  const range = useMemo(() => panelRange(widget.kind === 'text' ? undefined : widget.days, pageRange), [widget, pageRange]);
   const { loading, error, result } = useWidgetData(widget, range, refreshKey);
 
   const body = useMemo(() => {
@@ -104,7 +106,7 @@ export const DashboardWidgetView: React.FC<Props> = ({ widget, range, refreshKey
   const subtitle = widget.kind !== 'text' && result && widget.kind === 'kpi' ? result.columns.find((c) => c.role === 'metric')?.label : null;
   return (
     <div className="h-full flex flex-col rounded-xl border border-line bg-surface p-4 overflow-hidden">
-      <h3 className={`font-semibold text-fg truncate ${large ? 'text-lg' : 'text-sm'}`}>{widget.title}</h3>
+      <h3 className={`font-semibold text-fg truncate ${large ? 'text-lg' : 'text-sm'}`}>{widget.title}{widget.kind !== 'text' && widget.days ? <span className="ml-2 text-[11px] font-normal text-fg-subtle">last {widget.days} days</span> : null}</h3>
       {subtitle && <p className="text-[11px] text-fg-subtle">{subtitle}</p>}
       <div className="mt-2 flex-1 min-h-0 flex items-center">{<div className="w-full h-full flex items-center">{body}</div>}</div>
     </div>

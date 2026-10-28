@@ -8,6 +8,8 @@ export interface QueryWidget {
   title: string;
   layout: WidgetLayout;
   kind: WidgetKind;
+  /** Optional own time range: the last N days, ending on the dashboard's end date. Leave out to follow the page. */
+  days?: number;
   source: ExploreSource;
   spec: ExploreSpec;
 }

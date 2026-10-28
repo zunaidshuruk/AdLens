@@ -21,6 +21,7 @@ const queryWidget = (source: 'ga4' | 'search_console', spec: z.ZodType) =>
     title,
     layout: layoutSchema,
     kind: z.enum(['kpi', 'bar', 'line', 'table']),
+    days: z.union([z.literal(7), z.literal(14), z.literal(28), z.literal(90)]).optional(),
     source: z.literal(source),
     spec,
   });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DASHBOARD_TEMPLATES } from '../config/dashboardTemplates.js';
 import type { DashboardWidget } from '../types/dashboard.js';
-import { addWidget, clampLayout, compact, DEFAULT_SIZE, duplicateWidget, findFreeSpot, hasOverlap, mobileOrder, placeWidget, removeWidget, resizeWidget } from './dashboardLayout.js';
+import { addWidget, clampLayout, compact, DEFAULT_SIZE, duplicateWidget, panelRange, setWidgetDays, findFreeSpot, hasOverlap, mobileOrder, placeWidget, removeWidget, resizeWidget } from './dashboardLayout.js';
 
 const t = (id: string, x: number, y: number, w: number, h: number): DashboardWidget => ({ id, title: id, kind: 'text', text: 'x', layout: { x, y, w, h } });
 
@@ -62,4 +62,16 @@ test('Stage 19 — layout: duplicating a widget copies it with a new id and a fr
   assert.equal(hasOverlap(out), false);
   assert.notEqual(out[2], base[0]);
   assert.equal(duplicateWidget(base, 'nope', 'x').length, 2);
+});
+
+test('Stage 19 — layout: a panel can have its own last-N-days range', () => {
+  const page = { startDate: '2026-10-01', endDate: '2026-10-28' };
+  assert.deepEqual(panelRange(undefined, page), page);
+  assert.deepEqual(panelRange(7, page), { startDate: '2026-10-22', endDate: '2026-10-28' });
+  assert.deepEqual(panelRange(5, page), page);
+  const q = { id: 'q', title: 'q', kind: 'kpi', source: 'ga4', spec: { dimensions: [], metrics: ['sessions'], filters: [], limit: 1 }, layout: { x: 0, y: 0, w: 3, h: 2 } } as unknown as DashboardWidget;
+  const withDays = setWidgetDays([q], 'q', 28);
+  assert.equal((withDays[0] as { days?: number }).days, 28);
+  assert.equal('days' in setWidgetDays(withDays, 'q', undefined)[0], false);
+  assert.equal('days' in setWidgetDays([t('n', 0, 0, 3, 2)], 'n', 7)[0], false);
 });

@@ -105,6 +105,25 @@ export function addWidget(widgets: DashboardWidget[], widget: WithoutLayout, siz
   return [...widgets, { ...widget, layout: findFreeSpot(widgets, size) } as unknown as DashboardWidget];
 }
 
+export const PANEL_DAY_OPTIONS = [7, 14, 28, 90] as const;
+
+/** The dates a panel should use: its own last-N-days (ending on the page's end date) or the page range. */
+export function panelRange(days: number | undefined, page: { startDate: string; endDate: string }): { startDate: string; endDate: string } {
+  if (!days || !PANEL_DAY_OPTIONS.includes(days as 7)) return page;
+  const end = new Date(`${page.endDate}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - (days - 1));
+  return { startDate: end.toISOString().slice(0, 10), endDate: page.endDate };
+}
+
+/** Sets or clears a panel's own time range. */
+export function setWidgetDays(widgets: DashboardWidget[], id: string, days: number | undefined): DashboardWidget[] {
+  return widgets.map((w) => {
+    if (w.id !== id || w.kind === 'text') return w;
+    const { days: _old, ...rest } = w;
+    return (days ? { ...rest, days } : rest) as DashboardWidget;
+  });
+}
+
 /** Copies a widget (new id, title + " (copy)") into the first free spot of the same size. */
 export function duplicateWidget(widgets: DashboardWidget[], id: string, newId: string): DashboardWidget[] {
   const src = widgets.find((w) => w.id === id);
