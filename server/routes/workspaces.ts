@@ -9,7 +9,7 @@ import { getDigestStore } from '../lib/digestStore.js';
 import { recordAccountDeletion, recordAudit } from '../lib/auditLog.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { getPlanLimits } from '../config/plans.js';
+import { getPlanFeatures, getPlanLimits } from '../config/plans.js';
 import { deleteAuthUser } from '../lib/firebaseAdmin.js';
 import { twoStepStore } from '../lib/twoStep.js';
 import { guardWorkspaceParam, hasTwoStepOn } from '../lib/twoStepPolicy.js';
@@ -257,6 +257,7 @@ async function buildMePayload(
       permissions: [...permissionsOf(ws, uid)],
       plan: ws.plan,
       limits: getPlanLimits(ws.plan),
+      historyDays: getPlanFeatures(ws.plan).historyDays,
       logoURL: ws.logoURL ?? null,
       logoPath: ws.logoPath ?? null,
       hasLogo: Boolean(ws.hasLogo),
@@ -626,6 +627,7 @@ workspacesRouter.patch('/:wsId', async (req: Request, res: Response) => {
         permissions: [...permissionsOf(updated, uid)],
         requireTwoStep: updated.requireTwoStep === true,
         limits: getPlanLimits(updated.plan),
+        historyDays: getPlanFeatures(updated.plan).historyDays,
       },
     });
   } catch (err) {

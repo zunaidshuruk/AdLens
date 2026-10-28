@@ -3,8 +3,13 @@ export interface PlanLimits {
   aiQuestionsPerMonth: number;
 }
 
-/** The plan every new workspace starts on. Flip to 'free' when the plan screens (Sprint 20d) are live. */
-export const DEFAULT_NEW_WORKSPACE_PLAN = 'beta';
+/**
+ * The plan every new workspace starts on: Free. To give new sign-ups something else (for example the old all-in "beta" plan
+ * while testing), set DEFAULT_NEW_WORKSPACE_PLAN to beta, pro or business and redeploy. Existing workspaces are never changed.
+ */
+export const DEFAULT_NEW_WORKSPACE_PLAN: string = ['beta', 'free', 'pro', 'business'].includes((process.env.DEFAULT_NEW_WORKSPACE_PLAN ?? '').trim())
+  ? (process.env.DEFAULT_NEW_WORKSPACE_PLAN as string).trim()
+  : 'free';
 
 /** After a paid plan ends the workspace keeps it for this many days, then drops to Free. */
 export const GRACE_DAYS = 7;

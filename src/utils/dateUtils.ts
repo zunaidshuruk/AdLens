@@ -79,7 +79,8 @@ export function computeDateRange(
   timezone: string = 'Asia/Dhaka',
   custom?: CustomDateInput,
   referenceDate: Date = new Date(),
-  compareEnabled: boolean = true
+  compareEnabled: boolean = true,
+  historyDays: number | null = null
 ): ComputedDateRange {
   const today = getTodayInTimezone(timezone, referenceDate);
   let startDate = today;
@@ -140,6 +141,23 @@ export function computeDateRange(
     }
   }
 
+  // Plan history limit (for example Free = 10 days). A ready-made range that reaches too far back becomes "Last 7 days"
+  // (or fewer); a custom range is cut to the oldest allowed day. The server refuses older ranges as well.
+  let limitedByPlan = false;
+  if (historyDays !== null && Number.isFinite(historyDays)) {
+    const oldest = addDays(today, -historyDays);
+    if (startDate < oldest) {
+      limitedByPlan = true;
+      if (preset === 'Custom') {
+        startDate = oldest;
+        if (endDate < startDate) endDate = startDate;
+      } else {
+        endDate = today;
+        startDate = addDays(today, -Math.min(6, historyDays));
+      }
+    }
+  }
+
   const dayCount = daysBetweenInclusive(startDate, endDate);
   const compareEndDate = addDays(startDate, -1);
   const compareStartDate = addDays(compareEndDate, -(dayCount - 1));
@@ -153,6 +171,7 @@ export function computeDateRange(
     compareEndDate,
     dayCount,
     compareEnabled,
+    ...(limitedByPlan ? { limitedByPlan: true } : {}),
   };
 }
 
@@ -182,4 +201,15 @@ export function formatFullDateRange(startDate: string, endDate: string): string 
     timeZone: 'UTC',
   }).format(e);
   return startDate === endDate ? fmtEnd : `${fmtStart} – ${fmtEnd}`;
+}
+
+/** True when a ready-made preset stays inside the plan's history limit (Custom is always allowed; it gets cut instead). */
+export function presetAllowedByPlan(
+  preset: DatePreset,
+  timezone: string,
+  historyDays: number | null,
+  referenceDate: Date = new Date()
+): boolean {
+  if (historyDays === null || preset === 'Custom') return true;
+  return !computeDateRange(preset, timezone, undefined, referenceDate, false, historyDays).limitedByPlan;
 }

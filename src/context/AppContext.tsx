@@ -876,8 +876,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const dateRange = useMemo(
-    () => computeDateRange(preset, timezone, customDates, undefined, compareEnabled),
-    [preset, timezone, customDates, compareEnabled]
+    () => computeDateRange(preset, timezone, customDates, undefined, compareEnabled, activeWorkspace?.historyDays ?? null),
+    [preset, timezone, customDates, compareEnabled, activeWorkspace?.historyDays]
   );
 
   const openNewProjectModal = useCallback(() => setIsNewProjectModalOpen(true), []);

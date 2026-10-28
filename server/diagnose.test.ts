@@ -28,3 +28,17 @@ test('Diagnose — verification email errors are explained, and only the owner c
     assert.equal((await fetch(`${base}/api/ops/diagnose`)).status, 401);
   } finally { server.close(); }
 });
+
+test('Public config — the home page gets the plan list (no beta, no custom plans, no secrets)', async () => {
+  resetProtectionState();
+  const server = app.listen(0);
+  try {
+    const r = await fetch(`http://127.0.0.1:${(server.address() as { port: number }).port}/api/public-config`);
+    const j = (await r.json()) as { plans?: { id: string; priceUsd: number; historyDays: number | null }[] };
+    const ids = (j.plans ?? []).map((p) => p.id);
+    assert.deepEqual(ids.slice(0, 3), ['free', 'pro', 'business']);
+    assert.ok(!ids.includes('beta'));
+    assert.equal(j.plans!.find((p) => p.id === 'free')!.historyDays, 10);
+    assert.equal(j.plans!.find((p) => p.id === 'pro')!.priceUsd, 19);
+  } finally { server.close(); }
+});

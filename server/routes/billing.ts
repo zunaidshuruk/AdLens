@@ -52,7 +52,7 @@ function planSummary(ws: WorkspaceDoc, now = new Date()) {
   };
 }
 
-const catalog = () => PLAN_IDS.filter((p) => p !== 'beta' && !CUSTOM_PLAN_IDS.has(p)).map((id) => ({
+export const catalog = () => PLAN_IDS.filter((p) => p !== 'beta' && !CUSTOM_PLAN_IDS.has(p)).map((id) => ({
   id, label: PLAN_INFO[id].label, priceUsd: PLAN_INFO[id].priceUsd, priceBdt: PLAN_INFO[id].priceBdt,
   limits: getPlanLimits(id), content: getContentLimits(id), features: getPlanFeatures(id),
 }));

@@ -31,3 +31,10 @@ test('section ids are unique so page anchors work', () => {
     assert.equal(new Set(ids).size, ids.length);
   }
 });
+
+test('terms cover plans, payment by invoice, no auto-renewal, grace period and the 3-day refund rule', () => {
+  const t = text(termsSections(owner));
+  for (const needle of [/Free plan and paid plans/, /no automatic card payment/i, /does not renew by itself/, /7-day grace period/, /within 3 days of the payment date/, /not available after 3 days/]) {
+    assert.match(t, needle, String(needle));
+  }
+});

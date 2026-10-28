@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test",
+    "test": "tsx --test --import=./scripts/env-for-tests.mjs",
     "test:rules": "firebase emulators:exec --only firestore --project demo-adlens 'tsx --test --test-concurrency=1 firebase/rules-checks/firestoreRules.check.ts'",
     "migrate:colors": "tsx scripts/migrate-colors.ts",
     "check:colors": "tsx scripts/migrate-colors.ts --check"

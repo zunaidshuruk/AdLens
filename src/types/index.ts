@@ -24,6 +24,8 @@ export interface ComputedDateRange {
   compareEndDate: string;
   dayCount: number;
   compareEnabled: boolean;
+  /** True when the plan's history limit shortened or replaced the range the person asked for. */
+  limitedByPlan?: boolean;
 }
 
 export type CurrencyCode = 'BDT' | 'USD';
@@ -416,6 +418,8 @@ export interface PublicConfigResponse {
     appId: string;
   };
   providers?: string[];
+  /** Public plan list for the home page's Pricing section. */
+  plans?: { id: string; label: string; priceUsd: number; priceBdt: number; maxProjects: number; aiQuestionsPerMonth: number; maxMembers: number; historyDays: number | null; emailSummaries: boolean }[];
 }
 
 /** A role id: 'owner', 'admin', 'moderator', 'member' or a custom role id. */
@@ -478,6 +482,8 @@ export interface WorkspaceSummary {
     currency: string;
     timezone: string;
   };
+  /** How many days back the plan shows data (null = no limit). */
+  historyDays?: number | null;
   /** True when this workspace asks owners and admins to use two-step verification. */
   requireTwoStep?: boolean;
   members: Record<string, WorkspaceRole>;

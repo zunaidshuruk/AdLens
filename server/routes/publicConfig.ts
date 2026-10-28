@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getServerConfig } from '../config.js';
 import { chooseAuthDomain } from '../lib/authProxy.js';
 import { getFlags, refreshAdminSettings } from '../lib/adminSettings.js';
+import { catalog } from './billing.js';
 
 export const publicConfigRouter = Router();
 
@@ -26,6 +27,8 @@ publicConfigRouter.get('/', async (req: Request, res: Response) => {
     },
     providers: cfg.authProviders,
     status: { signupsOpen: flags.signupsOpen, maintenance: flags.maintenanceMode, maintenanceMessage: flags.maintenanceMessage },
+    // What the home page's Pricing section shows. Public, and the same numbers the billing screen uses.
+    plans: catalog().map((p) => ({ id: p.id, label: p.label, priceUsd: p.priceUsd, priceBdt: p.priceBdt, maxProjects: p.limits.maxProjects, aiQuestionsPerMonth: p.limits.aiQuestionsPerMonth, maxMembers: p.features.maxMembers, historyDays: p.features.historyDays, emailSummaries: p.features.emailSummaries })),
     legal: { entity: cfg.legalEntity, supportEmail: cfg.supportEmail, address: cfg.legalAddress },
   });
 });

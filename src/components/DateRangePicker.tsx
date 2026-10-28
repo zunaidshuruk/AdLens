@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Calendar, GitCompareArrows } from 'lucide-react';
 import { useDateRange } from '../hooks/useDateRange';
 import type { DatePreset } from '../types';
-import { DATE_PRESETS, formatFullDateRange } from '../utils/dateUtils';
+import { useApp } from '../context/AppContext';
+import { DATE_PRESETS, formatFullDateRange, presetAllowedByPlan } from '../utils/dateUtils';
 
 export const DateRangePicker: React.FC = () => {
   const {
@@ -13,7 +14,9 @@ export const DateRangePicker: React.FC = () => {
     compareEnabled,
     setCompareEnabled,
     dateRange,
+    timezone,
   } = useDateRange();
+  const historyDays = useApp().activeWorkspace?.historyDays ?? null;
 
   const [draftStart, setDraftStart] = useState(customDates.startDate);
   const [draftEnd, setDraftEnd] = useState(customDates.endDate);
@@ -46,8 +49,8 @@ export const DateRangePicker: React.FC = () => {
           className="bg-transparent text-xs font-medium text-fg focus:outline-none cursor-pointer pr-1"
         >
           {DATE_PRESETS.map((p) => (
-            <option key={p} value={p} className="bg-surface text-fg">
-              {p}
+            <option key={p} value={p} disabled={!presetAllowedByPlan(p, timezone, historyDays)} className="bg-surface text-fg">
+              {presetAllowedByPlan(p, timezone, historyDays) ? p : `${p} (upgrade)`}
             </option>
           ))}
         </select>
@@ -63,6 +66,10 @@ export const DateRangePicker: React.FC = () => {
           {formatFullDateRange(dateRange.startDate, dateRange.endDate)}
         </span>
       </div>
+
+      {dateRange.limitedByPlan && historyDays !== null && (
+        <span role="status" data-testid="plan-history-note" className="text-xs text-fg-muted">Your plan shows the last {historyDays} days.</span>
+      )}
 
       {/* Custom Date Inputs when Custom is selected */}
       {preset === 'Custom' && (

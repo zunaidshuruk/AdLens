@@ -10,6 +10,7 @@ Everything here is optional. Nothing changes until you set the matching secret.
 | `ERROR_WEBHOOK_URL` | Posts unexpected server errors to a Slack, Discord or Teams incoming webhook. Same error at most once per 5 minutes. Secrets are masked. |
 | `OPERATOR_EMAILS` | Comma-separated emails allowed to see `GET /api/ops/usage` (how many Google and Meta calls AdLens made today). |
 | `RESEND_API_KEY`, `MAIL_FROM` | Sends the weekly summary and spike/drop alerts (Resend.com; the sending domain must be verified there). |
+| `DEFAULT_NEW_WORKSPACE_PLAN` | The plan new sign-ups start on. Default `free`. Set `beta`, `pro` or `business` and redeploy to change it. Existing workspaces never change. |
 | `CRON_SECRET` | At least 16 random characters. Protects the daily job address below. |
 | `VITE_WEBLLM_MODULE_URL` | Build-time address of a self-hosted WebLLM file. Shows the optional "larger on-device model" choice in Private mode. Leave empty to hide it. |
 

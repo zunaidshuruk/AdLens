@@ -16,7 +16,7 @@ export interface LegalSection {
   paragraphs: string[];
 }
 
-export const LEGAL_LAST_UPDATED = '26 October 2026';
+export const LEGAL_LAST_UPDATED = '28 October 2026';
 
 /** The wording Google requires for apps that use Google user data. */
 export const GOOGLE_LIMITED_USE_STATEMENT =
@@ -182,6 +182,16 @@ export function termsSections(o: LegalOwner): LegalSection[] {
       title: 'No warranty and limits',
       paragraphs: [
         'AdLens is provided as is, without promises that it will be uninterrupted or error-free, or that the numbers match your own tools exactly. To the extent the law allows, we are not liable for indirect or consequential loss, or for decisions you make based on AdLens, and our total liability is limited to what you paid us for AdLens in the twelve months before the claim.',
+      ],
+    },
+    {
+      id: 'plans',
+      title: 'Plans, payments, cancellation and refunds',
+      paragraphs: [
+        'AdLens has a Free plan and paid plans (Pro and Business). What each plan includes, and its price in US dollars and Bangladeshi taka, is shown in the Pricing section on the home page and under Settings, Plan and billing. Limits include the number of projects, AI questions each month, team members, saved items and how many days of data you can look back. We may change plans and prices for future periods; the price on your invoice is the price you pay.',
+        'There is no automatic card payment. When you ask for a paid plan we send you an invoice and payment details, and we switch the plan on after we receive your payment. A paid plan runs for the period on the invoice and ends on the end date shown in Settings. It does not renew by itself, so there is nothing to cancel: if you do not pay for a new period, the plan simply ends. After the end date there is a 7-day grace period, then the workspace moves to the Free plan.',
+        'When a plan ends we do not delete your data. You move to the Free limits: you may not be able to add new items above those limits, and data older than the Free history limit is not shown until you upgrade again. You can stop using AdLens and delete your account at any time.',
+        'Refunds: you can ask for a refund within 3 days of the payment date. Refunds are not available after 3 days from the payment date. To ask, write to us using the contact details at the end of these terms and include your workspace name and the invoice number.',
       ],
     },
     {
