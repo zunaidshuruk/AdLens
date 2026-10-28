@@ -1,0 +1,20 @@
+# Runs AdLens' daily job (weekly summaries and traffic alerts) every morning, 06:00 UTC.
+# Needs two GitHub secrets (repository Settings > Secrets and variables > Actions):
+#   ADLENS_URL    the address people open AdLens at, for example https://your-app.example.com (no trailing slash)
+#   CRON_SECRET   the same value you set as CRON_SECRET in AI Studio
+name: Daily summaries
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call AdLens
+        env:
+          ADLENS_URL: ${{ secrets.ADLENS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$ADLENS_URL" && test -n "$CRON_SECRET" || { echo "Add the ADLENS_URL and CRON_SECRET secrets first."; exit 1; }
+          curl --fail-with-body --silent --show-error --max-time 120 -X POST "$ADLENS_URL/api/ops/run-digests" -H "Authorization: Bearer $CRON_SECRET"
