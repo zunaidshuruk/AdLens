@@ -215,7 +215,7 @@ function FilterBar({ value, onApply }: { value: DashboardFilters; onApply: (f: D
       <label className="text-[11px] text-fg-muted space-y-1 w-36"><span>Country</span>
         <input value={draft.country ?? ''} maxLength={100} placeholder="e.g. Bangladesh" onChange={(e) => setDraft({ ...draft, country: e.target.value })} className={field} />
       </label>
-      <label className="text-[11px] text-fg-muted space-y-1 w-40"><span>Campaign (GA4)</span>
+      <label className="text-[11px] text-fg-muted space-y-1 w-40"><span>Campaign (GA4, Meta)</span>
         <input value={draft.campaign ?? ''} maxLength={100} placeholder="name contains…" onChange={(e) => setDraft({ ...draft, campaign: e.target.value })} className={field} />
       </label>
       <label className="text-[11px] text-fg-muted space-y-1 w-32"><span>Device</span>
@@ -329,7 +329,7 @@ export const DashboardPage: React.FC = () => {
       </div>
       <p className="text-xs text-fg-muted">Showing {dateRange.startDate} to {dateRange.endDate}. Change the dates at the top of the page.</p>
       <FilterBar value={filters} onApply={applyFilters} />
-      {activeFilterCount(filters) > 0 && <p className="text-[11px] text-fg-subtle">Filters apply to every panel that has that field. Campaign only applies to GA4 panels.</p>}
+      {activeFilterCount(filters) > 0 && <p className="text-[11px] text-fg-subtle">Filters apply to every panel that has that field. Campaign applies to GA4 and Meta panels.</p>}
 
       {editing && (
         <div className="flex flex-wrap items-center gap-2">

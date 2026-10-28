@@ -774,7 +774,7 @@ export const apiClient = {
   },
 
   runExplore(source: ExploreSource, body: Record<string, unknown>): Promise<ExploreResult> {
-    const path = source === 'ga4' ? '/api/explore/ga4/run' : '/api/explore/search-console/run';
+    const path = source === 'ga4' ? '/api/explore/ga4/run' : source === 'meta' ? '/api/explore/meta/run' : '/api/explore/search-console/run';
     return apiRequest<ExploreResult>(path, { method: 'POST', body: JSON.stringify(body) });
   },
 

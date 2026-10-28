@@ -1,10 +1,10 @@
-export type ExploreSource = 'ga4' | 'search_console';
+export type ExploreSource = 'ga4' | 'search_console' | 'meta';
 export type ExploreColumnType = 'text' | 'integer' | 'decimal' | 'percent' | 'seconds' | 'date' | 'position';
 export type ExploreFilterOp = 'equals' | 'notEquals' | 'contains' | 'notContains' | 'startsWith';
 
 export interface ExploreFieldInfo { key: string; label: string; type: ExploreColumnType; group: string }
 export interface ExploreCatalogSource { dimensions: ExploreFieldInfo[]; metrics: ExploreFieldInfo[]; maxDimensions: number; maxMetrics: number }
-export interface ExploreCatalog { maxRows: number; ga4: ExploreCatalogSource; search_console: ExploreCatalogSource }
+export interface ExploreCatalog { maxRows: number; ga4: ExploreCatalogSource; search_console: ExploreCatalogSource; meta: ExploreCatalogSource }
 
 export interface ExploreFilter { field: string; op: ExploreFilterOp; value: string }
 export interface ExploreOrderBy { field: string; desc: boolean }

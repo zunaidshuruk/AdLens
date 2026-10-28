@@ -1,15 +1,20 @@
 import { GoogleApiError } from '../lib/google.js';
 import {
   buildGA4ExplorePayload,
+  buildMetaExploreParams,
   buildSCExplorePayload,
   ga4ExploreInputSchema,
   mapGA4Explore,
+  mapMetaExplore,
+  metaExploreInputSchema,
   mapSCExplore,
   scExploreInputSchema,
   type ExploreResult,
   type GA4ExploreInput,
+  type MetaExploreInput,
   type SCExploreInput,
 } from '../lib/exploreSpec.js';
+import { metaGet, MetaApiError } from '../lib/meta.js';
 import { callSearchConsoleQuery } from '../lib/searchConsoleApi.js';
 import { callGA4RunReport } from './ga4Reports.js';
 import { reportRegistry } from './registry.js';
@@ -50,5 +55,31 @@ export const searchConsoleExploreReport: ReportDefinition<SCExploreInput, Explor
     const token = await ctx.getAccessToken();
     const resp = await callSearchConsoleQuery(site, token, buildSCExplorePayload(input));
     return mapSCExplore(resp, input);
+  },
+});
+
+export const metaExploreReport: ReportDefinition<MetaExploreInput, ExploreResult> = reportRegistry.register({
+  id: 'meta.explore',
+  title: 'Meta Ads flexible report',
+  description:
+    'Runs a custom Meta (Facebook and Instagram) Ads report, read-only: choose up to 3 dimensions (date, campaign, ad set, ad, country, age, gender, platform, device) and metrics (amount spent, impressions, reach, clicks, link clicks, click-through rate, cost per click, cost per 1,000 impressions), with optional campaign, ad set or ad name filters and sorting. Use when no ready-made Meta report answers the question. Returns a table plus totals.',
+  source: 'meta',
+  input: metaExploreInputSchema,
+  async run(ctx, input) {
+    const access = ctx.getMeta ? await ctx.getMeta() : null;
+    if (!access) {
+      throw new GoogleApiError('META_NOT_CONNECTED', 'Connect Facebook and choose an ad account on the Connections page first.', 409);
+    }
+    try {
+      const res = await metaGet<{ data?: Record<string, unknown>[] }>(
+        `act_${access.accountId}/insights`,
+        buildMetaExploreParams(input),
+        { accessToken: access.accessToken, appSecret: access.appSecret },
+      );
+      return mapMetaExplore(res.data ?? [], input);
+    } catch (e) {
+      if (e instanceof MetaApiError) throw e;
+      throw new MetaApiError('META_REQUEST_FAILED', 'Failed to fetch data from Meta Marketing API', 502);
+    }
   },
 });

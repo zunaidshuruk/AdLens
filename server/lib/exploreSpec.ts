@@ -68,6 +68,30 @@ export const SC_METRICS: FieldInfo[] = [
   { key: 'position', label: 'Average position', type: 'position', group: 'Performance' },
 ];
 
+export const META_DIMENSIONS: FieldInfo[] = [
+  { key: 'date', label: 'Date', type: 'date', group: 'Time' },
+  { key: 'campaign', label: 'Campaign', type: 'text', group: 'Ads' },
+  { key: 'adset', label: 'Ad set', type: 'text', group: 'Ads' },
+  { key: 'ad', label: 'Ad', type: 'text', group: 'Ads' },
+  { key: 'country', label: 'Country', type: 'text', group: 'Audience' },
+  { key: 'age', label: 'Age', type: 'text', group: 'Audience' },
+  { key: 'gender', label: 'Gender', type: 'text', group: 'Audience' },
+  { key: 'platform', label: 'Platform (Facebook, Instagram…)', type: 'text', group: 'Placement' },
+  { key: 'device', label: 'Device', type: 'text', group: 'Placement' },
+];
+
+export const META_METRICS: FieldInfo[] = [
+  { key: 'spend', label: 'Amount spent', type: 'decimal', group: 'Cost' },
+  { key: 'impressions', label: 'Impressions', type: 'integer', group: 'Reach' },
+  { key: 'reach', label: 'Reach', type: 'integer', group: 'Reach' },
+  { key: 'frequency', label: 'Frequency', type: 'decimal', group: 'Reach' },
+  { key: 'clicks', label: 'Clicks (all)', type: 'integer', group: 'Clicks' },
+  { key: 'inline_link_clicks', label: 'Link clicks', type: 'integer', group: 'Clicks' },
+  { key: 'ctr', label: 'Click-through rate', type: 'percent', group: 'Clicks' },
+  { key: 'cpc', label: 'Cost per click', type: 'decimal', group: 'Cost' },
+  { key: 'cpm', label: 'Cost per 1,000 impressions', type: 'decimal', group: 'Cost' },
+];
+
 const keysOf = (f: FieldInfo[]) => f.map((x) => x.key) as [string, ...string[]];
 const lookup = (f: FieldInfo[]) => new Map(f.map((x) => [x.key, x]));
 
@@ -128,6 +152,25 @@ export const scExploreInputSchema = z
   });
 export type SCExploreInput = z.infer<typeof scExploreInputSchema>;
 
+export const metaExploreInputSchema = z
+  .object({
+    ...dateFields,
+    dimensions: z.array(z.enum(keysOf(META_DIMENSIONS))).max(3).default([]),
+    metrics: z.array(z.enum(keysOf(META_METRICS))).min(1, 'Pick at least one metric').max(6),
+    filters: z.array(z.object({ field: z.enum(['campaign', 'adset', 'ad']), op: filterOps.exclude(['startsWith']), value: filterValue })).max(5).default([]),
+    orderBy: z.object({ field: z.string().max(60), desc: z.boolean().default(true) }).optional(),
+    limit: z.number().int().min(1).max(MAX_ROWS).default(100),
+  })
+  .superRefine(checkDates)
+  .superRefine((v, ctx) => {
+    if (new Set(v.dimensions).size !== v.dimensions.length) ctx.addIssue({ code: 'custom', path: ['dimensions'], message: 'Each dimension can be used once.' });
+    if (new Set(v.metrics).size !== v.metrics.length) ctx.addIssue({ code: 'custom', path: ['metrics'], message: 'Each metric can be used once.' });
+    if (v.orderBy && !v.metrics.includes(v.orderBy.field) && !v.dimensions.includes(v.orderBy.field)) {
+      ctx.addIssue({ code: 'custom', path: ['orderBy'], message: 'Sort by a column that is in the report.' });
+    }
+  });
+export type MetaExploreInput = z.infer<typeof metaExploreInputSchema>;
+
 /** What a saved report remembers: everything except the dates (dates come from the date picker each time). */
 export const ga4SpecSchema = z.object({
   dimensions: ga4ExploreInputSchema.shape.dimensions,
@@ -135,6 +178,13 @@ export const ga4SpecSchema = z.object({
   filters: ga4ExploreInputSchema.shape.filters,
   orderBy: ga4ExploreInputSchema.shape.orderBy,
   limit: ga4ExploreInputSchema.shape.limit,
+});
+export const metaSpecSchema = z.object({
+  dimensions: metaExploreInputSchema.shape.dimensions,
+  metrics: metaExploreInputSchema.shape.metrics,
+  filters: metaExploreInputSchema.shape.filters,
+  orderBy: metaExploreInputSchema.shape.orderBy,
+  limit: metaExploreInputSchema.shape.limit,
 });
 export const scSpecSchema = z.object({
   dimensions: scExploreInputSchema.shape.dimensions,
@@ -151,7 +201,7 @@ export const scSpecSchema = z.object({
 export interface ExploreColumn { key: string; label: string; type: ColumnType; role: 'dimension' | 'metric' }
 export type ExploreCell = string | number | null;
 export interface ExploreResult {
-  source: 'ga4' | 'search_console';
+  source: 'ga4' | 'search_console' | 'meta';
   columns: ExploreColumn[];
   rows: Record<string, ExploreCell>[];
   /** Totals for the metrics across the rows returned (GA4: reported by Google; Search Console: summed, position weighted). */
@@ -172,13 +222,15 @@ function columnsFor(dims: string[], mets: string[], dimInfo: Map<string, FieldIn
   ];
 }
 
+const metaDim = lookup(META_DIMENSIONS);
+const metaMet = lookup(META_METRICS);
 const ga4Dim = lookup(GA4_DIMENSIONS);
 const ga4Met = lookup(GA4_METRICS);
 const scDim = lookup(SC_DIMENSIONS);
 const scMet = lookup(SC_METRICS);
 
-export const fieldLabel = (source: 'ga4' | 'search_console', key: string): string =>
-  (source === 'ga4' ? ga4Dim.get(key) ?? ga4Met.get(key) : scDim.get(key) ?? scMet.get(key))?.label ?? key;
+export const fieldLabel = (source: 'ga4' | 'search_console' | 'meta', key: string): string =>
+  (source === 'ga4' ? ga4Dim.get(key) ?? ga4Met.get(key) : source === 'meta' ? metaDim.get(key) ?? metaMet.get(key) : scDim.get(key) ?? scMet.get(key))?.label ?? key;
 
 // ---------------------------------------------------------------------------
 // GA4
@@ -320,4 +372,104 @@ export function mapSCExplore(resp: SCResp, input: SCExploreInput): ExploreResult
     totals = Object.fromEntries(input.metrics.map((k) => [k, all[k]]));
   }
   return { source: 'search_console', columns, rows, totals, rowCount: rows.length, truncated: rows.length >= input.limit };
+}
+
+// ---------------------------------------------------------------------------
+// Meta Ads (Marketing API insights; read-only)
+// ---------------------------------------------------------------------------
+
+const META_DIM_FIELD: Record<string, string> = {
+  date: 'date_start', campaign: 'campaign_name', adset: 'adset_name', ad: 'ad_name',
+  country: 'country', age: 'age', gender: 'gender', platform: 'publisher_platform', device: 'device_platform',
+};
+const META_FILTER_FIELD: Record<string, string> = { campaign: 'campaign.name', adset: 'adset.name', ad: 'ad.name' };
+const META_FILTER_OP: Record<string, string> = { equals: 'EQUAL', notEquals: 'NOT_EQUAL', contains: 'CONTAIN', notContains: 'NOT_CONTAIN' };
+const META_PAGE_ROWS = 500;
+
+/** The query-string parameters for act_{id}/insights. Only allow-listed names ever reach Meta. */
+export function buildMetaExploreParams(input: MetaExploreInput): Record<string, string | number> {
+  const level = input.dimensions.includes('ad') || input.filters.some((f) => f.field === 'ad') ? 'ad'
+    : input.dimensions.includes('adset') || input.filters.some((f) => f.field === 'adset') ? 'adset'
+    : input.dimensions.includes('campaign') || input.filters.some((f) => f.field === 'campaign') ? 'campaign'
+    : 'account';
+  const nameFields = input.dimensions.filter((d) => d === 'campaign' || d === 'adset' || d === 'ad').map((d) => META_DIM_FIELD[d]);
+  const breakdowns = input.dimensions.filter((d) => ['country', 'age', 'gender', 'platform', 'device'].includes(d)).map((d) => META_DIM_FIELD[d]);
+  const params: Record<string, string | number> = {
+    level,
+    fields: [...new Set([...nameFields, ...input.metrics, 'account_currency', 'date_start'])].join(','),
+    time_range: JSON.stringify({ since: input.startDate, until: input.endDate }),
+    use_unified_attribution_setting: 'true',
+    limit: META_PAGE_ROWS,
+  };
+  if (breakdowns.length > 0) params.breakdowns = breakdowns.join(',');
+  if (input.dimensions.includes('date')) params.time_increment = 1;
+  if (input.filters.length > 0) {
+    params.filtering = JSON.stringify(input.filters.map((f) => ({ field: META_FILTER_FIELD[f.field], operator: META_FILTER_OP[f.op], value: f.value })));
+  }
+  return params;
+}
+
+const metaCountryNames = new Intl.DisplayNames(['en'], { type: 'region' });
+function metaDimValue(key: string, raw: unknown): string {
+  const v = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);
+  if (key === 'country' && /^[A-Za-z]{2}$/.test(v)) {
+    try { return metaCountryNames.of(v.toUpperCase()) ?? v; } catch { return v; }
+  }
+  return v;
+}
+
+function metaMetricValue(key: string, raw: unknown): number {
+  const n = toNum(raw);
+  const type = metaMet.get(key)!.type;
+  if (type === 'integer') return Math.round(n);
+  return Number(n.toFixed(2));
+}
+
+export function mapMetaExplore(rowsIn: Record<string, unknown>[], input: MetaExploreInput): ExploreResult {
+  const columns = columnsFor(input.dimensions, input.metrics, metaDim, metaMet);
+  let rows = rowsIn.map((r) => {
+    const row: Record<string, ExploreCell> = {};
+    input.dimensions.forEach((k) => { row[k] = metaDimValue(k, r[META_DIM_FIELD[k]]); });
+    input.metrics.forEach((k) => { row[k] = metaMetricValue(k, r[k]); });
+    return row;
+  });
+
+  if (input.orderBy) {
+    const { field, desc } = input.orderBy;
+    const dir = desc ? -1 : 1;
+    rows = [...rows].sort((a, b) => {
+      const x = a[field]; const y = b[field];
+      if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
+      return String(x ?? '').localeCompare(String(y ?? '')) * dir;
+    });
+  } else if (input.dimensions.includes('date')) {
+    rows = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  } else if (input.metrics.length > 0) {
+    const first = input.metrics[0];
+    rows = [...rows].sort((a, b) => Number(b[first] ?? 0) - Number(a[first] ?? 0));
+  }
+
+  // Totals: sums where a sum is meaningful; ratios recomputed; reach and frequency cannot be added up across rows.
+  let totals: Record<string, ExploreCell> | null = null;
+  if (rowsIn.length > 0) {
+    const sum = (k: string) => rowsIn.reduce((s, r) => s + toNum(r[k]), 0);
+    const spend = sum('spend');
+    const impressions = sum('impressions');
+    const clicks = sum('clicks');
+    const all: Record<string, ExploreCell> = {
+      spend: Number(spend.toFixed(2)),
+      impressions: Math.round(impressions),
+      reach: null,
+      frequency: null,
+      clicks: Math.round(clicks),
+      inline_link_clicks: Math.round(sum('inline_link_clicks')),
+      ctr: impressions > 0 ? Number(((clicks / impressions) * 100).toFixed(2)) : 0,
+      cpc: clicks > 0 ? Number((spend / clicks).toFixed(2)) : null,
+      cpm: impressions > 0 ? Number(((spend / impressions) * 1000).toFixed(2)) : null,
+    };
+    totals = Object.fromEntries(input.metrics.map((k) => [k, all[k]]));
+  }
+  const truncated = rows.length > input.limit;
+  rows = rows.slice(0, input.limit);
+  return { source: 'meta', columns, rows, totals, rowCount: rowsIn.length, truncated };
 }

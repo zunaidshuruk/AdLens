@@ -27,7 +27,7 @@ import {
   validateSpec,
 } from '../utils/exploreState.js';
 
-const SOURCE_LABEL: Record<ExploreSource, string> = { ga4: 'Google Analytics 4', search_console: 'Search Console' };
+const SOURCE_LABEL: Record<ExploreSource, string> = { ga4: 'Google Analytics 4', search_console: 'Search Console', meta: 'Meta Ads' };
 const OP_LABEL: Record<ExploreFilterOp, string> = {
   equals: 'is',
   notEquals: 'is not',
@@ -327,7 +327,7 @@ export const ExplorePage: React.FC = () => {
       </div>
 
       <div role="tablist" aria-label="Data source" className="inline-flex rounded-lg border border-line p-0.5 bg-fill-1">
-        {(['ga4', 'search_console'] as ExploreSource[]).map((s) => (
+        {(['ga4', 'search_console', 'meta'] as ExploreSource[]).map((s) => (
           <button key={s} role="tab" aria-selected={source === s} onClick={() => switchSource(s)} className={`px-3 py-2 min-h-[36px] text-xs font-medium rounded-md ${source === s ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}>
             {SOURCE_LABEL[s]}
           </button>
@@ -340,7 +340,7 @@ export const ExplorePage: React.FC = () => {
           <ul className="flex flex-wrap gap-2">
             {saved.map((r) => (
               <li key={r.id} className={`inline-flex items-center rounded-lg border text-xs ${r.id === activeId ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-muted'}`}>
-                <button type="button" onClick={() => open(r)} className="px-3 py-2 min-h-[36px] hover:text-fg">{r.name} <span className="text-fg-subtle">· {r.source === 'ga4' ? 'GA4' : 'Search'}</span></button>
+                <button type="button" onClick={() => open(r)} className="px-3 py-2 min-h-[36px] hover:text-fg">{r.name} <span className="text-fg-subtle">· {r.source === 'ga4' ? 'GA4' : r.source === 'meta' ? 'Meta' : 'Search'}</span></button>
                 <button type="button" aria-label={`Delete ${r.name}`} onClick={() => void remove(r)} className="px-2 py-2 hover:text-danger"><Trash2 className="w-3.5 h-3.5" /></button>
               </li>
             ))}
@@ -354,7 +354,7 @@ export const ExplorePage: React.FC = () => {
             <FieldPicker title="Break down by" hint="Rows — for example channel, page or country" fields={cat.dimensions} selected={spec.dimensions} max={cat.maxDimensions} onChange={(dimensions) => setSpec((s) => normaliseSpec({ ...s, dimensions }))} />
             <FieldPicker title="Numbers to show" hint="Columns — for example sessions or clicks" fields={cat.metrics} selected={spec.metrics} max={cat.maxMetrics} onChange={(metrics) => setSpec((s) => normaliseSpec({ ...s, metrics }))} />
           </div>
-          <FilterEditor filters={spec.filters} dimensions={cat.dimensions} allowStartsWith={source === 'ga4'} onChange={(filters) => setSpec((s) => ({ ...s, filters }))} />
+          <FilterEditor filters={spec.filters} dimensions={source === 'meta' ? cat.dimensions.filter((d) => ['campaign', 'adset', 'ad'].includes(d.key)) : cat.dimensions} allowStartsWith={source === 'ga4'} onChange={(filters) => setSpec((s) => ({ ...s, filters }))} />
 
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-xs text-fg-muted space-y-1">

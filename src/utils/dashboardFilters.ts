@@ -29,12 +29,13 @@ export function writeFilters(params: URLSearchParams, f: DashboardFilters): URLS
 
 export const activeFilterCount = (f: DashboardFilters) => (['country', 'campaign', 'device'] as const).filter((k) => clip(f[k])).length;
 
-/** The extra filters one panel receives. Campaign only exists in GA4, so Search Console panels ignore it. */
+/** The extra filters one panel receives. Campaign works for GA4 and Meta panels; country and device for GA4 and Search Console. */
 export function filtersForSource(source: ExploreSource, f: DashboardFilters): ExploreFilter[] {
   const out: ExploreFilter[] = [];
   const country = clip(f.country);
   const campaign = clip(f.campaign);
   const device = clip(f.device).toLowerCase();
+  if (source === 'meta') return campaign ? [{ field: 'campaign', op: 'contains', value: campaign }] : [];
   if (country) out.push({ field: 'country', op: 'equals', value: country });
   if (campaign && source === 'ga4') out.push({ field: 'sessionCampaignName', op: 'contains', value: campaign });
   if (device) out.push({ field: source === 'ga4' ? 'deviceCategory' : 'device', op: 'equals', value: source === 'ga4' ? device : device.toUpperCase() });

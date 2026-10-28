@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ga4SpecSchema, scSpecSchema } from './exploreSpec.js';
+import { ga4SpecSchema, metaSpecSchema, scSpecSchema } from './exploreSpec.js';
 import { newDocId, type ProjectDocsStore, type StoredDoc } from './projectDocs.js';
 
 export const MAX_SAVED_REPORTS_PER_PROJECT = 50;
@@ -7,13 +7,14 @@ export const MAX_SAVED_REPORTS_PER_PROJECT = 50;
 export const savedReportInputSchema = z.discriminatedUnion('source', [
   z.object({ name: z.string().trim().min(1, 'Give the report a name').max(80), source: z.literal('ga4'), spec: ga4SpecSchema }),
   z.object({ name: z.string().trim().min(1, 'Give the report a name').max(80), source: z.literal('search_console'), spec: scSpecSchema }),
+  z.object({ name: z.string().trim().min(1, 'Give the report a name').max(80), source: z.literal('meta'), spec: metaSpecSchema }),
 ]);
 export type SavedReportInput = z.infer<typeof savedReportInputSchema>;
 
 export interface SavedReport {
   id: string;
   name: string;
-  source: 'ga4' | 'search_console';
+  source: 'ga4' | 'search_console' | 'meta';
   spec: SavedReportInput['spec'];
   createdBy: string;
   createdAt: string;

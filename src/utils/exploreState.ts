@@ -3,6 +3,7 @@ import type { ExploreCatalogSource, ExploreFilter, ExploreSource, ExploreSpec } 
 export const DEFAULT_LIMIT = 100;
 
 export function defaultSpec(source: ExploreSource): ExploreSpec {
+  if (source === 'meta') return { dimensions: ['campaign'], metrics: ['spend', 'impressions', 'clicks'], filters: [], limit: DEFAULT_LIMIT };
   return source === 'ga4'
     ? { dimensions: ['sessionDefaultChannelGroup'], metrics: ['sessions', 'totalUsers'], filters: [], limit: DEFAULT_LIMIT }
     : { dimensions: ['query'], metrics: ['clicks', 'impressions'], filters: [], limit: DEFAULT_LIMIT };
