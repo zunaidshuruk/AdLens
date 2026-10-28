@@ -17,6 +17,7 @@ import { fetchFollowing, fetchOnce, normaliseInputUrl, type PageFetcher } from '
 import { countRawElements, parsePageSpeed, runPageSpeed, SpeedError, type PsiRequest } from '../lib/seoSpeed.js';
 import { getDataProvider, NOT_CONNECTED_NOTE } from '../lib/dataProvider.js';
 import { clusterKeywords } from '../lib/rankTracking.js';
+import { onPageReport } from '../lib/seoOnPage.js';
 import { topicGap, visibleText } from '../lib/seoTopics.js';
 import { classifyIntent, keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
 import { findOpportunities, type QueryPageRow } from '../lib/seoOpportunities.js';
@@ -280,6 +281,32 @@ seoRouter.post('/topic-gap', async (req, res) => {
       note: 'Based on the words on each page. It shows what competitors cover that you do not; it does not prove those words will help you rank.',
     });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while comparing the pages.'); }
+});
+
+
+// One page against one target keyword (optionally with competitor pages for related words).
+seoRouter.post('/onpage', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'onpage', 30, 3_600_000))) return;
+    const parsed = z.object({ url: z.string().min(3).max(2000), keyword: z.string().trim().min(2, 'Type the keyword this page should rank for').max(100), competitors: z.array(z.string().min(3).max(2000)).max(3).default([]) }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', parsed.error.issues[0]?.message || 'Enter a page and a keyword.');
+    let start: URL;
+    try { start = normaliseInputUrl(parsed.data.url); } catch (e) { return urlError(res, e); }
+    const page = await fetchFollowing(start.toString(), deps.fetcher);
+    if (page.error || page.status === 0) return fail(res, 502, 'FETCH_FAILED', page.error || 'The page could not be reached.');
+    if (page.status >= 400) return fail(res, 422, 'PAGE_ERROR', `The page answered with an error (${page.status}).`);
+    if (page.contentType && !/html|xml/.test(page.contentType)) return fail(res, 422, 'NOT_HTML', 'That address is not a web page (it did not return HTML).');
+    const rivalTexts: string[] = [];
+    const rivalErrors: string[] = [];
+    for (const input of parsed.data.competitors) {
+      try {
+        const r = await fetchFollowing(normaliseInputUrl(input).toString(), deps.fetcher);
+        if (r.error || r.status === 0 || r.status >= 400 || (r.contentType && !/html|xml/.test(r.contentType))) rivalErrors.push(input); else rivalTexts.push(visibleText(r.text));
+      } catch { rivalErrors.push(input); }
+    }
+    res.json({ report: onPageReport(page.text, page.url, parsed.data.keyword, rivalTexts, { status: page.status, ms: page.ms, bytes: page.bytes }), competitorErrors: rivalErrors });
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while checking the page.'); }
 });
 
 seoRouter.get('/provider', async (req, res) => {

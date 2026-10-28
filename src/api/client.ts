@@ -325,7 +325,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface BillingView {
@@ -347,7 +347,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean };
 }
 export interface AdminFlags {
@@ -480,6 +480,10 @@ export interface RankSummaryInfo {
   keywords: RankKeywordRow[]; winners: RankKeywordRow[]; losers: RankKeywordRow[];
 }
 export interface RankPageTraffic { page: string; sessions: number; clicks: number; impressions: number; position: number | null; topQuery: string | null; hiddenClicks: number }
+
+export interface OnPageCheck { id: string; status: 'good' | 'warn' | 'bad'; title: string; detail: string; fix: string }
+export interface OnPageReportInfo { url: string; keyword: string; score: number; facts: { title: string | null; description: string | null; h1: string[]; wordCount: number; urlPath: string }; placement: { title: boolean; h1: boolean; description: boolean; url: boolean; firstParagraph: boolean; h2: number; imageAlt: number }; occurrences: number; density: number; readability: { sentences: number; avgSentenceWords: number; flesch: number | null; level: 'easy' | 'ok' | 'hard' | 'unknown' }; checks: OnPageCheck[]; related: { missing: { term: string; competitors: number; avgCount: number }[]; note: string } | null }
+export interface LinkProspectInfo { id: string; domain: string; pageUrl: string; targetUrl: string; status: 'new' | 'contacted' | 'replied' | 'won' | 'lost'; contactEmail: string; notes: string; linkLive: boolean | null; checkedAt: string | null; createdBy: string; createdAt: string; updatedAt: string }
 
 export const apiClient = {
   getHealth(): Promise<HealthStatusResponse> {
@@ -927,6 +931,12 @@ export const apiClient = {
   async rankRefresh(): Promise<{ days: number; tracked: number; refreshedAt: string }> { return apiRequest('/api/rank/refresh', { method: 'POST', body: '{}' }); },
   async rankHistory(days: 28 | 90): Promise<{ days: number; summary: RankSummaryInfo; tracking: RankTrackingState | null; daysStored: number }> { return apiRequest(`/api/rank/history?days=${days}`); },
   async rankTraffic(): Promise<{ startDate: string; endDate: string; rows: RankPageTraffic[]; totals: { sessions: number; clicks: number; hiddenClicks: number; hiddenShare: number } }> { return apiRequest('/api/rank/traffic', { method: 'POST', body: '{}' }); },
+  async seoOnPage(url: string, keyword: string, competitors: string[]): Promise<{ report: OnPageReportInfo; competitorErrors: string[] }> { return apiRequest('/api/seo/onpage', { method: 'POST', body: JSON.stringify({ url, keyword, competitors }) }); },
+  async linkProspects(): Promise<{ prospects: LinkProspectInfo[]; limit: number; canEdit: boolean }> { return apiRequest('/api/links/prospects'); },
+  async linkAddProspects(domains: string[]): Promise<{ added: number; skipped: number; prospects: LinkProspectInfo[] }> { return apiRequest('/api/links/prospects', { method: 'POST', body: JSON.stringify({ domains }) }); },
+  async linkUpdateProspect(id: string, patch: Partial<Pick<LinkProspectInfo, 'status' | 'notes' | 'pageUrl' | 'targetUrl' | 'contactEmail'>>): Promise<{ prospect: LinkProspectInfo }> { return apiRequest(`/api/links/prospects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }); },
+  async linkDeleteProspect(id: string): Promise<void> { await apiRequest(`/api/links/prospects/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async linkCheckProspect(id: string): Promise<{ prospect: LinkProspectInfo; links: { href: string; text: string; nofollow: boolean }[] }> { return apiRequest(`/api/links/prospects/${encodeURIComponent(id)}/check`, { method: 'POST', body: '{}' }); },
   async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; clusters: { name: string; keywords: string[] }[]; providerConnected: boolean; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
   async seoKeywordOverview(keyword: string, lang: string): Promise<SeoKeywordOverview> { return apiRequest('/api/seo/keyword-overview', { method: 'POST', body: JSON.stringify({ keyword, lang }) }); },
   async seoTopicGap(yourUrl: string, competitors: string[]): Promise<SeoTopicGap> { return apiRequest('/api/seo/topic-gap', { method: 'POST', body: JSON.stringify({ yourUrl, competitors }) }); },

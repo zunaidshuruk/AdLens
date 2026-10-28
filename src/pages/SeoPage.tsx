@@ -2,6 +2,8 @@ import { Search, Sparkles } from 'lucide-react';
 import React, { useState } from 'react';
 import { apiClient, type SeoCrawlReport, type SeoIssueInfo, type SeoOpportunity, type SeoPageResult, type SpeedMetricInfo, type SpeedReport } from '../api/client';
 import { ErrorState } from '../components/ErrorState';
+import { BacklinkAudit, BacklinkGap, LinkBuilding } from '../components/seo/Backlinks';
+import { LogAnalyzer, OnPageChecker } from '../components/seo/OnPageAndLogs';
 import { KeywordResearch, TopicGap } from '../components/seo/KeywordResearch';
 import { KeywordLists, RankTracking, TrafficInsights } from '../components/seo/RankTracking';
 
@@ -329,9 +331,14 @@ const TABS = [
   { key: 'opps', label: 'Search opportunities' },
   { key: 'keywords', label: 'Keyword research' },
   { key: 'gap', label: 'Topic gap' },
+  { key: 'onpage', label: 'On-page checker' },
   { key: 'rank', label: 'Rank tracking' },
   { key: 'lists', label: 'Keyword lists' },
   { key: 'traffic', label: 'Organic traffic' },
+  { key: 'logs', label: 'Log analyzer' },
+  { key: 'audit', label: 'Backlink audit' },
+  { key: 'linkgap', label: 'Link gap' },
+  { key: 'outreach', label: 'Link building' },
 ] as const;
 
 export const SeoPage: React.FC = () => {
@@ -357,6 +364,11 @@ export const SeoPage: React.FC = () => {
         {tab === 'rank' && <RankTracking goToLists={() => setTab('lists')} />}
         {tab === 'lists' && <KeywordLists />}
         {tab === 'traffic' && <TrafficInsights />}
+        {tab === 'onpage' && <OnPageChecker />}
+        {tab === 'logs' && <LogAnalyzer />}
+        {tab === 'audit' && <BacklinkAudit />}
+        {tab === 'linkgap' && <BacklinkGap goOutreach={() => setTab('outreach')} />}
+        {tab === 'outreach' && <LinkBuilding />}
       </div>
     </div>
   );
