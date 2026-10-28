@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DASHBOARD_TEMPLATES } from '../config/dashboardTemplates.js';
 import type { DashboardWidget } from '../types/dashboard.js';
-import { addWidget, clampLayout, compact, DEFAULT_SIZE, duplicateWidget, panelRange, setWidgetDays, findFreeSpot, hasOverlap, mobileOrder, placeWidget, removeWidget, resizeWidget } from './dashboardLayout.js';
+import { addWidget, clampLayout, compact, DEFAULT_SIZE, duplicateWidget, gridStep, stepsFromDrag, panelRange, setWidgetDays, findFreeSpot, hasOverlap, mobileOrder, placeWidget, removeWidget, resizeWidget } from './dashboardLayout.js';
 
 const t = (id: string, x: number, y: number, w: number, h: number): DashboardWidget => ({ id, title: id, kind: 'text', text: 'x', layout: { x, y, w, h } });
 
@@ -74,4 +74,12 @@ test('Stage 19 — layout: a panel can have its own last-N-days range', () => {
   assert.equal((withDays[0] as { days?: number }).days, 28);
   assert.equal('days' in setWidgetDays(withDays, 'q', undefined)[0], false);
   assert.equal('days' in setWidgetDays([t('n', 0, 0, 3, 2)], 'n', 7)[0], false);
+});
+
+test('Stage 19 — drag: pixels convert to whole grid steps', () => {
+  const step = gridStep(1200, 72); // cell = (1200 - 132) / 12 = 89, step = 101
+  assert.equal(Math.round(step.col), 101);
+  assert.equal(step.row, 84);
+  assert.deepEqual(stepsFromDrag(205, -90, step), { dx: 2, dy: -1 });
+  assert.deepEqual(stepsFromDrag(20, 10, step), { dx: 0, dy: 0 });
 });

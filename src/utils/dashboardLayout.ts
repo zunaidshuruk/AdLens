@@ -105,6 +105,17 @@ export function addWidget(widgets: DashboardWidget[], widget: WithoutLayout, siz
   return [...widgets, { ...widget, layout: findFreeSpot(widgets, size) } as unknown as DashboardWidget];
 }
 
+/** Pixel size of one grid column / row step (cell plus gap) for a grid of the given width. */
+export function gridStep(containerWidth: number, rowPx: number, gap = 12): { col: number; row: number } {
+  const cell = (containerWidth - gap * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  return { col: Math.max(1, cell + gap), row: Math.max(1, rowPx + gap) };
+}
+
+/** Converts a drag distance in pixels into whole grid steps. */
+export function stepsFromDrag(dxPx: number, dyPx: number, step: { col: number; row: number }): { dx: number; dy: number } {
+  return { dx: Math.round(dxPx / step.col), dy: Math.round(dyPx / step.row) };
+}
+
 export const PANEL_DAY_OPTIONS = [7, 14, 28, 90] as const;
 
 /** The dates a panel should use: its own last-N-days (ending on the page's end date) or the page range. */

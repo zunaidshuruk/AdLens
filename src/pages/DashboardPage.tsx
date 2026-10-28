@@ -1,5 +1,5 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, Maximize2, Pencil, Plus, RefreshCw, Save, Target, Trash2, X } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, GripVertical, Maximize2, Pencil, Plus, RefreshCw, Save, Target, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { DashboardWidgetView } from '../components/DashboardWidgetView';
@@ -7,7 +7,7 @@ import { ErrorState } from '../components/ErrorState';
 import { useDateRange } from '../hooks';
 import type { Dashboard, DashboardWidget, WidgetKind } from '../types/dashboard.js';
 import type { SavedReport } from '../types/explore.js';
-import { addWidget, duplicateWidget, PANEL_DAY_OPTIONS, setWidgetDays, DEFAULT_SIZE, mobileOrder, placeWidget, removeWidget, resizeWidget } from '../utils/dashboardLayout.js';
+import { addWidget, duplicateWidget, gridStep, stepsFromDrag, PANEL_DAY_OPTIONS, setWidgetDays, DEFAULT_SIZE, mobileOrder, placeWidget, removeWidget, resizeWidget } from '../utils/dashboardLayout.js';
 
 const ROW_PX = 72;
 const KIND_LABEL: Record<WidgetKind | 'text', string> = { kpi: 'Big number', bar: 'Bar chart', line: 'Line chart', table: 'Table', stacked: 'Stacked bars', pie: 'Pie chart', gauge: 'Gauge', heatmap: 'Heat map', text: 'Note' };
@@ -38,17 +38,45 @@ function Grid(props: {
   const desktop = useIsDesktop();
   const rowPx = large ? 96 : ROW_PX;
   const list = desktop ? widgets : mobileOrder(widgets);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ id: string; mode: 'move' | 'resize'; sx: number; sy: number; dx: number; dy: number } | null>(null);
+  const startDrag = (e: React.PointerEvent, id: string, mode: 'move' | 'resize') => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDrag({ id, mode, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0 });
+  };
+  const moveDrag = (e: React.PointerEvent) => {
+    if (drag) setDrag({ ...drag, dx: e.clientX - drag.sx, dy: e.clientY - drag.sy });
+  };
+  const endDrag = (commit: boolean) => {
+    if (drag && commit && onChange && gridRef.current) {
+      const steps = stepsFromDrag(drag.dx, drag.dy, gridStep(gridRef.current.clientWidth, rowPx));
+      const t = widgets.find((x) => x.id === drag.id);
+      if (t && (steps.dx !== 0 || steps.dy !== 0)) {
+        onChange(drag.mode === 'move'
+          ? placeWidget(widgets, t.id, { x: t.layout.x + steps.dx, y: t.layout.y + steps.dy })
+          : placeWidget(widgets, t.id, { w: t.layout.w + steps.dx, h: t.layout.h + steps.dy }));
+      }
+    }
+    setDrag(null);
+  };
   const btn = 'p-1.5 rounded-md bg-surface border border-line text-fg-muted hover:text-fg hover:bg-fill-2';
 
   return (
-    <div className={desktop ? 'grid gap-3' : 'flex flex-col gap-3'} style={desktop ? { gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gridAutoRows: `${rowPx}px` } : undefined}>
+    <div ref={gridRef} className={desktop ? 'grid gap-3' : 'flex flex-col gap-3'} style={desktop ? { gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gridAutoRows: `${rowPx}px` } : undefined}>
       {list.map((w) => (
         <div
           key={w.id}
-          className="relative"
-          style={desktop ? { gridColumn: `${w.layout.x + 1} / span ${w.layout.w}`, gridRow: `${w.layout.y + 1} / span ${w.layout.h}` } : { minHeight: Math.max(1, w.layout.h) * 56 }}
+          className={`relative ${drag?.id === w.id ? 'z-20 opacity-80 ring-2 ring-accent rounded-xl' : ''}`}
+          style={desktop ? { ...(drag?.id === w.id && drag.mode === 'move' ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` } : {}), ...(drag?.id === w.id && drag.mode === 'resize' ? { width: `calc(100% + ${drag.dx}px)`, height: `calc(100% + ${drag.dy}px)` } : {}), gridColumn: `${w.layout.x + 1} / span ${w.layout.w}`, gridRow: `${w.layout.y + 1} / span ${w.layout.h}` } : { minHeight: Math.max(1, w.layout.h) * 56 }}
         >
           <DashboardWidgetView widget={w} range={range} refreshKey={refreshKey} large={large} />
+          {editing && onChange && desktop && (
+            <>
+              <button type="button" aria-label={`Drag ${w.title} to move it`} title="Drag to move" onPointerDown={(e) => startDrag(e, w.id, 'move')} onPointerMove={moveDrag} onPointerUp={() => endDrag(true)} onPointerCancel={() => endDrag(false)} className="absolute top-1 left-1 p-1.5 rounded-md bg-surface border border-line text-fg-muted hover:text-fg cursor-grab active:cursor-grabbing touch-none"><GripVertical className="w-3.5 h-3.5" /></button>
+              <button type="button" aria-label={`Drag ${w.title} to resize it`} title="Drag to resize" onPointerDown={(e) => startDrag(e, w.id, 'resize')} onPointerMove={moveDrag} onPointerUp={() => endDrag(true)} onPointerCancel={() => endDrag(false)} className="absolute bottom-1 right-1 w-5 h-5 rounded-sm border-r-2 border-b-2 border-fg-muted cursor-nwse-resize touch-none" />
+            </>
+          )}
           {editing && onChange && (
             <div className="absolute top-1 right-1 flex flex-wrap justify-end gap-1 max-w-[90%]" role="group" aria-label={`Edit ${w.title}`}>
               {desktop && (
