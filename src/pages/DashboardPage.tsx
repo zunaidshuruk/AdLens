@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, Maximize2, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronsLeftRight, ChevronsUpDown, Copy, Maximize2, Pencil, Plus, RefreshCw, Save, Target, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiClient } from '../api/client';
@@ -10,7 +10,7 @@ import type { SavedReport } from '../types/explore.js';
 import { addWidget, duplicateWidget, PANEL_DAY_OPTIONS, setWidgetDays, DEFAULT_SIZE, mobileOrder, placeWidget, removeWidget, resizeWidget } from '../utils/dashboardLayout.js';
 
 const ROW_PX = 72;
-const KIND_LABEL: Record<WidgetKind | 'text', string> = { kpi: 'Big number', bar: 'Bar chart', line: 'Line chart', table: 'Table', text: 'Note' };
+const KIND_LABEL: Record<WidgetKind | 'text', string> = { kpi: 'Big number', bar: 'Bar chart', line: 'Line chart', table: 'Table', stacked: 'Stacked bars', pie: 'Pie chart', gauge: 'Gauge', heatmap: 'Heat map', text: 'Note' };
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 
 function useIsDesktop(): boolean {
@@ -76,6 +76,18 @@ function Grid(props: {
                   <option value="">Follows page</option>
                   {PANEL_DAY_OPTIONS.map((d) => <option key={d} value={d}>Last {d} days</option>)}
                 </select>
+              )}
+              {w.kind === 'gauge' && (
+                <button type="button" className={btn} aria-label="Set gauge target" onClick={() => {
+                  const t = window.prompt('Number that counts as 100% (leave empty to clear)', w.target ? String(w.target) : '');
+                  if (t === null) return;
+                  const n = Number(t.replace(/,/g, ''));
+                  onChange(widgets.map((x) => {
+                    if (x.id !== w.id || x.kind === 'text') return x;
+                    const { target: _t, ...rest } = x;
+                    return (Number.isFinite(n) && n > 0 ? { ...rest, target: n } : rest) as DashboardWidget;
+                  }));
+                }}><Target className="w-3.5 h-3.5" /></button>
               )}
               <button type="button" className={btn} aria-label="Duplicate widget" onClick={() => onChange(duplicateWidget(widgets, w.id, `w${Date.now().toString(36)}${widgets.length}`))}><Copy className="w-3.5 h-3.5" /></button>
               <button type="button" className={`${btn} hover:text-danger`} aria-label="Remove widget" onClick={() => onChange(removeWidget(widgets, w.id))}><Trash2 className="w-3.5 h-3.5" /></button>

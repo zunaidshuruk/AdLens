@@ -149,5 +149,9 @@ export const DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
   bar: { w: 6, h: 4 },
   line: { w: 6, h: 4 },
   table: { w: 6, h: 5 },
+  stacked: { w: 6, h: 4 },
+  pie: { w: 4, h: 4 },
+  gauge: { w: 3, h: 3 },
+  heatmap: { w: 6, h: 5 },
   text: { w: 6, h: 2 },
 };

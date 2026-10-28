@@ -1,6 +1,6 @@
 import type { ExploreSource, ExploreSpec } from './explore.js';
 
-export type WidgetKind = 'kpi' | 'bar' | 'line' | 'table';
+export type WidgetKind = 'kpi' | 'bar' | 'line' | 'table' | 'stacked' | 'pie' | 'gauge' | 'heatmap';
 export interface WidgetLayout { x: number; y: number; w: number; h: number }
 
 export interface QueryWidget {
@@ -10,6 +10,8 @@ export interface QueryWidget {
   kind: WidgetKind;
   /** Optional own time range: the last N days, ending on the dashboard's end date. Leave out to follow the page. */
   days?: number;
+  /** Gauge only: the number that counts as 100% (percent metrics default to 100). */
+  target?: number;
   source: ExploreSource;
   spec: ExploreSpec;
 }

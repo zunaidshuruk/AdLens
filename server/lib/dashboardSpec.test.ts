@@ -16,3 +16,12 @@ test('Stage 19 — a panel may carry its own last-N-days range, only from the al
   const bad = dashboardInputSchema.safeParse({ name: 'D', description: '', widgets: [widget({ days: 5000 })] });
   assert.equal(bad.success, false);
 });
+
+test('Stage 19 — new chart kinds are accepted, and a gauge target must be a positive number', () => {
+  for (const kind of ['stacked', 'pie', 'gauge', 'heatmap']) {
+    assert.equal(dashboardInputSchema.safeParse({ name: 'D', description: '', widgets: [widget({ kind })] }).success, true, kind);
+  }
+  assert.equal(dashboardInputSchema.safeParse({ name: 'D', description: '', widgets: [widget({ kind: 'gauge', target: 500 })] }).success, true);
+  assert.equal(dashboardInputSchema.safeParse({ name: 'D', description: '', widgets: [widget({ kind: 'gauge', target: -1 })] }).success, false);
+  assert.equal(dashboardInputSchema.safeParse({ name: 'D', description: '', widgets: [widget({ kind: 'donut' })] }).success, false);
+});
