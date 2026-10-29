@@ -1,5 +1,5 @@
 /**
- * Scheduled snapshot emails (Sprint 35): a dashboard or saved report, emailed weekly (Mondays) or monthly (the 1st).
+ * Scheduled snapshot emails (Sprint 35): a dashboard or saved report, emailed daily, on chosen weekdays, on a day of the month, or every few days (Sprint 50).
  * The email carries the same server-made snapshot as a share link: big numbers and short tables (charts stay in the app).
  */
 import { randomBytes } from 'node:crypto';
@@ -11,6 +11,7 @@ import { getAdminFirestore, getFirestoreStore } from './firestore.js';
 import type { MailMessage, MailResult } from './mailer.js';
 import { activeBrand } from './branding.js';
 import { snapshotToPdf } from './pdf.js';
+import { cleanWeekdays, dueToday, frequencyShort } from './scheduleFrequency.js';
 import { formatCell } from './snapshotFormat.js';
 import { snapshotForTarget } from './shareWiring.js';
 import type { Snapshot } from './shares.js';
@@ -18,15 +19,20 @@ import type { Snapshot } from './shares.js';
 export const emailScheduleInputSchema = z.object({
   kind: z.enum(['dashboard', 'report']),
   targetId: z.string().min(1).max(60).regex(/^[A-Za-z0-9_-]+$/),
-  frequency: z.enum(['weekly', 'monthly']),
+  frequency: z.enum(['daily', 'weekly', 'monthly', 'interval']).default('weekly'),
+  weekdays: z.array(z.number().int().min(0).max(6)).max(7).default([1]),
+  monthDay: z.number().int().min(1).max(31).default(1),
+  intervalDays: z.number().int().min(2, 'Choose 2 days or more').max(60, 'Choose 60 days or fewer').default(3),
   rangeDays: z.union([z.literal(7), z.literal(28), z.literal(90)]).default(7),
   emails: z.array(z.string().trim().toLowerCase().email().max(120)).min(1, 'Add at least one email address').max(3, 'Up to 3 email addresses'),
   enabled: z.boolean().default(true),
   attachPdf: z.boolean().default(false),
-});
+}).superRefine((v, ctx) => { if (v.frequency === 'weekly' && v.weekdays.length === 0) ctx.addIssue({ code: 'custom', path: ['weekdays'], message: 'Choose at least one day of the week' }); });
 export type EmailScheduleInput = z.infer<typeof emailScheduleInputSchema>;
 
-export interface StoredSchedule extends EmailScheduleInput {
+/** Schedules saved before Sprint 50 have no weekdays, month day or interval; they mean Monday, or the 1st. */
+export interface StoredSchedule extends Omit<EmailScheduleInput, 'weekdays' | 'monthDay' | 'intervalDays'> {
+  weekdays?: number[]; monthDay?: number; intervalDays?: number;
   id: string;
   workspaceId: string;
   projectId: string;
@@ -67,13 +73,10 @@ export function setTestScheduleStore(s: ScheduleStore | null): void { override =
 export function getScheduleStore(): ScheduleStore { return override ?? firestoreStore; }
 export const newScheduleId = () => randomBytes(9).toString('base64url');
 
-/** Weekly goes out on Mondays (UTC), monthly on the 1st, once per period. */
-export function isDue(s: Pick<StoredSchedule, 'frequency' | 'lastSentAt' | 'enabled'>, now = new Date()): boolean {
+/** Due today? See scheduleFrequency.ts for the rules. Old schedules without a day or date keep working: Monday, or the 1st. */
+export function isDue(s: Pick<StoredSchedule, 'frequency' | 'lastSentAt' | 'enabled'> & Partial<Pick<StoredSchedule, 'weekdays' | 'monthDay' | 'intervalDays'>>, now = new Date()): boolean {
   if (!s.enabled) return false;
-  const today = now.toISOString().slice(0, 10);
-  if (s.lastSentAt?.slice(0, 10) === today) return false;
-  if (s.frequency === 'weekly') return now.getUTCDay() === 1;
-  return now.getUTCDate() === 1 && s.lastSentAt?.slice(0, 7) !== today.slice(0, 7);
+  return dueToday({ frequency: s.frequency, ...(s.weekdays ? { weekdays: cleanWeekdays(s.weekdays) } : {}), ...(s.monthDay ? { monthDay: s.monthDay } : {}), ...(s.intervalDays ? { intervalDays: s.intervalDays } : {}), lastSentAt: s.lastSentAt }, now);
 }
 
 const cell = formatCell;
@@ -99,12 +102,12 @@ function widgetBlock(w: Snapshot['widgets'][number]): { html: string; text: stri
   return { html: `${head}<table cellspacing="0" style="border-collapse:collapse;width:100%"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>${more}`, text };
 }
 
-export function buildScheduleEmail(s: Pick<StoredSchedule, 'title' | 'frequency' | 'kind' | 'targetId'>, snap: Snapshot, projectName: string, appUrl: string, ownerEmail: string, test = false, brand: { name: string; footer: string; accent: string | null } | null = null): Omit<MailMessage, 'to'> {
+export function buildScheduleEmail(s: Pick<StoredSchedule, 'title' | 'frequency' | 'kind' | 'targetId'> & Partial<Pick<StoredSchedule, 'weekdays' | 'monthDay' | 'intervalDays'>>, snap: Snapshot, projectName: string, appUrl: string, ownerEmail: string, test = false, brand: { name: string; footer: string; accent: string | null } | null = null): Omit<MailMessage, 'to'> {
   const base = appUrl.replace(/\/+$/, '');
   const link = s.kind === 'dashboard' ? `${base}/dashboards/${s.targetId}` : `${base}/explore`;
   const blocks = snap.widgets.map(widgetBlock);
   const period = `${snap.range.startDate} to ${snap.range.endDate}`;
-  const subject = `${test ? 'Test: ' : ''}${s.title} · ${s.frequency === 'weekly' ? 'weekly' : 'monthly'} snapshot (${projectName})`;
+  const subject = `${test ? 'Test: ' : ''}${s.title} · ${frequencyShort(s)} snapshot (${projectName})`;
   const who = brand ? brand.name : 'AdLens';
   const foot = `Sent by ${who} because ${ownerEmail} scheduled it. To stop it, open ${s.kind === 'dashboard' ? 'the dashboard' : 'the report'} in ${brand ? 'the app' : 'AdLens'}, choose Share, and turn off the email.${brand?.footer ? ` ${brand.footer}` : ''}`;
   const accent = brand?.accent ?? '#17181b';

@@ -1,7 +1,10 @@
 import { Copy, Download, Link2, Mail, RefreshCw, Send, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import { FrequencyPicker, DEFAULT_FREQUENCY, frequencyProblem, toFrequencyValue, type FrequencyValue } from './FrequencyPicker';
+import { frequencyLabel } from '../utils/scheduleFrequency';
 import { apiClient, type EmailScheduleInfo, type ShareInfo } from '../api/client';
 
+const capitalise = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 const field = 'rounded-lg border border-line bg-surface text-fg text-xs px-2 py-2 min-h-[36px] w-full';
 
@@ -20,7 +23,8 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
   const [emailAllowed, setEmailAllowed] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [schedLimit, setSchedLimit] = useState(0);
-  const [freq, setFreq] = useState<'weekly' | 'monthly'>('weekly');
+  const [freq, setFreq] = useState<FrequencyValue>(DEFAULT_FREQUENCY);
+  const [editing, setEditing] = useState<{ id: string; value: FrequencyValue } | null>(null);
   const [mailRange, setMailRange] = useState<7 | 28 | 90>(7);
   const [mailTo, setMailTo] = useState('');
   const [attachPdf, setAttachPdf] = useState(true);
@@ -60,11 +64,25 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
   };
   const addSched = async (e: React.FormEvent) => {
     e.preventDefault();
+    const problem = frequencyProblem(freq);
+    if (problem) { setError(problem); return; }
     setBusy('mail'); setError(null); setNote(null);
     try {
-      await apiClient.createEmailSchedule({ kind, targetId, frequency: freq, rangeDays: mailRange, enabled: true, attachPdf, emails: mailTo.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) });
-      setNote(freq === 'weekly' ? 'Scheduled. It goes out every Monday.' : 'Scheduled. It goes out on the 1st of each month.');
+      await apiClient.createEmailSchedule({ kind, targetId, frequency: freq.frequency, weekdays: freq.weekdays, monthDay: freq.monthDay, intervalDays: freq.intervalDays, rangeDays: mailRange, enabled: true, attachPdf, emails: mailTo.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean) });
+      setNote(`Scheduled. It goes out ${frequencyLabel(freq)}.`);
       await loadSched();
+    } catch (err) { setError(errMessage(err)); }
+    setBusy(null);
+  };
+  const saveWhen = async () => {
+    if (!editing) return;
+    const problem = frequencyProblem(editing.value);
+    if (problem) { setError(problem); return; }
+    setBusy(editing.id); setError(null); setNote(null);
+    try {
+      const v = editing.value;
+      await apiClient.updateEmailSchedule(editing.id, { frequency: v.frequency, weekdays: v.weekdays, monthDay: v.monthDay, intervalDays: v.intervalDays });
+      setNote(`Changed. It now goes out ${frequencyLabel(v)}.`); setEditing(null); await loadSched();
     } catch (err) { setError(errMessage(err)); }
     setBusy(null);
   };
@@ -166,24 +184,18 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
         <div className="border-t border-line pt-4 space-y-3">
           <div>
             <h3 className="text-sm font-semibold text-fg inline-flex items-center gap-1.5"><Mail className="w-4 h-4" /> Email this on a schedule</h3>
-            <p className="text-xs text-fg-muted">A snapshot of the numbers lands in the inbox: weekly on Mondays or monthly on the 1st. Charts stay in the app; the email shows the numbers and short tables.</p>
+            <p className="text-xs text-fg-muted">A snapshot of the numbers lands in the inbox as often as you choose: every day, on days of the week, on a day of the month, or every few days. Charts stay in the app; the email shows the numbers and short tables.</p>
           </div>
           {!emailAllowed ? (
             <p className="text-xs text-fg-muted">Scheduled emails are not part of your plan.</p>
           ) : (
             <form onSubmit={(e) => void addSched(e)} className="rounded-xl border border-line bg-surface p-3 space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-xs font-medium text-fg space-y-1">How often
-                  <select className={field} value={freq} onChange={(e) => setFreq(e.target.value as 'weekly' | 'monthly')}>
-                    <option value="weekly">Every Monday</option><option value="monthly">1st of every month</option>
-                  </select>
-                </label>
-                <label className="block text-xs font-medium text-fg space-y-1">Numbers cover the last
-                  <select className={field} value={mailRange} onChange={(e) => setMailRange(Number(e.target.value) as 7 | 28 | 90)}>
-                    <option value={7}>7 days</option><option value={28}>28 days</option><option value={90}>90 days</option>
-                  </select>
-                </label>
-              </div>
+              <FrequencyPicker id="new-mail" value={freq} onChange={setFreq} />
+              <label className="block text-xs font-medium text-fg space-y-1">Numbers cover the last
+                <select className={field} value={mailRange} onChange={(e) => setMailRange(Number(e.target.value) as 7 | 28 | 90)}>
+                  <option value={7}>7 days</option><option value={28}>28 days</option><option value={90}>90 days</option>
+                </select>
+              </label>
               <label className="block text-xs font-medium text-fg space-y-1">Send to (up to 3 addresses, separated by commas)
                 <input className={field} value={mailTo} placeholder={userEmail ?? 'you@company.com'} onChange={(e) => setMailTo(e.target.value)} />
               </label>
@@ -197,14 +209,21 @@ export const ShareDialog: React.FC<{ kind: 'dashboard' | 'report'; targetId: str
             <ul className="space-y-2">
               {sched.map((x) => (
                 <li key={x.id} className="rounded-xl border border-line bg-surface p-3 space-y-2">
-                  <p className="text-xs text-fg">{x.frequency === 'weekly' ? 'Every Monday' : '1st of every month'} · last {x.rangeDays} days{x.attachPdf ? ' · PDF attached' : ''} · {x.emails.join(', ')}{x.enabled ? '' : ' (paused)'}</p>
+                  <p className="text-xs text-fg">{capitalise(frequencyLabel(toFrequencyValue(x)))} · last {x.rangeDays} days{x.attachPdf ? ' · PDF attached' : ''} · {x.emails.join(', ')}{x.enabled ? '' : ' (paused)'}</p>
                   <p className="text-[11px] text-fg-muted">{x.lastSentAt ? `Last sent ${new Date(x.lastSentAt).toLocaleDateString()}` : 'Not sent yet'}</p>
                   {x.lastError && <p className="text-[11px] text-warning">{x.lastError}</p>}
                   <div className="flex gap-2">
                     <button type="button" disabled={busy === x.id} onClick={() => void testSched(x)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2 disabled:opacity-50"><Send className="w-3.5 h-3.5" /> Send me a test</button>
+                    <button type="button" disabled={busy === x.id} onClick={() => setEditing(editing?.id === x.id ? null : { id: x.id, value: toFrequencyValue(x) })} className="rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2 disabled:opacity-50">{editing?.id === x.id ? 'Cancel' : 'Change when'}</button>
                     <button type="button" disabled={busy === x.id} onClick={() => void toggleSched(x)} className="rounded-lg border border-line text-xs px-2.5 py-1.5 text-fg hover:bg-fill-2 disabled:opacity-50">{x.enabled ? 'Pause' : 'Resume'}</button>
                     <button type="button" disabled={busy === x.id} onClick={() => void delSched(x)} className="inline-flex items-center gap-1 rounded-lg border border-line text-xs px-2.5 py-1.5 text-danger hover:bg-danger-soft disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
                   </div>
+                  {editing?.id === x.id && (
+                    <div className="rounded-lg border border-line bg-fill-1 p-3 space-y-2">
+                      <FrequencyPicker id={`edit-${x.id}`} value={editing.value} onChange={(v) => setEditing({ id: x.id, value: v })} />
+                      <button type="button" disabled={busy === x.id} onClick={() => void saveWhen()} className="rounded-lg bg-accent hover:bg-accent-hover text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50">Save</button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

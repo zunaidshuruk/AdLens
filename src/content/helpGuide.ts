@@ -195,14 +195,15 @@ export const GUIDES: Guide[] = [
       { text: 'Choose where to send it: email, or a webhook such as Slack.' },
       { text: 'Save. Alerts are checked once a day.' },
     ] },
-  { id: 'share-export', group: 'build', title: 'Share, email and download', summary: 'Send a link, a PDF or a weekly email to people who do not have a login.', path: '/',
+  { id: 'share-export', group: 'build', title: 'Share, email and download', summary: 'Send a link, a PDF or a regular email to people who do not have a login.', path: '/',
     steps: [
       { text: 'On a report press Share. Choose how long the link should work (1, 7, 30 or 90 days).', shot: 'share' },
       { text: 'Copy the link and send it. Anyone with the link sees those numbers, so share carefully. You can switch a link off at any time.' },
       { text: 'Need a file? Press Download PDF for the numbers as of now.' },
-      { text: 'For a regular email choose a schedule such as "Every Monday". Tick "Attach PDF" if you like. Press the test button to send yourself one first.' },
+      { text: 'For a regular email, under "How often" choose every day, days of the week you pick (for example Monday and Thursday), a day of the month (for example the 15th), or every few days (for example every 3 days). Add up to 3 email addresses and tick "Attach PDF" if you like. Press "Send me a test" first.' },
+      { text: 'To change it later, press "Change when" on the schedule, pick the new days and press Save. Use Pause to stop it for a while.' },
     ],
-    limits: ['Emails only send if the owner has set up email sending. Scheduled emails depend on your plan.'] },
+    limits: ['Emails only send if the owner has set up email sending. Scheduled emails depend on your plan.', 'Emails are sent once a day, in the early morning (UTC), so you cannot choose the hour. If a month is shorter than the day you pick, it goes out on the last day.'] },
 
   // --------------------------------------------------------------------- ai
   { id: 'ai-analyst', group: 'ai', title: 'AI Analyst: ask in plain words', summary: 'Type a question about your numbers and get an answer with the figures it used.', path: '/ai-analyst',

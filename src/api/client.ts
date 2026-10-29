@@ -437,8 +437,8 @@ export interface SharedSnapshot {
   widgets: { id: string; title: string; layout: { x: number; y: number; w: number; h: number }; kind: import('../types/dashboard.js').DashboardWidget['kind']; days?: number; target?: number; text?: string; result?: import('../types/explore.js').ExploreResult; error?: string }[];
 }
 
-export interface EmailScheduleInfo { attachPdf?: boolean; id: string; kind: 'dashboard' | 'report'; targetId: string; title: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean; lastSentAt?: string; lastError?: string }
-export interface EmailScheduleInput { attachPdf?: boolean; kind: 'dashboard' | 'report'; targetId: string; frequency: 'weekly' | 'monthly'; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean }
+export interface EmailScheduleInfo { attachPdf?: boolean; id: string; kind: 'dashboard' | 'report'; targetId: string; title: string; frequency: 'daily' | 'weekly' | 'monthly' | 'interval'; weekdays?: number[]; monthDay?: number; intervalDays?: number; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean; lastSentAt?: string; lastError?: string }
+export interface EmailScheduleInput { attachPdf?: boolean; kind: 'dashboard' | 'report'; targetId: string; frequency: 'daily' | 'weekly' | 'monthly' | 'interval'; weekdays?: number[]; monthDay?: number; intervalDays?: number; rangeDays: 7 | 28 | 90; emails: string[]; enabled: boolean }
 
 export interface SeoIssueInfo { id: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string; fix: string }
 export interface SeoPageResult {
