@@ -16,8 +16,29 @@ export const dueFollowUps = (leads: LeadInfo[], today: string): LeadInfo[] => le
 
 // A cell starting with = + - or @ can run as a formula when the file is opened in a spreadsheet.
 const cell = (v: string | number) => { const s = String(v); const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s; return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe; };
-export function leadsToCsv(leads: LeadInfo[]): string {
-  const head = ['Name', 'Website', 'Email', 'Phone', 'Status', 'Value', 'Follow up', 'Site check score', 'Notes'];
-  const rows = leads.map((l) => [l.name, l.website, l.email, l.phone, LEAD_STATUS_LABEL[l.status], l.value, l.followUp, l.audit ? l.audit.score : '', l.notes].map(cell).join(','));
+export function leadsToCsv(leads: LeadInfo[], names?: Map<string, string>): string {
+  const head = ['Name', 'Website', 'Email', 'Phone', 'Status', 'Value', 'Follow up', 'Site check score', 'Assigned to', 'Notes'];
+  const rows = leads.map((l) => [l.name, l.website, l.email, l.phone, LEAD_STATUS_LABEL[l.status], l.value, l.followUp, l.audit ? l.audit.score : '', names?.get(l.assigneeId) ?? '', l.notes].map(cell).join(','));
   return [head.join(','), ...rows].join('\r\n') + '\r\n';
+}
+
+/** Reads CSV text (quotes, commas and line breaks inside quotes, Excel's byte-order mark) into rows keyed by the header names. */
+export function parseCsv(input: string): Record<string, string>[] {
+  const text = input.replace(/^\uFEFF/, '');
+  const table: string[][] = [];
+  let row: string[] = []; let cur = ''; let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quoted) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else quoted = false; } else cur += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; table.push(row); row = []; }
+    else cur += c;
+  }
+  if (cur !== '' || row.length > 0) { row.push(cur); table.push(row); }
+  const rows = table.filter((r) => r.some((c) => c.trim() !== ''));
+  if (rows.length < 2) return [];
+  const head = rows[0]!.map((h) => h.trim());
+  return rows.slice(1).map((r) => { const o: Record<string, string> = {}; head.forEach((h, i) => { if (h && r[i] !== undefined && r[i]!.trim() !== '') o[h] = r[i]!.trim(); }); return o; }).filter((o) => Object.keys(o).length > 0);
 }

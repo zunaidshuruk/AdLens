@@ -505,8 +505,11 @@ export interface WatchEventInfo { id: string; watchId: string; at: string; type:
 export interface BrandingInfo { enabled: boolean; name: string; footer: string; accent: string | null }
 export interface PublicBrand { name: string; footer: string; accent: string | null; logo: string | null }
 export interface LeadAuditInfo { url: string; score: number; at: string; issues: { title: string; severity: string }[] }
-export interface LeadInfo { id: string; name: string; website: string; email: string; phone: string; status: 'new' | 'contacted' | 'meeting' | 'proposal' | 'won' | 'lost'; value: number; followUp: string; notes: string; audit: LeadAuditInfo | null; createdAt: string; updatedAt: string }
-export type LeadInput = Partial<Pick<LeadInfo, 'name' | 'website' | 'email' | 'phone' | 'status' | 'value' | 'followUp' | 'notes'>>
+export interface LeadInfo { id: string; name: string; website: string; email: string; phone: string; status: 'new' | 'contacted' | 'meeting' | 'proposal' | 'won' | 'lost'; value: number; followUp: string; notes: string; audit: LeadAuditInfo | null; assigneeId: string; source: 'manual' | 'import' | 'capture'; createdAt: string; updatedAt: string }
+export type LeadInput = Partial<Pick<LeadInfo, 'name' | 'website' | 'email' | 'phone' | 'status' | 'value' | 'followUp' | 'notes' | 'assigneeId'>>
+export interface LeadMember { uid: string; name: string; email: string }
+export interface LeadCaptureInfo { enabled: boolean; url: string; defaultAssigneeId: string }
+export interface LeadImportResult { added: number; duplicates: number; unreadable: number; overLimit: number; limit: number }
 export interface DomainMarketInfo { keywords: { keyword: string; position: number; volume: number | null; url: string | null }[]; backlinks: { referringDomains: number | null; backlinks: number | null; authority: number | null } | null; error: string | null }
 export interface CustomEndpointInfo { method: 'GET' | 'POST'; url: string; body?: string; itemsPath: string; fields: Record<string, string> }
 export interface CustomProviderConfig { name: string; auth: { type: 'none' | 'bearer' | 'header' | 'basic'; headerName?: string }; keywordMetrics?: CustomEndpointInfo; competitorKeywords?: CustomEndpointInfo; backlinks?: CustomEndpointInfo; mapsSearch?: CustomEndpointInfo }
@@ -974,6 +977,11 @@ export const apiClient = {
   async leadCreate(input: LeadInput): Promise<{ lead: LeadInfo }> { return apiRequest('/api/leads', { method: 'POST', body: JSON.stringify(input) }); },
   async leadUpdate(id: string, patch: LeadInput): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }); },
   async leadDelete(id: string): Promise<void> { await apiRequest(`/api/leads/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async leadMembers(): Promise<{ members: LeadMember[]; me: string }> { return apiRequest('/api/leads/members'); },
+  async leadCapture(): Promise<LeadCaptureInfo> { return apiRequest('/api/leads/capture'); },
+  async leadCaptureKey(): Promise<{ key: string; url: string }> { return apiRequest('/api/leads/capture/key', { method: 'POST', body: '{}' }); },
+  async leadCaptureUpdate(patch: { enabled?: boolean; defaultAssigneeId?: string }): Promise<void> { await apiRequest('/api/leads/capture', { method: 'PUT', body: JSON.stringify(patch) }); },
+  async leadImport(rows: Record<string, string>[]): Promise<LeadImportResult> { return apiRequest('/api/leads/import', { method: 'POST', body: JSON.stringify({ rows }) }); },
   async leadAudit(id: string): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}/audit`, { method: 'POST', body: '{}' }); },
   async dataProviderGet(): Promise<{ provider: DataProviderStatus | null; canEdit: boolean; vaultReady: boolean }> { return apiRequest('/api/data-provider'); },
   async dataProviderSave(input: DataProviderInput): Promise<{ provider: DataProviderStatus }> { return apiRequest('/api/data-provider', { method: 'PUT', body: JSON.stringify(input) }); },
