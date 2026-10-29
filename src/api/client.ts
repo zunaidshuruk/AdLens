@@ -982,6 +982,7 @@ export const apiClient = {
   async leadCaptureKey(): Promise<{ key: string; url: string }> { return apiRequest('/api/leads/capture/key', { method: 'POST', body: '{}' }); },
   async leadCaptureUpdate(patch: { enabled?: boolean; defaultAssigneeId?: string }): Promise<void> { await apiRequest('/api/leads/capture', { method: 'PUT', body: JSON.stringify(patch) }); },
   async leadImport(rows: Record<string, string>[]): Promise<LeadImportResult> { return apiRequest('/api/leads/import', { method: 'POST', body: JSON.stringify({ rows }) }); },
+  async testEmailDelivery(): Promise<{ sent: boolean; to: string; message: string; reason?: string }> { return apiRequest('/api/account-mail/test', { method: 'POST', body: '{}' }); },
   async leadAudit(id: string): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}/audit`, { method: 'POST', body: '{}' }); },
   async dataProviderGet(): Promise<{ provider: DataProviderStatus | null; canEdit: boolean; vaultReady: boolean }> { return apiRequest('/api/data-provider'); },
   async dataProviderSave(input: DataProviderInput): Promise<{ provider: DataProviderStatus }> { return apiRequest('/api/data-provider', { method: 'PUT', body: JSON.stringify(input) }); },

@@ -118,6 +118,14 @@ function isUserVerified(user: User | null, providers: string[]): boolean {
  * "Authorized domains" list) it sends the plain version, whose link opens Firebase's own confirmation page, so the person still gets an email.
  */
 async function sendVerificationWithFallback(user: Parameters<typeof sendEmailVerification>[0]): Promise<void> {
+  // First choice: our own mail sender, which lands in inboxes far more reliably than Firebase's shared one. If it is not set up or fails, Firebase sends it.
+  try {
+    const r = await fetch('/api/account-mail/verification', { method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}`, 'Content-Type': 'application/json' }, body: '{}' });
+    if (r.status === 429) throw new Error('Too many emails requested. Please wait a few minutes and try again.');
+    if (r.ok && ((await r.json().catch(() => null)) as { handled?: boolean } | null)?.handled) return;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Too many emails')) throw err;
+  }
   try {
     await sendEmailVerification(user, { url: `${window.location.origin}/`, handleCodeInApp: false });
   } catch (err) {
@@ -383,6 +391,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendReset = useCallback(
     async (email: string) => {
       const auth = requireAuthInstance();
+      try {
+        const r = await fetch('/api/account-mail/password-reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
+        if (r.status === 429) throw new Error('Too many reset requests. Please try again in a little while.');
+        if (r.ok && ((await r.json().catch(() => null)) as { handled?: boolean } | null)?.handled) return;
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith('Too many reset')) throw err;
+      }
       try {
         await sendPasswordResetEmail(auth, email.trim(), {
           url: `${window.location.origin}/sign-in`,

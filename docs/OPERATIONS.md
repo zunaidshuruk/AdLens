@@ -95,3 +95,16 @@ On the panel, without touching code or Secrets: **Plans and prices** (every limi
 Team and roles: Settings → Workspace → Team lets people with the "Add and remove people" permission add people by email, and people with "Create roles and assign them" choose each person's role. Starter roles: Owner (everything, one per workspace), Admin (everything else), Moderator (content, agents and people, but not settings, plans or roles), Member (works with the data). The workspace's admins can also make custom roles under Settings → Workspace → Roles and permissions by ticking permissions. Nobody can give out, or take away, more access than they have themselves, and the owner can never be changed or removed. Each person uses their own Google and Meta connections.
 
 AdLens staff roles (admin panel → Staff): Super admin (everything, including staff), Billing manager (plans, payments, upgrade requests, subscriptions), Support (look things up and manage people in a customer's workspace), Settings manager (plan limits, prices, switches). The emails in `OPERATOR_EMAILS` are always Super admins and cannot be changed on the screen. Staff added before roles existed count as Super admins. Refund policy: no refunds after 3 days.
+
+## Email: making sure messages arrive
+
+AdLens sends two kinds of email. **Account emails** (confirm your email, reset your password) and **everything else** (alerts, weekly summaries, scheduled report emails, emailed PDFs, upgrade requests). Since Sprint 51 both go through your own sender (Resend); if it is not set up, account emails fall back to Firebase's built-in sender, which many inboxes drop or put in spam. The reliable fix is to set up Resend once:
+
+1. Create a free account at resend.com. Under **Domains** add a domain you own (for example `mail.yourdomain.com`) and add the DNS records it shows (SPF, DKIM). Wait until it says **Verified**. A sender on an unverified domain is refused.
+2. Under **API Keys** create a key with "Sending access".
+3. In the server settings (AI Studio environment variables) add `RESEND_API_KEY` (the key) and `MAIL_FROM` (for example `AdLens <hello@mail.yourdomain.com>`; the address must be on the verified domain). Redeploy.
+4. In the app open **Settings, Preferences, Email delivery check** and press **Send me a test email**. It says plainly what is missing or what Resend refused.
+5. Also make sure Firebase accepts your site's address: Firebase console, Authentication, Settings, **Authorized domains** must list your live domain.
+
+Check the spam folder of the receiving inbox too, and for company mailboxes ask IT to allow your sending domain. Account emails are limited to 6 confirmation emails an hour per person and 5 reset requests an hour per address.
+
