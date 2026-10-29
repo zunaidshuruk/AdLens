@@ -15,7 +15,8 @@ import { buildReportContext } from '../lib/reportContext.js';
 import { crawlSite } from '../lib/seoCrawl.js';
 import { fetchFollowing, fetchOnce, normaliseInputUrl, type PageFetcher } from '../lib/seoFetch.js';
 import { countRawElements, parsePageSpeed, runPageSpeed, SpeedError, type PsiRequest } from '../lib/seoSpeed.js';
-import { getDataProvider, NOT_CONNECTED_NOTE } from '../lib/dataProvider.js';
+import { NOT_CONNECTED_NOTE } from '../lib/dataProvider.js';
+import { getProviderFor, ProviderError } from '../lib/dataProviders.js';
 import { clusterKeywords } from '../lib/rankTracking.js';
 import { cseSearch, type SearchFn } from '../lib/seoSearch.js';
 import { buildBrief, buildTopicMap } from '../lib/seoContent.js';
@@ -198,14 +199,15 @@ seoRouter.post('/keywords', async (req, res) => {
         for (const row of r.rows) known.set(String(row.query ?? '').toLowerCase(), { impressions: Number(row.impressions) || 0, position: Number(row.position) || 0, clicks: Number(row.clicks) || 0 });
       } catch { /* optional */ }
     }
-    const provider = getDataProvider();
+    const provider = await getProviderFor(req.project!.workspaceId);
     const metrics = new Map<string, { volume: number | null; cpc: number | null; difficulty: number | null }>();
-    if (provider.connected) { try { for (const m of await provider.keywordMetrics(ideas.map((i) => i.keyword).slice(0, 300), 'us')) metrics.set(m.keyword, m); } catch { /* optional */ } }
+    let providerError: string | null = null;
+    if (provider.connected) { try { for (const m of await provider.keywordMetrics(ideas.map((i) => i.keyword).slice(0, 300), 'us')) metrics.set(m.keyword, m); } catch (e) { providerError = e instanceof ProviderError ? e.message : 'The data provider could not be read.'; } }
     res.json({
       seed: parsed.data.seed,
       ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null, metrics: metrics.get(i.keyword) ?? null })),
       clusters: clusterKeywords(ideas.map((i) => i.keyword)),
-      providerConnected: provider.connected,
+      providerConnected: provider.connected, providerError,
       note: provider.connected ? 'Ideas come from what people type into Google; volumes come from your connected data source.' : `Ideas come from what people type into Google. ${NOT_CONNECTED_NOTE}`,
     });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
@@ -244,11 +246,12 @@ seoRouter.post('/keyword-overview', async (req, res) => {
       } catch (err) { return mapErr(res, err); }
     }
     const ideas = await keywordIdeas(keyword, deps.suggest, { lang: parsed.data.lang });
-    const provider = getDataProvider();
+    const provider = await getProviderFor(req.project!.workspaceId);
     let metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null = null;
-    if (provider.connected) { try { metrics = (await provider.keywordMetrics([keyword], 'us'))[0] ?? null; } catch { /* optional */ } }
+    let providerError: string | null = null;
+    if (provider.connected) { try { metrics = (await provider.keywordMetrics([keyword], 'us'))[0] ?? null; } catch (e) { providerError = e instanceof ProviderError ? e.message : 'The data provider could not be read.'; } }
     res.json({
-      keyword, intent: classifyIntent(keyword), words: keyword.split(' ').length, own, metrics, providerConnected: provider.connected,
+      keyword, intent: classifyIntent(keyword), words: keyword.split(' ').length, own, metrics, providerConnected: provider.connected, providerError,
       questions: ideas.filter((i) => i.group === 'questions').slice(0, 10).map((i) => i.keyword),
       related: ideas.filter((i) => i.group !== 'questions').slice(0, 15).map((i) => i.keyword),
       note: provider.connected ? '' : NOT_CONNECTED_NOTE,
@@ -324,7 +327,16 @@ seoRouter.post('/domain-overview', async (req, res) => {
     try { start = normaliseInputUrl(parsed.data.domain); } catch (e) { return urlError(res, e); }
     const overview = await domainOverview(start.hostname.toLowerCase(), deps.fetcher);
     if (!overview.reachable) return fail(res, 502, 'FETCH_FAILED', overview.error);
-    res.json({ overview });
+    // With a connected provider, add what only a market database knows: the keywords the site ranks for and its backlink numbers.
+    const provider = await getProviderFor(req.project!.workspaceId);
+    let market: { keywords: { keyword: string; position: number; volume: number | null; url: string | null }[]; backlinks: { referringDomains: number | null; backlinks: number | null; authority: number | null } | null; error: string | null } | null = null;
+    if (provider.connected) {
+      market = { keywords: [], backlinks: null, error: null };
+      const bare = start.hostname.toLowerCase().replace(/^www\./, '');
+      try { market.keywords = (await provider.competitorKeywords(bare, 'us')).sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0)).slice(0, 15); } catch (e) { market.error = e instanceof ProviderError ? e.message : 'The data provider could not be read.'; }
+      try { const b = await provider.backlinks(bare); market.backlinks = b ? { referringDomains: b.referringDomains, backlinks: b.backlinks, authority: b.authority } : null; } catch (e) { market.error = market.error ?? (e instanceof ProviderError ? e.message : 'The data provider could not be read.'); }
+    }
+    res.json({ overview, market, providerConnected: provider.connected });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong while checking the website.'); }
 });
 
@@ -398,10 +410,24 @@ seoRouter.post('/ai-write', aiRateLimitMiddleware, async (req, res) => {
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
 });
 
+// Search volume, cost per click and difficulty for a list of phrases, from the provider the workspace connected.
+seoRouter.post('/keyword-metrics', async (req, res) => {
+  try {
+    const s = await scope(req, res);
+    if (!s || (await limited(res, s.uid, 'metrics', 30, 3_600_000))) return;
+    const parsed = z.object({ keywords: z.array(z.string().trim().min(1).max(100)).min(1).max(300), country: z.string().trim().toLowerCase().regex(/^[a-z]{2}$/).default('us') }).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', 'Send 1 to 300 phrases.');
+    const provider = await getProviderFor(req.project!.workspaceId);
+    if (!provider.connected) return res.json({ connected: false, metrics: [], note: NOT_CONNECTED_NOTE });
+    try { res.json({ connected: true, name: provider.name, metrics: await provider.keywordMetrics(parsed.data.keywords, parsed.data.country) }); }
+    catch (e) { fail(res, 502, 'PROVIDER_FAILED', e instanceof ProviderError ? e.message : 'The data provider could not be read.'); }
+  } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
+});
+
 seoRouter.get('/provider', async (req, res) => {
   const s = await scope(req, res);
   if (!s) return;
-  const p = getDataProvider();
+  const p = await getProviderFor(req.project!.workspaceId);
   res.json({ connected: p.connected, name: p.name, note: p.connected ? '' : NOT_CONNECTED_NOTE });
 });
 

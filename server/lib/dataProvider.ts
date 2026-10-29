@@ -27,5 +27,6 @@ export const notConnectedProvider: DataProvider = {
 
 let override: DataProvider | null = null;
 export const setTestDataProvider = (p: DataProvider | null): void => { override = p; };
-/** Sprint 45 will pick a real provider here from the environment (for example DataForSEO). */
+/** The test stand-in, if one is set. Real providers are per workspace: see getProviderFor in dataProviders.ts. */
+export const getTestDataProvider = (): DataProvider | null => override;
 export const getDataProvider = (): DataProvider => override ?? notConnectedProvider;

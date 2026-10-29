@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
-import { apiClient, type AiRunInfo, type AiVisOverview, type DomainOverviewInfo, type WatchEventInfo, type WatchInfo } from '../../api/client';
+import { apiClient, type AiRunInfo, type AiVisOverview, type DomainMarketInfo, type DomainOverviewInfo, type WatchEventInfo, type WatchInfo } from '../../api/client';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 const field = 'rounded-lg border border-line bg-surface text-fg text-sm px-3 py-2 min-h-[40px]';
@@ -111,13 +111,14 @@ export function DomainOverview() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [o, setO] = useState<DomainOverviewInfo | null>(null);
+  const [market, setMarket] = useState<DomainMarketInfo | null>(null);
   const go = async () => {
-    setBusy(true); setError(null); setO(null);
-    try { setO((await apiClient.seoDomainOverview(domain.trim())).overview); } catch (e) { setError(errMessage(e)); } finally { setBusy(false); }
+    setBusy(true); setError(null); setO(null); setMarket(null);
+    try { const r = await apiClient.seoDomainOverview(domain.trim()); setO(r.overview); setMarket(r.market); } catch (e) { setError(errMessage(e)); } finally { setBusy(false); }
   };
   return (
     <div className="space-y-4">
-      <p className="text-xs text-fg-muted">See what any website shows publicly: its home page, how many pages its sitemap lists, what it is built with, and whether it blocks search or AI crawlers. Traffic and keyword numbers for other websites need a paid data source, which is not connected, so none are shown.</p>
+      <p className="text-xs text-fg-muted">See what any website shows publicly: its home page, how many pages its sitemap lists, what it is built with, and whether it blocks search or AI crawlers. Keyword and link numbers for other websites come from the data provider you connect in Settings; without one, none are shown.</p>
       <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void go(); }}>
         <label className="sr-only" htmlFor="dom-input">Website</label>
         <input id="dom-input" className={`${field} flex-1 min-w-[220px]`} placeholder="competitor.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
@@ -143,6 +144,15 @@ export function DomainOverview() {
             <section className="rounded-xl border border-line bg-surface p-3 space-y-1"><h3 className="text-sm font-semibold text-fg">Words it leans on</h3><p className="text-xs text-fg-muted">{o.topTerms.join(', ') || 'Not enough text'}</p>
               {o.structuredData.length > 0 && <p className="text-xs text-fg-muted">Structured data: {o.structuredData.join(', ')}</p>}</section>
           </div>
+          {market && (
+            <section className="rounded-xl border border-line bg-surface p-3 space-y-2"><h3 className="text-sm font-semibold text-fg">From your data provider</h3>
+              {market.error && <p role="alert" className="text-xs text-danger">{market.error}</p>}
+              {market.backlinks && <p className="text-xs text-fg-muted">Linking sites: {market.backlinks.referringDomains?.toLocaleString() ?? 'n/a'} · links: {market.backlinks.backlinks?.toLocaleString() ?? 'n/a'}{market.backlinks.authority != null ? ` · authority ${market.backlinks.authority}` : ''}</p>}
+              {market.keywords.length > 0 && <table className="w-full text-xs"><thead className="text-fg-muted"><tr><th className="py-1 text-left font-medium">Keyword it ranks for</th><th className="py-1 text-right font-medium">Position</th><th className="py-1 text-right font-medium">Searches a month</th></tr></thead>
+                <tbody>{market.keywords.map((k) => <tr key={k.keyword} className="border-t border-line"><td className="py-1 text-fg">{k.keyword}</td><td className="py-1 text-right tabular-nums">{k.position}</td><td className="py-1 text-right tabular-nums">{k.volume?.toLocaleString() ?? '—'}</td></tr>)}</tbody></table>}
+              {!market.error && market.keywords.length === 0 && !market.backlinks && <p className="text-xs text-fg-muted">The provider had no data for this website.</p>}
+            </section>
+          )}
           {o.social.length > 0 && <p className="text-xs text-fg-muted">Social: {o.social.map((s) => s.name).join(', ')}</p>}
         </div>
       )}

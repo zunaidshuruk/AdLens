@@ -463,7 +463,7 @@ export interface SeoCrawlReport {
 }
 export interface SeoOpportunity { kind: 'striking' | 'low_ctr' | 'no_clicks' | 'cannibal'; query: string; page: string; pages?: string[]; clicks: number; impressions: number; ctr: number; position: number; potentialClicks: number; why: string; action: string }
 export interface SeoKeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'prepositions' | 'comparisons' | 'alphabet' | 'seed'; intent: 'informational' | 'commercial' | 'transactional' | 'navigational'; words: number; ranking: { impressions: number; position: number; clicks: number } | null; metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null }
-export interface SeoKeywordOverview { keyword: string; intent: SeoKeywordIdea['intent']; words: number; own: { clicks: number; impressions: number; ctr: number; position: number; pages: { page: string; clicks: number; impressions: number; position: number }[]; daily: { date: string; clicks: number; impressions: number; position: number }[] } | null; metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null; providerConnected: boolean; questions: string[]; related: string[]; note: string }
+export interface SeoKeywordOverview { keyword: string; intent: SeoKeywordIdea['intent']; words: number; own: { clicks: number; impressions: number; ctr: number; position: number; pages: { page: string; clicks: number; impressions: number; position: number }[]; daily: { date: string; clicks: number; impressions: number; position: number }[] } | null; metrics: { volume: number | null; cpc: number | null; difficulty: number | null } | null; providerConnected: boolean; providerError?: string | null; questions: string[]; related: string[]; note: string }
 export interface SeoGapTerm { term: string; competitors: number; avgCount: number; yourCount: number }
 export interface SeoTopicGap { you: { url: string; words: number }; competitors: ({ url: string; words: number } | { url: string; error: string })[]; gap: { missing: SeoGapTerm[]; underused: SeoGapTerm[]; sharedStrengths: SeoGapTerm[]; competitorCount: number }; note: string }
 
@@ -494,6 +494,14 @@ export interface PublicBrand { name: string; footer: string; accent: string | nu
 export interface LeadAuditInfo { url: string; score: number; at: string; issues: { title: string; severity: string }[] }
 export interface LeadInfo { id: string; name: string; website: string; email: string; phone: string; status: 'new' | 'contacted' | 'meeting' | 'proposal' | 'won' | 'lost'; value: number; followUp: string; notes: string; audit: LeadAuditInfo | null; createdAt: string; updatedAt: string }
 export type LeadInput = Partial<Pick<LeadInfo, 'name' | 'website' | 'email' | 'phone' | 'status' | 'value' | 'followUp' | 'notes'>>
+export interface DomainMarketInfo { keywords: { keyword: string; position: number; volume: number | null; url: string | null }[]; backlinks: { referringDomains: number | null; backlinks: number | null; authority: number | null } | null; error: string | null }
+export interface CustomEndpointInfo { method: 'GET' | 'POST'; url: string; body?: string; itemsPath: string; fields: Record<string, string> }
+export interface CustomProviderConfig { name: string; auth: { type: 'none' | 'bearer' | 'header' | 'basic'; headerName?: string }; keywordMetrics?: CustomEndpointInfo; competitorKeywords?: CustomEndpointInfo; backlinks?: CustomEndpointInfo }
+export interface DataProviderStatus { kind: 'dataforseo' | 'custom'; enabled: boolean; config: CustomProviderConfig | null; hasSecret: boolean; lastTestedAt: string | null; lastTestOk: boolean | null; lastError: string | null; updatedAt: string }
+export type DataProviderInput =
+  | { kind: 'dataforseo'; enabled: boolean; credentials?: { login: string; password: string } }
+  | { kind: 'custom'; enabled: boolean; config: CustomProviderConfig; credentials?: { secret: string; username?: string } }
+export interface KeywordMetricInfo { keyword: string; volume: number | null; cpc: number | null; difficulty: number | null; competition: number | null }
 export interface LinkProspectInfo { id: string; domain: string; pageUrl: string; targetUrl: string; status: 'new' | 'contacted' | 'replied' | 'won' | 'lost'; contactEmail: string; notes: string; linkLive: boolean | null; checkedAt: string | null; createdBy: string; createdAt: string; updatedAt: string }
 
 export interface ContentBriefInfo { keyword: string; pages: { url: string; title: string | null; words: number; headings: string[] }[]; length: { median: number; min: number; max: number; recommended: number }; outline: { text: string; pages: number }[]; questions: string[]; terms: { term: string; pages: number; avgCount: number }[]; titles: string[] }
@@ -954,13 +962,18 @@ export const apiClient = {
   async leadUpdate(id: string, patch: LeadInput): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) }); },
   async leadDelete(id: string): Promise<void> { await apiRequest(`/api/leads/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async leadAudit(id: string): Promise<{ lead: LeadInfo }> { return apiRequest(`/api/leads/${encodeURIComponent(id)}/audit`, { method: 'POST', body: '{}' }); },
+  async dataProviderGet(): Promise<{ provider: DataProviderStatus | null; canEdit: boolean; vaultReady: boolean }> { return apiRequest('/api/data-provider'); },
+  async dataProviderSave(input: DataProviderInput): Promise<{ provider: DataProviderStatus }> { return apiRequest('/api/data-provider', { method: 'PUT', body: JSON.stringify(input) }); },
+  async dataProviderDelete(): Promise<void> { await apiRequest('/api/data-provider', { method: 'DELETE' }); },
+  async dataProviderTest(): Promise<{ ok: boolean; checks: { name: string; ok: boolean; message: string }[]; provider: DataProviderStatus }> { return apiRequest('/api/data-provider/test', { method: 'POST', body: '{}' }); },
+  async seoKeywordMetrics(keywords: string[], country: string): Promise<{ connected: boolean; name?: string; metrics: KeywordMetricInfo[]; note?: string }> { return apiRequest('/api/seo/keyword-metrics', { method: 'POST', body: JSON.stringify({ keywords, country }) }); },
   async aivisOverview(): Promise<AiVisOverview> { return apiRequest('/api/aivis/overview'); },
   async aivisAddPrompts(texts: string[]): Promise<{ added: number; skipped: number }> { return apiRequest('/api/aivis/prompts', { method: 'POST', body: JSON.stringify({ texts }) }); },
   async aivisDeletePrompt(id: string): Promise<void> { await apiRequest(`/api/aivis/prompts/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async aivisSetCompetitors(competitors: string[]): Promise<{ competitors: string[] }> { return apiRequest('/api/aivis/settings', { method: 'PUT', body: JSON.stringify({ competitors }) }); },
   async aivisHistory(id: string): Promise<{ runs: AiRunInfo[] }> { return apiRequest(`/api/aivis/history/${encodeURIComponent(id)}`); },
   async aivisRun(promptIds: string[], agentId?: string): Promise<{ runs: AiRunInfo[]; errors: string[]; quota: { used: number; limit: number | null } | null }> { return apiRequest('/api/aivis/run', { method: 'POST', body: JSON.stringify({ promptIds, ...(agentId ? { agentId } : {}) }) }); },
-  async seoDomainOverview(domain: string): Promise<{ overview: DomainOverviewInfo }> { return apiRequest('/api/seo/domain-overview', { method: 'POST', body: JSON.stringify({ domain }) }); },
+  async seoDomainOverview(domain: string): Promise<{ overview: DomainOverviewInfo; market: DomainMarketInfo | null; providerConnected: boolean }> { return apiRequest('/api/seo/domain-overview', { method: 'POST', body: JSON.stringify({ domain }) }); },
   async watchList(): Promise<{ watches: WatchInfo[]; events: WatchEventInfo[]; limit: number; canEdit: boolean }> { return apiRequest('/api/watch'); },
   async watchAdd(domain: string, sitemapUrl: string, pages: string[]): Promise<{ watch: WatchInfo }> { return apiRequest('/api/watch', { method: 'POST', body: JSON.stringify({ domain, sitemapUrl, pages }) }); },
   async watchSetEnabled(id: string, enabled: boolean): Promise<{ watch: WatchInfo }> { return apiRequest(`/api/watch/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ enabled }) }); },
@@ -974,7 +987,7 @@ export const apiClient = {
   async seoTopicResearch(topic: string, lang: string): Promise<{ map: TopicMapInfo; ideas: number }> { return apiRequest('/api/seo/topic-research', { method: 'POST', body: JSON.stringify({ topic, lang }) }); },
   async seoContentBrief(keyword: string, urls: string[]): Promise<{ brief: ContentBriefInfo; failed: string[]; searched: boolean; note: string }> { return apiRequest('/api/seo/content-brief', { method: 'POST', body: JSON.stringify({ keyword, urls }) }); },
   async seoAiWrite(req: AiWriteRequest): Promise<{ text: string; quota: { used: number; limit: number | null } }> { return apiRequest('/api/seo/ai-write', { method: 'POST', body: JSON.stringify(req) }); },
-  async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; clusters: { name: string; keywords: string[] }[]; providerConnected: boolean; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
+  async seoKeywords(seed: string, lang: string, deep: boolean): Promise<{ seed: string; ideas: SeoKeywordIdea[]; clusters: { name: string; keywords: string[] }[]; providerConnected: boolean; providerError?: string | null; note: string }> { return apiRequest('/api/seo/keywords', { method: 'POST', body: JSON.stringify({ seed, lang, deep }) }); },
   async seoKeywordOverview(keyword: string, lang: string): Promise<SeoKeywordOverview> { return apiRequest('/api/seo/keyword-overview', { method: 'POST', body: JSON.stringify({ keyword, lang }) }); },
   async seoTopicGap(yourUrl: string, competitors: string[]): Promise<SeoTopicGap> { return apiRequest('/api/seo/topic-gap', { method: 'POST', body: JSON.stringify({ yourUrl, competitors }) }); },
 

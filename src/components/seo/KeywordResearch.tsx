@@ -35,6 +35,7 @@ function Overview({ keyword, lang, onClose }: { keyword: string; lang: string; o
             <div className="rounded-lg border border-line p-2"><p className="text-xs text-fg-muted">Cost per click</p><p className="text-sm font-semibold text-fg">{d.metrics?.cpc != null ? d.metrics.cpc.toFixed(2) : <span className="text-fg-subtle font-normal">needs data source</span>}</p></div>
           </div>
           {d.note && <p className="text-xs text-fg-muted">{d.note}</p>}
+          {d.providerError && <p role="alert" className="text-xs text-danger">{d.providerError}</p>}
           <section className="space-y-1"><h4 className="text-sm font-semibold text-fg">How you do for it (last 90 days, Search Console)</h4>
             {!d.own ? <p className="text-xs text-fg-muted">No views for this exact phrase yet, or Search Console is not connected.</p> : (
               <>
@@ -122,6 +123,7 @@ export function KeywordResearch() {
         <label className="flex items-center gap-2 text-xs text-fg w-full"><input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} /> Dig deeper (A to Z, takes longer)</label>
       </form>
       <p className="text-xs text-fg-muted">{data?.note ?? 'Ideas come from what people type into Google: questions, comparisons, and words added before or after your topic. Ideas you already get views for in Search Console are marked. Click a keyword for details.'}</p>
+      {data?.providerError && <p role="alert" className="text-sm text-danger">{data.providerError}</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {busy && <div aria-busy="true" className="h-20 rounded-xl bg-fill-2 animate-pulse" />}
       {open && <Overview keyword={open} lang={lang} onClose={() => setOpen(null)} />}

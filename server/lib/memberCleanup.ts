@@ -2,6 +2,7 @@
  * Keeps public links and scheduled emails from outliving the person (or project) they belong to (Sprint 38).
  * Used straight away when someone is removed or leaves, and again in the daily job as a safety net.
  */
+import { getProviderStore } from './dataProviders.js';
 import { getFirestoreStore } from './firestore.js';
 import { getScheduleStore, type ScheduleStore } from './emailSchedules.js';
 import { getShareStore, type ShareStore } from './shares.js';
@@ -51,6 +52,8 @@ export async function removeContentOfWorkspace(workspaceId: string, deps: Pick<C
   for (const a of await deps.alerts.listAll()) if (a.workspaceId === workspaceId && (await deps.alerts.delete(a.id))) out.alerts++;
   for (const s of await deps.shares.listAll()) if (s.workspaceId === workspaceId && (await deps.shares.delete(s.id))) out.shares++;
   for (const s of await deps.schedules.listAll()) if (s.workspaceId === workspaceId && (await deps.schedules.delete(s.id))) out.schedules++;
+  // The workspace's saved data-provider sign-in goes with it.
+  await getProviderStore().delete(workspaceId).catch(() => false);
   return out;
 }
 
