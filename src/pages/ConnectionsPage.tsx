@@ -16,7 +16,10 @@ import {
 } from 'lucide-react';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { ErrorState } from '../components/ErrorState';
+import { ConnectedSources } from '../components/ConnectedSources';
+import { DataProviderCard } from '../components/DataProviderCard';
 import { MetaConnectCard } from '../components/MetaConnectCard';
+import { GbpConnectionCard } from '../components/seo/BusinessProfile';
 import { APP_NAME, DEMO_PROJECT } from '../config/app';
 import { useAppContext } from '../context/AppContext';
 import { useConnections } from '../hooks';
@@ -99,6 +102,14 @@ export const ConnectionsPage: React.FC = () => {
   const hasSavedSelection = Boolean(
     connections?.google.ga4Property?.id || connections?.google.searchConsoleSite?.url
   );
+
+  // Links such as /connections#gbp, #provider and #sources jump to that card once the page is drawn.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    const t = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 400);
+    return () => window.clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     setDomainInput((activeProject?.domain ?? '').trim());
@@ -884,6 +895,11 @@ export const ConnectionsPage: React.FC = () => {
           onDisconnect={disconnectFacebook}
         />
       </div>
+
+      {/* Everything else you can connect lives here too */}
+      <GbpConnectionCard />
+      <div id="provider"><DataProviderCard /></div>
+      <ConnectedSources />
 
       {/* Server Status Row from /api/health */}
       <div>

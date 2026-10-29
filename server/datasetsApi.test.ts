@@ -59,7 +59,7 @@ test('Uploaded tables API: upload, list, query, isolation, plan limit and delete
     // connectors: the gallery, plain refusals, and nothing secret in any answer
     const gallery = (await (await call('/api/datasets/connectors')).json()) as any;
     assert.ok(gallery.connectors.some((c: any) => c.id === 'shopify' && c.status === 'live'));
-    assert.ok(gallery.connectors.some((c: any) => c.id === 'tiktok_ads' && c.status === 'soon'));
+    assert.ok(gallery.connectors.some((c: any) => c.id === 'tiktok_ads' && c.status === 'live'));
     const soon = await call('/api/datasets/connect', { method: 'POST', body: { name: 'T', connector: 'tiktok_ads', values: {} } });
     assert.equal(soon.status, 400);
     assert.equal(((await soon.json()) as any).error.code, 'CONNECTOR_FAILED');

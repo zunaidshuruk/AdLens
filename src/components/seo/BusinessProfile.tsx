@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiClient, type GbpPerformance, type GbpPostInfo, type GbpReviewItem, type GbpStatus } from '../../api/client';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
@@ -27,30 +28,20 @@ const RESULT_TEXT: Record<string, { ok: boolean; text: string }> = {
   failed: { ok: false, text: 'Connecting failed. Please try again.' },
 };
 
-/** Connect Google Business Profile, pick the location for this project, and see how people find and contact the business. */
-export function BusinessProfile() {
+/** Connections page: connect Google Business Profile and choose which location this project uses. */
+export function GbpConnectionCard() {
   const { status, error: loadError, load } = useStatus();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [days, setDays] = useState(28);
-  const [perf, setPerf] = useState<GbpPerformance | null>(null);
   const [pick, setPick] = useState('');
   const result = (() => { try { return RESULT_TEXT[new URLSearchParams(window.location.search).get('gbp') ?? ''] ?? null; } catch { return null; } })();
-
   const act = async (fn: () => Promise<string | void>) => { setBusy(true); setError(null); setNote(null); try { const m = await fn(); if (m) setNote(m); await load(); } catch (e) { setError(errMessage(e)); } finally { setBusy(false); } };
-  const linked = Boolean(status?.link);
-  useEffect(() => {
-    if (!linked) { setPerf(null); return; }
-    let cancelled = false;
-    apiClient.gbpPerformance(days).then((p) => { if (!cancelled) { setPerf(p); setError(null); } }).catch((e) => { if (!cancelled) setError(errMessage(e)); });
-    return () => { cancelled = true; };
-  }, [linked, days]);
-
   if (!status) return loadError ? <p role="alert" className="text-sm text-danger">{loadError}</p> : <p className="text-sm text-fg-muted">Loading…</p>;
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-fg-muted">Connect your Google Business Profile to see how many people found the business on Google Search and Maps, called, asked for directions or visited the website, and to answer reviews and publish posts from here. AdLens only reads your numbers and acts when you press a button.</p>
+    <section id="gbp" className="p-6 rounded-xl border border-line bg-surface space-y-4">
+      <div className="space-y-1"><h2 className="text-base font-bold text-fg">Google Business Profile</h2>
+        <p className="text-xs text-fg-muted">Connect it to see how many people found the business on Google Search and Maps, called, asked for directions or visited the website, and to answer reviews and publish posts. The numbers appear under SEO, Local SEO. AdLens only reads your numbers and acts when you press a button.</p></div>
       {result && <p role="status" className={`text-sm ${result.ok ? 'text-success' : 'text-warning'}`}>{result.text}</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {note && <p role="status" className="text-sm text-success">{note}</p>}
@@ -85,6 +76,42 @@ export function BusinessProfile() {
               </div>
             )}
           </div>
+        </div>
+      )}
+      {status.connected && status.link && <p className="text-sm"><Link to="/seo?tab=gbp" className="underline text-accent-text">See the numbers for {status.link.title}</Link></p>}
+    </section>
+  );
+}
+
+/** SEO page, Local SEO: how people find and contact the business. Connecting happens on the Connections page. */
+export function BusinessProfile() {
+  const { status, error: loadError, load } = useStatus();
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [days, setDays] = useState(28);
+  const [perf, setPerf] = useState<GbpPerformance | null>(null);
+  const act = async (fn: () => Promise<string | void>) => { setBusy(true); setError(null); setNote(null); try { const m = await fn(); if (m) setNote(m); await load(); } catch (e) { setError(errMessage(e)); } finally { setBusy(false); } };
+  const linked = Boolean(status?.link);
+  useEffect(() => {
+    if (!linked) { setPerf(null); return; }
+    let cancelled = false;
+    apiClient.gbpPerformance(days).then((p) => { if (!cancelled) { setPerf(p); setError(null); } }).catch((e) => { if (!cancelled) setError(errMessage(e)); });
+    return () => { cancelled = true; };
+  }, [linked, days]);
+
+  if (!status) return loadError ? <p role="alert" className="text-sm text-danger">{loadError}</p> : <p className="text-sm text-fg-muted">Loading…</p>;
+  return (
+    <div className="space-y-4">
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {note && <p role="status" className="text-sm text-success">{note}</p>}
+      {!status.connected || !status.link ? (
+        <div className="rounded-xl border border-line bg-surface p-4 space-y-2">
+          <h3 className="text-sm font-semibold text-fg">{status.connected ? 'Choose a business location' : 'Connect Google Business Profile'}</h3>
+          <p className="text-sm text-fg-muted">{status.connected ? 'Google Business Profile is connected. Choose which location this project uses.' : 'Connect your Google Business Profile to see how many people found the business on Google Search and Maps, called, asked for directions or visited the website.'} This is done on the Connections page.</p>
+          <Link to="/connections#gbp" className={primary}>Open Connections</Link>
+        </div>
+      ) : null}
           {status.link && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -102,11 +129,10 @@ export function BusinessProfile() {
               ) : <p className="text-sm text-fg-muted">Loading numbers…</p>}
             </div>
           )}
-        </div>
-      )}
     </div>
   );
 }
+
 
 const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
 

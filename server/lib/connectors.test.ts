@@ -12,9 +12,10 @@ const ok = (text: string, headers: GuardedResponse['headers'] = {}): GuardedResp
 const SHEET = 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit#gid=42';
 const redirect = (location: string): never => { const e = new SsrfError('REDIRECT_BLOCKED', 'redirect'); (e as SsrfError & { location?: string }).location = location; throw e; };
 
-test('Connectors: live ones are Sheets, Shopify and WooCommerce; the rest are listed as coming soon with no fields', () => {
-  assert.deepEqual(CONNECTORS.filter((c) => c.status === 'live').map((c) => c.id), ['google_sheets', 'shopify', 'woocommerce', 'custom_url']);
-  for (const id of ['linkedin_ads', 'tiktok_ads', 'google_ads']) { const c = connectorById(id)!; assert.equal(c.status, 'soon'); assert.equal(c.fields.length, 0); }
+test('Connectors: Sheets, Shopify, WooCommerce and the custom link, plus ready-made platform setups that run through the custom link', () => {
+  assert.deepEqual(CONNECTORS.slice(0, 4).map((c) => c.id), ['google_sheets', 'shopify', 'woocommerce', 'custom_url']);
+  for (const id of ['linkedin_ads', 'tiktok_ads', 'google_ads', 'x_ads', 'pinterest_ads', 'youtube', 'mailchimp', 'hubspot', 'other_platform']) { const c = connectorById(id)!; assert.equal(c.status, 'live'); assert.equal(c.base, 'custom_url'); assert.ok(c.fields.some((f) => f.key === 'headerValue' && f.secret)); assert.ok((c.steps ?? []).length >= 3); }
+  assert.equal(connectorById('tiktok_ads')!.fields.find((f) => f.key === 'headerName')!.placeholder, 'Access-Token');
   assert.equal(new Set(CONNECTORS.map((c) => c.id)).size, CONNECTORS.length);
 });
 
@@ -124,8 +125,9 @@ test('Connected tables: secrets are sealed, never exposed, refresh replaces rows
   assert.equal(again.id, ds.id);
   // a different key cannot open the secret
   await assert.rejects(refreshConnectedDataset(store, 'w', 'p', ds.id, { keyring: buildKeyring('z'.repeat(48)), request }), /could not be read/);
-  // unknown, coming-soon and over-limit
-  await assert.rejects(createConnectedDataset(store, 'w', 'p', 'u1', { name: 'x', connector: 'tiktok_ads', values: {} }, 2, { keyring: ring, request }), /not available yet/);
+  // unknown and over-limit; a platform preset needs its address
+  await assert.rejects(createConnectedDataset(store, 'w', 'p', 'u1', { name: 'x', connector: 'no_such_thing', values: {} }, 2, { keyring: ring, request }), /not available|Unknown|not found/i);
+  await assert.rejects(createConnectedDataset(store, 'w', 'p', 'u1', { name: 'x', connector: 'tiktok_ads', values: {} }, 2, { keyring: ring, request }), /Fill in/);
   await createConnectedDataset(store, 'w', 'p', 'u1', { name: 'S2', connector: 'google_sheets', values: { url: SHEET } }, 2, { keyring: ring, request: async () => ok('A,B\n1,2') });
   await assert.rejects(createConnectedDataset(store, 'w', 'p', 'u1', { name: 'S3', connector: 'google_sheets', values: { url: SHEET } }, 2, { keyring: ring, request: async () => ok('A,B\n1,2') }), (e) => e instanceof DatasetError && e.code === 'LIMIT_REACHED');
   // a failed connection saves nothing
@@ -175,4 +177,18 @@ test('Custom link: reads CSV or JSON, sends the sign-in header, refuses unsafe a
   const info = connectorById('custom_url')!;
   assert.deepEqual(splitConnectorInput(info, { url: ' https://x.com/a ', headerName: '', headerValue: '' }), { params: { url: 'https://x.com/a' }, secrets: {} });
   assert.throws(() => splitConnectorInput(info, { headerName: 'x' }), DatasetError);
+});
+
+test('Platform presets (TikTok, LinkedIn...) run through the custom link: header sent, token sealed, refresh works', async () => {
+  const store = createInMemoryProjectDocsStore();
+  let seen: Record<string, string> = {};
+  const request: RequestFn = async (_u, o) => { seen = (o as { headers?: Record<string, string> }).headers ?? {}; return ok('[{"campaign":"A","spend":10},{"campaign":"B","spend":20}]'); };
+  const ds = await createConnectedDataset(store, 'w', 'p', 'u1', { name: 'TikTok spend', connector: 'tiktok_ads', values: { url: 'https://example.com/tiktok/report', headerName: 'Access-Token', headerValue: 'tt-secret-123' } }, 5, { keyring: ring, request });
+  assert.equal(ds.rowCount, 2);
+  assert.equal(seen['Access-Token'], 'tt-secret-123');
+  assert.equal(ds.connector?.id, 'tiktok_ads');
+  assert.ok(!JSON.stringify(ds).includes('tt-secret-123'));
+  assert.ok(!JSON.stringify(await store.list('w', 'p', 'datasets')).includes('tt-secret-123'));
+  const again = await refreshConnectedDataset(store, 'w', 'p', ds.id, { keyring: ring, request });
+  assert.equal(again.rowCount, 2); assert.equal(seen['Access-Token'], 'tt-secret-123');
 });

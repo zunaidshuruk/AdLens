@@ -15,7 +15,7 @@ const EXAMPLES: Record<'keywordMetrics' | 'competitorKeywords' | 'backlinks' | '
 const LABEL = { keywordMetrics: 'Keyword numbers (volume, cost, difficulty)', competitorKeywords: 'Keywords a website ranks for', backlinks: 'Backlink numbers', mapsSearch: 'Google Maps results (local rank tracker)' } as const;
 type Slot = keyof typeof EXAMPLES;
 
-/** Settings → Workspace: connect your own market-data provider for search volume, cost per click, difficulty, competitor keywords and backlinks. */
+/** Connections page: connect your own market-data provider for search volume, cost per click, difficulty, competitor keywords and backlinks. */
 export const DataProviderCard: React.FC = () => {
   const [state, setState] = useState<{ provider: DataProviderStatus | null; canEdit: boolean; vaultReady: boolean } | null>(null);
   const [kind, setKind] = useState<'dataforseo' | 'custom'>('dataforseo');

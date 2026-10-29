@@ -16,7 +16,28 @@ export interface ConnectorInfo {
   fields: ConnectorField[];
   /** Plain-language steps for getting the details this connector asks for. */
   steps?: string[];
+  /** A ready-made setup that runs through another connector (for platforms that give you a report link or an API address and token). */
+  base?: string;
 }
+
+
+/** Platforms offered as ready-made starting points for the custom connector: [id, name, group, where to find an export, usual sign-in header]. */
+const PLATFORM_PRESETS: readonly (readonly [string, string, ConnectorInfo['group'], string, string])[] = [
+  ['linkedin_ads', 'LinkedIn Ads', 'Ads', 'open Campaign Manager, then Analyze, then Export, and choose a date range.', 'Authorization'],
+  ['tiktok_ads', 'TikTok Ads', 'Ads', 'open Ads Manager, then Reporting, then Download.', 'Access-Token'],
+  ['google_ads', 'Google Ads', 'Ads', 'open Reports, build a table, then Download as CSV.', 'Authorization'],
+  ['microsoft_ads', 'Microsoft Advertising', 'Ads', 'open Reports, run a report, then Download as CSV.', 'Authorization'],
+  ['x_ads', 'X (Twitter) Ads', 'Ads', 'open Ads Manager, then Analytics, then Export data.', 'Authorization'],
+  ['pinterest_ads', 'Pinterest Ads', 'Ads', 'open Ads Manager, then Reporting, then Download.', 'Authorization'],
+  ['snapchat_ads', 'Snapchat Ads', 'Ads', 'open Ads Manager, then Export.', 'Authorization'],
+  ['reddit_ads', 'Reddit Ads', 'Ads', 'open Reporting, then Download CSV.', 'Authorization'],
+  ['youtube', 'YouTube Analytics', 'Video', 'open YouTube Studio, then Analytics, then Advanced mode, then Export current view.', 'Authorization'],
+  ['mailchimp', 'Mailchimp', 'Email and CRM', 'open Reports, pick a campaign, then Download.', 'Authorization'],
+  ['klaviyo', 'Klaviyo', 'Email and CRM', 'open Analytics, pick a report, then Export.', 'Authorization'],
+  ['hubspot', 'HubSpot', 'Email and CRM', 'open Reports, pick a report, then Export.', 'Authorization'],
+  ['stripe', 'Stripe', 'Payments', 'open Payments, then Export.', 'Authorization'],
+  ['other_platform', 'Any other platform', 'Custom', 'find its Export or Download CSV button.', 'Authorization'],
+];
 
 export const SHOPIFY_API_VERSION = '2026-07';
 const DAYS_BACK = 90;
@@ -58,16 +79,21 @@ export const CONNECTORS: ConnectorInfo[] = [
     ],
     steps: ['Paste the https address. It must answer a plain GET request with CSV text or JSON.', 'If it needs a key, enter the header name and value your provider gives you. The value is stored encrypted.', 'For JSON, rows are a list of objects. If the list is not at the top, type where it is (for example data.items); otherwise we look for it.', 'Up to 5,000 rows and 20 columns. Only read access is used.'],
   },
-  ...([
-    ['linkedin_ads', 'LinkedIn Ads', 'Ads'], ['tiktok_ads', 'TikTok Ads', 'Ads'], ['google_ads', 'Google Ads', 'Ads'],
-    ['microsoft_ads', 'Microsoft Advertising', 'Ads'], ['x_ads', 'X (Twitter) Ads', 'Ads'], ['pinterest_ads', 'Pinterest Ads', 'Ads'],
-    ['snapchat_ads', 'Snapchat Ads', 'Ads'], ['reddit_ads', 'Reddit Ads', 'Ads'], ['youtube', 'YouTube Analytics', 'Video'],
-    ['mailchimp', 'Mailchimp', 'Email and CRM'], ['klaviyo', 'Klaviyo', 'Email and CRM'], ['hubspot', 'HubSpot', 'Email and CRM'],
-    ['stripe', 'Stripe', 'Payments'],
-  ] as const).map(([id, label, group]): ConnectorInfo => ({
-    id, label, group, status: 'soon',
-    blurb: 'Direct connection coming soon. Until then, export a CSV from the platform and upload it here.',
-    fields: [],
+  ...PLATFORM_PRESETS.map(([id, label, group, where, header]): ConnectorInfo => ({
+    id, label, group, status: 'live', base: 'custom_url',
+    blurb: `Bring ${label} numbers in as a table, using a report link or an API address and your own access token. One-click sign-in is added later once ${label} approves AdLens.`,
+    fields: [
+      { key: 'url', label: 'Report or API address (https)', placeholder: 'https://…' },
+      { key: 'headerName', label: 'Sign-in header name (optional)', optional: true, placeholder: header },
+      { key: 'headerValue', label: 'Access token or key (optional)', secret: true, optional: true, placeholder: header === 'Authorization' ? 'Bearer your-token' : 'your-token' },
+      { key: 'path', label: 'Where the rows are inside the JSON (optional)', optional: true, placeholder: 'data.items' },
+    ],
+    steps: [
+      `Easiest: in ${label}, ${where} Save the CSV and upload it in Explore. Nothing to connect.`,
+      `To refresh by itself, use an address that answers a plain GET request with CSV or a JSON list, for example a scheduled-report link from ${label}.`,
+      'If it needs a token, enter the header name and value your platform shows. The value is stored encrypted and never shown again.',
+      'Tokens that expire quickly (some platforms expire them in a day) stop working until you paste a new one. Refresh shows a clear message when that happens.',
+    ],
   })),
 ];
 
@@ -342,7 +368,7 @@ export async function fetchCustomUrl(params: Record<string, string>, secrets: Re
 
 /** Runs one connector. `secrets` holds only the fields the connector marks secret. */
 export async function fetchConnectorTable(id: string, params: Record<string, string>, secrets: Record<string, string>, request: RequestFn = (u, o) => guardedRequest(u, o), now = new Date()): Promise<FetchedTable> {
-  switch (id) {
+  switch (connectorById(id)?.base ?? id) {
     case 'google_sheets': return fetchGoogleSheet(params, request);
     case 'shopify': return fetchShopify(params, secrets, request, now);
     case 'woocommerce': return fetchWooCommerce(params, secrets, request, now);

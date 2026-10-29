@@ -37,7 +37,7 @@ function readState(raw: string, key: string): OAuthState | null { try { return J
 gbpRouter.get('/callback', requireGoogleConfigured, async (req: Request, res: Response) => {
   const cfg = getServerConfig();
   res.clearCookie(GBP_STATE_COOKIE, { httpOnly: true, secure: cfg.isProduction, sameSite: 'lax', path: '/' });
-  const go = (q: string) => res.redirect(`/seo?${q}`);
+  const go = (q: string) => res.redirect(`/connections?${q}#gbp`);
   try {
     if (typeof req.query.error === 'string') return go('gbp=denied');
     const st = readState(String(req.cookies?.[GBP_STATE_COOKIE] ?? ''), cfg.tokenEncryptionKey);
