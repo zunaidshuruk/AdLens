@@ -20,7 +20,7 @@ export function buildHealthChecks(cfg: ServerConfig, env: Record<string, string 
     c('cron', 'Daily job secret', (env.CRON_SECRET?.trim().length ?? 0) >= 16, false, 'Set CRON_SECRET (16+ characters) and call POST /api/ops/run-digests once a day with it. Runs alerts, digests, share refresh and scheduled emails.'),
     c('store', 'Shared cache (Upstash)', has('UPSTASH_REDIS_REST_URL') && has('UPSTASH_REDIS_REST_TOKEN'), false, 'Optional. Without it each server copy keeps its own rate limits and cache.'),
     c('pagespeed', 'Speed test key (PageSpeed Insights)', has('PAGESPEED_API_KEY'), false, 'Optional but recommended. Without a key Google limits speed tests heavily. Create a free key in Google Cloud and turn on the PageSpeed Insights API.'),
-    c('cse', 'Content brief search (Google Programmable Search)', has('GOOGLE_CSE_KEY') && has('GOOGLE_CSE_ID'), false, 'Optional. Lets the Content brief find ranking pages by itself. Without it people paste competitor addresses.'),
+    c('cse', 'Content brief search (Google Programmable Search)', has('GOOGLE_CSE_KEY') && has('GOOGLE_CSE_ID'), false, 'Optional and fine to skip. Lets the Content brief find ranking pages by itself, but Google no longer lets new search engines search the whole web and plans to end this API in 2027. Without it people paste competitor addresses.'),
     c('alerts', 'Error alerts', has('ERROR_WEBHOOK_URL'), false, 'Optional. Set ERROR_WEBHOOK_URL to be told when the server hits an error.'),
   ];
 }

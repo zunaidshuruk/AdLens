@@ -947,3 +947,5 @@ Deviations from the original plan: dashboards use inline report specs and button
 - **Bundle size:** resolved in Sprint 18 (main bundle about 212 KB).
 - **Vercel plan:** a public app needs Vercel Pro (Hobby is non-commercial).
 - **Hard-coded Convay:** mock data and copy still reference Convay. Removed in Sprint 7 (demo project instead).
+
+**Note (29 Oct 2026):** the owner skipped `GOOGLE_CSE_KEY` and `GOOGLE_CSE_ID`. The new Programmable Search form offers no whole-web option, and third-party reports say Google plans to end the Custom Search API in 2027 (Google's own announcement could not be read). Wording in the health check, `.env.example`, `docs/OPERATIONS.md` and the Content brief message now says this is optional and fine to skip; Content brief keeps working with pasted competitor addresses. A switch to another search service is a possible later sprint.

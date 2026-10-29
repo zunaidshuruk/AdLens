@@ -362,7 +362,7 @@ seoRouter.post('/content-brief', async (req, res) => {
     let urls = parsed.data.urls; let searched = false;
     if (urls.length === 0) {
       const found = await deps.search(parsed.data.keyword);
-      if (found === null) return fail(res, 409, 'NO_SEARCH', 'Add up to 5 competitor page addresses. (Finding them automatically needs Google Programmable Search, which is not set up on this server.)');
+      if (found === null) return fail(res, 409, 'NO_SEARCH', 'Add up to 5 competitor page addresses. (Finding them automatically needs a search service that is not set up on this server.)');
       const own = new Set(projectHosts(req));
       urls = found.filter((u) => { try { return !own.has(hostKey(new URL(u).hostname)); } catch { return false; } }).slice(0, 5); searched = true;
       if (urls.length === 0) return fail(res, 422, 'NO_RESULTS', 'No competitor pages were found for that keyword. Add some addresses yourself.');
