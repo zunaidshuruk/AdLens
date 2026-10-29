@@ -191,6 +191,14 @@ export const CommandPalette: React.FC = () => {
         run: () => navigate('/seo'),
       },
       {
+        id: 'nav:help',
+        label: 'Help and guide',
+        group: 'Navigate',
+        keywords: ['help', 'faq', 'guide', 'how to', 'tutorial', 'steps', 'support', 'learn', 'questions'],
+        hint: '/help',
+        run: () => navigate('/help'),
+      },
+      {
         id: 'nav:leads',
         label: 'Leads',
         group: 'Navigate',

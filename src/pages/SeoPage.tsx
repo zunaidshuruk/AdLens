@@ -341,8 +341,16 @@ const GROUPS = [
 type TabKey = (typeof GROUPS)[number]['tabs'][number][0];
 
 export const SeoPage: React.FC = () => {
-  // Coming back from Google's sign-in lands on the Business Profile tab.
-  const startTab: TabKey = (() => { try { return new URLSearchParams(window.location.search).has('gbp') ? 'gbp' : 'page'; } catch { return 'page'; } })();
+  // A link can open a tab (?tab=rank); coming back from Google's sign-in lands on the Business Profile tab.
+  const startTab: TabKey = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const asked = params.get('tab');
+      const all = GROUPS.flatMap((g) => g.tabs.map((t) => t[0] as string));
+      if (asked && all.includes(asked)) return asked as TabKey;
+      return params.has('gbp') ? 'gbp' : 'page';
+    } catch { return 'page'; }
+  })();
   const [tab, setTab] = useState<TabKey>(startTab);
   const [visited, setVisited] = useState<Set<TabKey>>(new Set([startTab]));
   const [briefKeyword, setBriefKeyword] = useState('');

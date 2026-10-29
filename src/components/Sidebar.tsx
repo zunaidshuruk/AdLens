@@ -9,6 +9,7 @@ import {
   Gauge,
   Plug,
   GitCompare,
+  LifeBuoy,
   Globe,
   LayoutDashboard,
   LayoutGrid,
@@ -62,6 +63,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/agents', label: 'AI Agents', icon: Bot },
   { to: '/connections', label: 'Connections', icon: Link2 },
   { to: '/mcp-access', label: 'Connect AI tools', icon: Plug },
+  { to: '/help', label: 'Help and guide', icon: LifeBuoy },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
