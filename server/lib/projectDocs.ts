@@ -5,7 +5,7 @@
  */
 import { getAdminFirestore } from './firestore.js';
 
-export type ProjectDocKind = 'savedReports' | 'dashboards' | 'datasets' | 'keywordLists' | 'rankDays' | 'linkProspects' | 'aiPrompts' | 'aiRuns' | 'seoSettings' | 'watchSnapshots' | 'watchEvents' | 'leads';
+export type ProjectDocKind = 'savedReports' | 'dashboards' | 'datasets' | 'keywordLists' | 'rankDays' | 'linkProspects' | 'aiPrompts' | 'aiRuns' | 'seoSettings' | 'watchSnapshots' | 'watchEvents' | 'leads' | 'localBusinesses' | 'localScans' | 'reviewItems' | 'gbpPosts';
 
 export interface StoredDoc {
   id: string;
@@ -20,7 +20,7 @@ export interface ProjectDocsStore {
   deleteAll(wsId: string, projectId: string): Promise<void>;
 }
 
-const KINDS: ProjectDocKind[] = ['savedReports', 'dashboards', 'datasets', 'keywordLists', 'rankDays', 'linkProspects', 'aiPrompts', 'aiRuns', 'seoSettings', 'watchSnapshots', 'watchEvents', 'leads'];
+const KINDS: ProjectDocKind[] = ['savedReports', 'dashboards', 'datasets', 'keywordLists', 'rankDays', 'linkProspects', 'aiPrompts', 'aiRuns', 'seoSettings', 'watchSnapshots', 'watchEvents', 'leads', 'localBusinesses', 'localScans', 'reviewItems', 'gbpPosts'];
 
 function collectionPath(wsId: string, projectId: string, kind: ProjectDocKind): string {
   return `workspaces/${wsId}/projects/${projectId}/${kind}`;

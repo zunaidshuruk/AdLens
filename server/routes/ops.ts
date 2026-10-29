@@ -3,6 +3,8 @@ import { getFirestoreStore as getWatchFirestore } from '../lib/firestore.js';
 import { getProjectDocsStore as getWatchDocs } from '../lib/projectDocs.js';
 import { fetchOnce } from '../lib/seoFetch.js';
 import { getWatchStore, runWatches } from '../lib/watches.js';
+import { defaultGbpDeps, getGbpStore } from '../lib/gbp.js';
+import { runGbp } from '../lib/gbpRunner.js';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { productionDigestDeps } from '../lib/digestWiring.js';
@@ -155,5 +157,12 @@ opsRouter.post('/run-digests', async (req: Request, res: Response) => {
   try { rank = await runRankTracking(); } catch { rank = { error: 'rank tracking failed' }; }
   let watch: Awaited<ReturnType<typeof runWatches>> | { error: string };
   try { watch = await runWatches({ store: getWatchStore(), docs: getWatchDocs(), fetcher: fetchOnce, now: Date.now, projectExists: async (ws, project) => Boolean(await getWatchFirestore().getProject(ws, project)) }); } catch { watch = { error: 'competitor watch failed' }; }
-  res.json({ ...digests, alerts, cleaned, shares, emails, rank, watch });
+  let gbp: Awaited<ReturnType<typeof runGbp>> | { error: string };
+  try {
+    const cfg = getServerConfig();
+    gbp = cfg.googleConfigured && cfg.vaultReady
+      ? await runGbp({ store: getGbpStore(), docs: getWatchDocs(), gbp: defaultGbpDeps(), cred: { clientId: cfg.googleClientId, clientSecret: cfg.googleClientSecret }, projectInfo: async (ws, project) => { const p = await getWatchFirestore().getProject(ws, project); return p ? { name: p.name } : null; }, send: (m) => sendMail(m), appUrl: cfg.appBaseUrl })
+      : { checked: 0, newLowStar: 0, emailed: 0, posted: 0, failed: 0 };
+  } catch { gbp = { error: 'business profile check failed' }; }
+  res.json({ ...digests, alerts, cleaned, shares, emails, rank, watch, gbp });
 });

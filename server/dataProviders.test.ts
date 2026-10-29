@@ -21,6 +21,7 @@ const dfsReply = (url: URL): { status: number; json?: unknown } => {
   if (url.pathname.endsWith('bulk_keyword_difficulty/live')) return ok([{ items: [{ keyword: 'coffee beans', keyword_difficulty: 42 }] }]);
   if (url.pathname.endsWith('ranked_keywords/live')) return ok([{ items: [{ keyword_data: { keyword: 'espresso', keyword_info: { search_volume: 900 } }, ranked_serp_element: { serp_item: { rank_group: 3, url: 'https://x.com/e' } } }, { keyword_data: { keyword: 'broken' } }] }]);
   if (url.pathname.endsWith('backlinks/summary/live')) return ok([{ referring_domains: 12, backlinks: 40, rank: 55 }]);
+  if (url.pathname.endsWith('serp/google/maps/live/advanced')) return ok([{ items: [{ title: 'Cafe A', rank_group: 1, place_id: 'p1', rating: { value: 4.5, votes_count: 10 } }] }]);
   return { status: 404 };
 };
 

@@ -4,6 +4,8 @@ import { apiClient, type ContentBriefInfo, type SeoCrawlReport, type SeoIssueInf
 import { ErrorState } from '../components/ErrorState';
 import { ContentBrief, TopicResearch, WritingAssistant } from '../components/seo/Content';
 import { PpcPlanner } from '../components/seo/PpcPlanner';
+import { LocalRankTracker } from '../components/seo/LocalSeo';
+import { BusinessPosts, BusinessProfile, ReviewManager } from '../components/seo/BusinessProfile';
 import { AiVisibility, CompetitorWatch, DomainOverview } from '../components/seo/AiAndCompetitors';
 import { BacklinkAudit, BacklinkGap, LinkBuilding } from '../components/seo/Backlinks';
 import { LogAnalyzer, OnPageChecker } from '../components/seo/OnPageAndLogs';
@@ -333,13 +335,16 @@ const GROUPS = [
   { key: 'rank', label: 'Rankings and traffic', tabs: [['rank', 'Rank tracking'], ['traffic', 'Organic traffic'], ['logs', 'Log analyzer']] },
   { key: 'content', label: 'Content', tabs: [['topics', 'Topic research'], ['brief', 'Content brief'], ['writer', 'Writing assistant']] },
   { key: 'ai', label: 'AI and competitors', tabs: [['aivis', 'AI visibility'], ['domain', 'Domain overview'], ['watch', 'Competitor watch']] },
+  { key: 'local', label: 'Local SEO', tabs: [['localrank', 'Map rank tracker'], ['gbp', 'Business Profile'], ['reviews', 'Reviews'], ['gbpposts', 'Posts']] },
   { key: 'links', label: 'Links', tabs: [['audit', 'Backlink audit'], ['linkgap', 'Link gap'], ['outreach', 'Link building']] },
 ] as const;
 type TabKey = (typeof GROUPS)[number]['tabs'][number][0];
 
 export const SeoPage: React.FC = () => {
-  const [tab, setTab] = useState<TabKey>('page');
-  const [visited, setVisited] = useState<Set<TabKey>>(new Set(['page']));
+  // Coming back from Google's sign-in lands on the Business Profile tab.
+  const startTab: TabKey = (() => { try { return new URLSearchParams(window.location.search).has('gbp') ? 'gbp' : 'page'; } catch { return 'page'; } })();
+  const [tab, setTab] = useState<TabKey>(startTab);
+  const [visited, setVisited] = useState<Set<TabKey>>(new Set([startTab]));
   const [briefKeyword, setBriefKeyword] = useState('');
   const [brief, setBrief] = useState<ContentBriefInfo | null>(null);
   const go = (k: TabKey) => { setTab(k); setVisited((v) => (v.has(k) ? v : new Set(v).add(k))); };
@@ -379,6 +384,10 @@ export const SeoPage: React.FC = () => {
         {tab === 'aivis' && <AiVisibility />}
         {tab === 'domain' && <DomainOverview />}
         {tab === 'watch' && <CompetitorWatch />}
+        {tab === 'localrank' && <LocalRankTracker />}
+        {tab === 'gbp' && <BusinessProfile />}
+        {tab === 'reviews' && <ReviewManager />}
+        {tab === 'gbpposts' && <BusinessPosts />}
         {tab === 'audit' && <BacklinkAudit />}
         {tab === 'linkgap' && <BacklinkGap goOutreach={() => go('outreach')} />}
         {tab === 'outreach' && <LinkBuilding />}

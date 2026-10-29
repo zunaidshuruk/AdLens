@@ -3,6 +3,7 @@
  * Used straight away when someone is removed or leaves, and again in the daily job as a safety net.
  */
 import { getProviderStore } from './dataProviders.js';
+import { getGbpStore } from './gbp.js';
 import { getFirestoreStore } from './firestore.js';
 import { getScheduleStore, type ScheduleStore } from './emailSchedules.js';
 import { getShareStore, type ShareStore } from './shares.js';
@@ -54,6 +55,8 @@ export async function removeContentOfWorkspace(workspaceId: string, deps: Pick<C
   for (const s of await deps.schedules.listAll()) if (s.workspaceId === workspaceId && (await deps.schedules.delete(s.id))) out.schedules++;
   // The workspace's saved data-provider sign-in goes with it.
   await getProviderStore().delete(workspaceId).catch(() => false);
+  // So does a connected Google Business Profile.
+  await getGbpStore().delete(workspaceId).catch(() => false);
   return out;
 }
 

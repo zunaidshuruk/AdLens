@@ -6,12 +6,13 @@ const primary = 'rounded-lg bg-accent hover:bg-accent-hover text-on-accent text-
 const secondary = 'rounded-lg border border-line bg-surface hover:bg-fill-2 text-fg text-sm px-3 py-2 min-h-[40px] disabled:opacity-50';
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 
-const EXAMPLES: Record<'keywordMetrics' | 'competitorKeywords' | 'backlinks', CustomEndpointInfo> = {
+const EXAMPLES: Record<'keywordMetrics' | 'competitorKeywords' | 'backlinks' | 'mapsSearch', CustomEndpointInfo> = {
   keywordMetrics: { method: 'POST', url: 'https://api.example.com/v1/keywords', body: '{"keywords":"{{keywords}}","country":"{{country}}"}', itemsPath: 'data.rows', fields: { keyword: 'term', volume: 'searches', cpc: 'cpc', difficulty: 'difficulty', competition: '' } },
   competitorKeywords: { method: 'GET', url: 'https://api.example.com/v1/ranked?domain={{domain}}&country={{country}}', itemsPath: 'data.items', fields: { keyword: 'keyword', position: 'position', volume: 'volume', url: 'url' } },
   backlinks: { method: 'GET', url: 'https://api.example.com/v1/backlinks?domain={{domain}}', itemsPath: 'data', fields: { referringDomains: 'referring_domains', backlinks: 'backlinks', authority: 'authority' } },
+  mapsSearch: { method: 'GET', url: 'https://api.example.com/v1/maps?q={{keyword}}&lat={{lat}}&lng={{lng}}&zoom={{zoom}}', itemsPath: 'data.places', fields: { name: 'name', position: 'rank', rating: 'rating', reviews: 'reviews', category: 'category', address: 'address', website: 'website', placeId: 'id' } },
 };
-const LABEL = { keywordMetrics: 'Keyword numbers (volume, cost, difficulty)', competitorKeywords: 'Keywords a website ranks for', backlinks: 'Backlink numbers' } as const;
+const LABEL = { keywordMetrics: 'Keyword numbers (volume, cost, difficulty)', competitorKeywords: 'Keywords a website ranks for', backlinks: 'Backlink numbers', mapsSearch: 'Google Maps results (local rank tracker)' } as const;
 type Slot = keyof typeof EXAMPLES;
 
 /** Settings → Workspace: connect your own market-data provider for search volume, cost per click, difficulty, competitor keywords and backlinks. */
@@ -21,7 +22,7 @@ export const DataProviderCard: React.FC = () => {
   const [login, setLogin] = useState(''); const [password, setPassword] = useState('');
   const [name, setName] = useState(''); const [authType, setAuthType] = useState<'none' | 'bearer' | 'header' | 'basic'>('bearer');
   const [headerName, setHeaderName] = useState(''); const [secret, setSecret] = useState(''); const [username, setUsername] = useState('');
-  const [json, setJson] = useState<Record<Slot, string>>({ keywordMetrics: '', competitorKeywords: '', backlinks: '' });
+  const [json, setJson] = useState<Record<Slot, string>>({ keywordMetrics: '', competitorKeywords: '', backlinks: '', mapsSearch: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export const DataProviderCard: React.FC = () => {
     setKind(p.kind);
     if (p.config) {
       setName(p.config.name); setAuthType(p.config.auth.type); setHeaderName(p.config.auth.headerName ?? '');
-      setJson({ keywordMetrics: p.config.keywordMetrics ? JSON.stringify(p.config.keywordMetrics, null, 2) : '', competitorKeywords: p.config.competitorKeywords ? JSON.stringify(p.config.competitorKeywords, null, 2) : '', backlinks: p.config.backlinks ? JSON.stringify(p.config.backlinks, null, 2) : '' });
+      setJson({ keywordMetrics: p.config.keywordMetrics ? JSON.stringify(p.config.keywordMetrics, null, 2) : '', competitorKeywords: p.config.competitorKeywords ? JSON.stringify(p.config.competitorKeywords, null, 2) : '', backlinks: p.config.backlinks ? JSON.stringify(p.config.backlinks, null, 2) : '', mapsSearch: p.config.mapsSearch ? JSON.stringify(p.config.mapsSearch, null, 2) : '' });
     }
   };
   const load = useCallback(async () => { try { const s = await apiClient.dataProviderGet(); setState(s); apply(s.provider); } catch { /* card stays hidden */ } }, []);

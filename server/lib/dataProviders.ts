@@ -10,7 +10,7 @@ import { checkRateLimit } from './rateLimiter.js';
 import { openAgentSecret } from './tokenVault.js';
 import { getAgentKeyring } from './vault.js';
 import { guardedRequest, validateOutboundUrl, type RequestFn } from './ssrfGuard.js';
-import { getTestDataProvider, notConnectedProvider, type BacklinkSummary, type CompetitorKeyword, type DataProvider, type KeywordMetrics } from './dataProvider.js';
+import { getTestDataProvider, notConnectedProvider, type BacklinkSummary, type CompetitorKeyword, type MapsPlace, type DataProvider, type KeywordMetrics } from './dataProvider.js';
 
 export class ProviderError extends Error {}
 
@@ -36,8 +36,8 @@ export function getPath(value: unknown, path: string): unknown {
 const toNum = (v: unknown): number | null => { const n = typeof v === 'string' ? Number(v) : v; return typeof n === 'number' && Number.isFinite(n) ? n : null; };
 const toStr = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
-type Vars = { keywords?: string[]; keyword?: string; domain?: string; country: string };
-const varsOf = (v: Vars): Record<string, unknown> => ({ keywords: v.keywords ?? [], keyword: v.keyword ?? '', domain: v.domain ?? '', country: v.country.toLowerCase(), location_code: locationCode(v.country), language: 'en' });
+type Vars = { keywords?: string[]; keyword?: string; domain?: string; country: string; lat?: number; lng?: number; zoom?: number };
+const varsOf = (v: Vars): Record<string, unknown> => ({ keywords: v.keywords ?? [], keyword: v.keyword ?? '', domain: v.domain ?? '', country: v.country.toLowerCase(), location_code: locationCode(v.country), language: 'en', lat: v.lat ?? 0, lng: v.lng ?? 0, zoom: v.zoom ?? 14 });
 const asText = (x: unknown) => (Array.isArray(x) ? x.join(',') : String(x));
 
 /** Fills {{placeholders}} in a web address (values are URL-encoded). */
@@ -69,6 +69,7 @@ export const customConfigSchema = z.object({
   keywordMetrics: endpoint.extend({ fields: z.object({ keyword: path, volume: path, cpc: path, difficulty: path, competition: path }) }).optional(),
   competitorKeywords: endpoint.extend({ fields: z.object({ keyword: path, position: path, volume: path, url: path }) }).optional(),
   backlinks: endpoint.extend({ fields: z.object({ referringDomains: path, backlinks: path, authority: path }) }).optional(),
+  mapsSearch: endpoint.extend({ fields: z.object({ name: path, position: path, rating: path, reviews: path, category: path, address: path, website: path, placeId: path }) }).optional(),
 }).strict();
 export type CustomConfig = z.infer<typeof customConfigSchema>;
 
@@ -80,12 +81,12 @@ export type ProviderInput = z.infer<typeof providerInputSchema>;
 
 /** Checks a custom setup beyond its shape: each address must be a safe https address and each body must be valid JSON. */
 export function validateCustomConfig(c: CustomConfig): string | null {
-  if (!c.keywordMetrics && !c.competitorKeywords && !c.backlinks) return 'Describe at least one lookup (keyword numbers, competitor keywords or backlinks).';
+  if (!c.keywordMetrics && !c.competitorKeywords && !c.backlinks && !c.mapsSearch) return 'Describe at least one lookup (keyword numbers, competitor keywords, backlinks or map results).';
   if (c.auth.type === 'header' && !c.auth.headerName) return 'Type the name of the header that carries your key.';
-  for (const [label, e] of [['Keyword numbers', c.keywordMetrics], ['Competitor keywords', c.competitorKeywords], ['Backlinks', c.backlinks]] as const) {
+  for (const [label, e] of [['Keyword numbers', c.keywordMetrics], ['Competitor keywords', c.competitorKeywords], ['Backlinks', c.backlinks], ['Map results', c.mapsSearch]] as const) {
     if (!e) continue;
     try { validateOutboundUrl(e.url.replace(/\{\{\w+\}\}/g, 'x')); } catch (err) { return `${label}: ${err instanceof Error ? err.message : 'the web address is not valid.'}`; }
-    if (e.method === 'POST' && e.body) { try { fillBody(e.body, { country: 'us' }); } catch { return `${label}: the request body is not valid JSON.`; } }
+    if (e.method === 'POST' && e.body) { try { fillBody(e.body, { country: 'us', lat: 1, lng: 1, zoom: 14 }); } catch { return `${label}: the request body is not valid JSON.`; } }
   }
   return null;
 }
@@ -160,6 +161,16 @@ export function dataForSeoProvider(secrets: Secrets, deps: ProviderDeps = defaul
       if (!row) return null;
       return { domain, referringDomains: toNum(getPath(row, 'referring_domains')), backlinks: toNum(getPath(row, 'backlinks')), authority: toNum(getPath(row, 'rank')) };
     },
+    async mapsSearch(q) {
+      const r = await post('serp/google/maps/live/advanced', { keyword: q.keyword, location_coordinate: `${q.lat.toFixed(6)},${q.lng.toFixed(6)},${q.zoom}z`, language_code: 'en', depth: 20 });
+      const items = getPath(r, '0.items');
+      if (!Array.isArray(items)) return [];
+      return items.map((it, i): MapsPlace | null => {
+        const name = toStr(getPath(it, 'title'));
+        if (!name) return null;
+        return { name, placeId: toStr(getPath(it, 'place_id')) ?? toStr(getPath(it, 'cid')), rank: toNum(getPath(it, 'rank_group')) ?? i + 1, rating: toNum(getPath(it, 'rating.value')), reviews: toNum(getPath(it, 'rating.votes_count')), category: toStr(getPath(it, 'category')), address: toStr(getPath(it, 'address')), website: toStr(getPath(it, 'domain')) ?? toStr(getPath(it, 'url')) };
+      }).filter((x): x is MapsPlace => x !== null);
+    },
   };
 }
 
@@ -202,6 +213,16 @@ export function customProvider(c: CustomConfig, secrets: Secrets, deps: Provider
       if (!row) return null;
       return { domain, referringDomains: toNum(getPath(row, e.fields.referringDomains)), backlinks: toNum(getPath(row, e.fields.backlinks)), authority: toNum(getPath(row, e.fields.authority)) };
     },
+    ...(c.mapsSearch ? {
+      async mapsSearch(q: { keyword: string; lat: number; lng: number; zoom: number }): Promise<MapsPlace[]> {
+        const e = c.mapsSearch!;
+        const j = await run(e, { keyword: q.keyword, country: 'us', lat: q.lat, lng: q.lng, zoom: q.zoom });
+        return items(j, e.itemsPath).map((it, i): MapsPlace | null => {
+          const name = toStr(getPath(it, e.fields.name)); if (!name) return null;
+          return { name, placeId: toStr(getPath(it, e.fields.placeId)), rank: toNum(getPath(it, e.fields.position)) ?? i + 1, rating: toNum(getPath(it, e.fields.rating)), reviews: toNum(getPath(it, e.fields.reviews)), category: toStr(getPath(it, e.fields.category)), address: toStr(getPath(it, e.fields.address)), website: toStr(getPath(it, e.fields.website)) };
+        }).filter((x): x is MapsPlace => x !== null).slice(0, 30);
+      },
+    } : {}),
   };
 }
 
@@ -239,6 +260,7 @@ export function buildFromRecord(r: ProviderRecord, secrets: Secrets, deps?: Prov
 // ---------------------------------------------------------------------------
 const TTL_MS = 24 * 3_600_000;
 const MAX_CALLS_PER_DAY = 300;
+export const MAX_MAPS_PER_DAY = 1500;
 const cache = new Map<string, { at: number; value: unknown }>();
 export const clearProviderCache = (): void => cache.clear();
 const remember = (key: string, value: unknown, now: number) => { if (cache.size > 5000) cache.delete(cache.keys().next().value as string); cache.set(key, { at: now, value }); };
@@ -262,6 +284,14 @@ export function withCache(inner: DataProvider, wsId: string, now: () => number =
       const key = `${wsId}|ck|${country}|${domain}`; const t = now(); const hit = recall<CompetitorKeyword[]>(key, t); if (hit) return hit;
       await guard(); const v = await inner.competitorKeywords(domain, country); remember(key, v, t); return v;
     },
+    ...(inner.mapsSearch ? {
+      // Map lookups are never cached (a re-scan should be fresh) but have their own, larger daily cap.
+      async mapsSearch(q: { keyword: string; lat: number; lng: number; zoom: number }): Promise<MapsPlace[]> {
+        const r = await checkRateLimit('maps-calls', wsId, MAX_MAPS_PER_DAY, 24 * 3_600_000);
+        if (!r.allowed) throw new ProviderError(`Today's limit of ${MAX_MAPS_PER_DAY} map lookups for this workspace is used up. It resets within a day.`);
+        return inner.mapsSearch!(q);
+      },
+    } : {}),
     async backlinks(domain) {
       const key = `${wsId}|bl|${domain}`; const t = now(); const hit = recall<BacklinkSummary | null>(key, t); if (hit !== undefined) return hit;
       await guard(); const v = await inner.backlinks(domain); remember(key, v, t); return v;

@@ -325,7 +325,7 @@ export interface AdminWorkspaceRow { id: string; name: string; ownerId: string; 
 export interface BillingPlanCard {
   id: string; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number; maxLeads: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number; maxLeads: number; maxLocalBusinesses: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean; whiteLabel: boolean };
 }
 export interface BillingView {
@@ -347,7 +347,7 @@ export interface AdminSubscriptionRow {
 export interface AdminPlan {
   id: string; custom: boolean; label: string; priceUsd: number; priceBdt: number;
   limits: { maxProjects: number; aiQuestionsPerMonth: number };
-  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number; maxLeads: number };
+  content: { maxDashboards: number; maxWidgetsPerDashboard: number; maxSavedReports: number; maxDatasets: number; maxAlertRules: number; maxShareLinks: number; maxEmailSchedules: number; maxCrawlPages: number; maxAgents: number; maxTrackedKeywords: number; maxKeywordLists: number; maxLinkProspects: number; maxAiPrompts: number; maxWatches: number; maxLeads: number; maxLocalBusinesses: number };
   features: { maxMembers: number; maxMcpKeys: number; historyDays: number | null; emailSummaries: boolean; whiteLabel: boolean };
 }
 export interface AdminFlags {
@@ -487,6 +487,19 @@ export interface AiAnalysisInfo { mentioned: boolean; rank: number | null; compe
 export interface AiRunInfo { id: string; promptId: string; engine: string; at: string; analysis: AiAnalysisInfo }
 export interface AiVisOverview { prompts: { id: string; text: string; runs: number; latest: AiRunInfo | null }[]; competitors: string[]; brandTerms: string[]; ownDomain: string | null; summary: { run: number; visibility: number; shareOfVoice: number | null; citedOwn: number; sentiment: { positive: number; neutral: number; negative: number } }; trend: { date: string; rate: number }[]; limit: number; canEdit: boolean; canAi: boolean; agents: { id: string; name: string }[] }
 export interface DomainOverviewInfo { domain: string; url: string; status: number; title: string | null; description: string | null; lang: string | null; httpsOnly: boolean; ms: number; htmlKb: number; structuredData: string[]; social: { name: string; url: string }[]; tech: string[]; trackers: string[]; topTerms: string[]; robots: { found: boolean; sitemaps: string[]; blocksAll: boolean; blockedBots: string[] }; sitemap: { found: boolean; urls: number; truncated: boolean; sections: { section: string; urls: number }[]; latestChange: string | null } }
+export interface LocalKeywordSummary { keyword: string; avgRank: number | null; top3Share: number; foundShare: number; best: number | null }
+export interface LocalScanSummary { avgRank: number | null; top3Share: number; foundShare: number; keywords: LocalKeywordSummary[] }
+export interface LocalCompetitorInfo { name: string; placeId: string | null; appearances: number; avgRank: number; rating: number | null; reviews: number | null; category: string | null; address: string | null; website: string | null }
+export interface LocalScanPoint { row: number; col: number; lat: number; lng: number; ranks: (number | null)[] }
+export interface LocalScanFull { id: string; businessId: string; at: string; gridSize: number; radiusKm: number; keywords: string[]; points: LocalScanPoint[]; summary: LocalScanSummary; competitors: LocalCompetitorInfo[]; own: LocalCompetitorInfo | null; lookups: number; failed: number }
+export interface LocalScanBrief { id: string; at: string; summary: LocalScanSummary; own: { rating: number | null; reviews: number | null } | null; lookups: number }
+export interface LocalBusinessInfo { id: string; name: string; matchName: string; address: string; lat: number; lng: number; radiusKm: number; gridSize: 3 | 5 | 7; keywords: string[]; placeId: string; lastScan: LocalScanBrief | null; scanCount: number }
+export interface LocalBusinessInput { name: string; matchName: string; address: string; lat: number; lng: number; radiusKm: number; gridSize: 3 | 5 | 7; keywords: string[]; placeId: string }
+export interface GbpLocationInfo { account: string; name: string; title: string; address: string; website: string }
+export interface GbpStatus { googleConfigured: boolean; vaultReady: boolean; canAdmin: boolean; canEdit: boolean; canAi: boolean; redirectUri: string; connected: boolean; googleEmail: string | null; lastError: string | null; lastRunAt: string | null; locations: GbpLocationInfo[]; link: { account: string; location: string; title: string } | null }
+export interface GbpPerformance { title: string; days: { date: string; views: number; calls: number; websiteClicks: number; directions: number }[]; totals: { views: number; calls: number; websiteClicks: number; directions: number } }
+export interface GbpReviewItem { id: string; reviewId: string; reviewer: string; stars: number; comment: string; createdAt: string; replied: boolean; replyText: string; draft: string; status: 'new' | 'drafted' | 'replied' | 'dismissed'; alerted: boolean }
+export interface GbpPostInfo { id: string; text: string; url: string; publishOn: string; status: string; error: string; publishedAt: string; createdAt: string }
 export interface WatchInfo { id: string; domain: string; sitemapUrl: string | null; pages: string[]; enabled: boolean; createdAt: string; lastCheckedAt: string | null; lastError: string | null }
 export interface WatchEventInfo { id: string; watchId: string; at: string; type: string; url: string; detail: string }
 export interface BrandingInfo { enabled: boolean; name: string; footer: string; accent: string | null }
@@ -496,7 +509,7 @@ export interface LeadInfo { id: string; name: string; website: string; email: st
 export type LeadInput = Partial<Pick<LeadInfo, 'name' | 'website' | 'email' | 'phone' | 'status' | 'value' | 'followUp' | 'notes'>>
 export interface DomainMarketInfo { keywords: { keyword: string; position: number; volume: number | null; url: string | null }[]; backlinks: { referringDomains: number | null; backlinks: number | null; authority: number | null } | null; error: string | null }
 export interface CustomEndpointInfo { method: 'GET' | 'POST'; url: string; body?: string; itemsPath: string; fields: Record<string, string> }
-export interface CustomProviderConfig { name: string; auth: { type: 'none' | 'bearer' | 'header' | 'basic'; headerName?: string }; keywordMetrics?: CustomEndpointInfo; competitorKeywords?: CustomEndpointInfo; backlinks?: CustomEndpointInfo }
+export interface CustomProviderConfig { name: string; auth: { type: 'none' | 'bearer' | 'header' | 'basic'; headerName?: string }; keywordMetrics?: CustomEndpointInfo; competitorKeywords?: CustomEndpointInfo; backlinks?: CustomEndpointInfo; mapsSearch?: CustomEndpointInfo }
 export interface DataProviderStatus { kind: 'dataforseo' | 'custom'; enabled: boolean; config: CustomProviderConfig | null; hasSecret: boolean; lastTestedAt: string | null; lastTestOk: boolean | null; lastError: string | null; updatedAt: string }
 export type DataProviderInput =
   | { kind: 'dataforseo'; enabled: boolean; credentials?: { login: string; password: string } }
@@ -974,6 +987,30 @@ export const apiClient = {
   async aivisHistory(id: string): Promise<{ runs: AiRunInfo[] }> { return apiRequest(`/api/aivis/history/${encodeURIComponent(id)}`); },
   async aivisRun(promptIds: string[], agentId?: string): Promise<{ runs: AiRunInfo[]; errors: string[]; quota: { used: number; limit: number | null } | null }> { return apiRequest('/api/aivis/run', { method: 'POST', body: JSON.stringify({ promptIds, ...(agentId ? { agentId } : {}) }) }); },
   async seoDomainOverview(domain: string): Promise<{ overview: DomainOverviewInfo; market: DomainMarketInfo | null; providerConnected: boolean }> { return apiRequest('/api/seo/domain-overview', { method: 'POST', body: JSON.stringify({ domain }) }); },
+  async localList(): Promise<{ businesses: LocalBusinessInfo[]; limit: number; canEdit: boolean; providerConnected: boolean; providerName: string | null; maxLookups: number }> { return apiRequest('/api/local'); },
+  async localGeocode(query: string): Promise<{ lat: number; lng: number; label: string }> { return apiRequest('/api/local/geocode', { method: 'POST', body: JSON.stringify({ query }) }); },
+  async localSave(input: LocalBusinessInput, id?: string): Promise<{ business: LocalBusinessInfo }> { return apiRequest(id ? `/api/local/business/${encodeURIComponent(id)}` : '/api/local/business', { method: id ? 'PUT' : 'POST', body: JSON.stringify(input) }); },
+  async localDelete(id: string): Promise<void> { await apiRequest(`/api/local/business/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+  async localEstimate(id: string): Promise<{ lookups: number; estimatedCostUsd: number; tooBig: boolean; maxLookups: number }> { return apiRequest(`/api/local/business/${encodeURIComponent(id)}/estimate`); },
+  async localScan(id: string, confirmedLookups: number): Promise<{ scan: LocalScanFull; note: string | null }> { return apiRequest(`/api/local/business/${encodeURIComponent(id)}/scan`, { method: 'POST', body: JSON.stringify({ confirmedLookups }) }); },
+  async localScans(id: string): Promise<{ business: LocalBusinessInfo; history: LocalScanBrief[]; latest: LocalScanFull | null }> { return apiRequest(`/api/local/business/${encodeURIComponent(id)}/scans`); },
+  async localScanGet(id: string, scanId: string): Promise<{ scan: LocalScanFull }> { return apiRequest(`/api/local/business/${encodeURIComponent(id)}/scans/${encodeURIComponent(scanId)}`); },
+  async localReviewLink(id: string): Promise<{ url: string; qr: string }> { return apiRequest(`/api/local/business/${encodeURIComponent(id)}/review-link`); },
+  async gbpStatus(): Promise<GbpStatus> { return apiRequest('/api/gbp'); },
+  async gbpStart(): Promise<{ url: string }> { return apiRequest('/api/gbp/start', { method: 'POST' }); },
+  async gbpDisconnect(): Promise<void> { await apiRequest('/api/gbp/disconnect', { method: 'POST' }); },
+  async gbpRefreshLocations(): Promise<{ locations: GbpLocationInfo[] }> { return apiRequest('/api/gbp/locations/refresh', { method: 'POST' }); },
+  async gbpLink(location: string | null): Promise<void> { await apiRequest('/api/gbp/link', { method: 'PUT', body: JSON.stringify({ location }) }); },
+  async gbpPerformance(days: number): Promise<GbpPerformance> { return apiRequest(`/api/gbp/performance?days=${days}`); },
+  async gbpSaveTable(): Promise<{ datasetId: string; name: string; rows: number }> { return apiRequest('/api/gbp/performance/save-table', { method: 'POST' }); },
+  async gbpReviews(): Promise<{ items: GbpReviewItem[]; averageRating: number | null; total: number | null; stale: boolean }> { return apiRequest('/api/gbp/reviews'); },
+  async gbpDraft(id: string): Promise<{ draft: string }> { return apiRequest(`/api/gbp/reviews/${encodeURIComponent(id)}/draft`, { method: 'POST' }); },
+  async gbpSaveDraft(id: string, text: string): Promise<void> { await apiRequest(`/api/gbp/reviews/${encodeURIComponent(id)}/draft`, { method: 'PUT', body: JSON.stringify({ text }) }); },
+  async gbpApprove(id: string, text: string): Promise<void> { await apiRequest(`/api/gbp/reviews/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify({ text }) }); },
+  async gbpDismiss(id: string): Promise<void> { await apiRequest(`/api/gbp/reviews/${encodeURIComponent(id)}/dismiss`, { method: 'POST' }); },
+  async gbpPosts(): Promise<{ posts: GbpPostInfo[] }> { return apiRequest('/api/gbp/posts'); },
+  async gbpPostCreate(text: string, url: string, publishOn: string): Promise<{ id: string; status: string }> { return apiRequest('/api/gbp/posts', { method: 'POST', body: JSON.stringify({ text, url, publishOn }) }); },
+  async gbpPostDelete(id: string): Promise<void> { await apiRequest(`/api/gbp/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
   async watchList(): Promise<{ watches: WatchInfo[]; events: WatchEventInfo[]; limit: number; canEdit: boolean }> { return apiRequest('/api/watch'); },
   async watchAdd(domain: string, sitemapUrl: string, pages: string[]): Promise<{ watch: WatchInfo }> { return apiRequest('/api/watch', { method: 'POST', body: JSON.stringify({ domain, sitemapUrl, pages }) }); },
   async watchSetEnabled(id: string, enabled: boolean): Promise<{ watch: WatchInfo }> { return apiRequest(`/api/watch/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ enabled }) }); },

@@ -5,6 +5,7 @@
  */
 export interface KeywordMetrics { keyword: string; volume: number | null; cpc: number | null; difficulty: number | null; competition: number | null }
 export interface CompetitorKeyword { keyword: string; position: number; volume: number | null; url: string | null }
+export interface MapsPlace { name: string; placeId: string | null; rank: number; rating: number | null; reviews: number | null; category: string | null; address: string | null; website: string | null }
 export interface BacklinkSummary { domain: string; referringDomains: number | null; backlinks: number | null; authority: number | null }
 
 export interface DataProvider {
@@ -14,6 +15,8 @@ export interface DataProvider {
   keywordMetrics(keywords: string[], country: string): Promise<KeywordMetrics[]>;
   competitorKeywords(domain: string, country: string): Promise<CompetitorKeyword[]>;
   backlinks(domain: string): Promise<BacklinkSummary | null>;
+  /** Google Maps results for a search seen from one spot (Sprint 46). Optional: not every provider offers it. */
+  mapsSearch?(q: { keyword: string; lat: number; lng: number; zoom: number }): Promise<MapsPlace[]>;
 }
 
 export const NOT_CONNECTED_NOTE = 'Search volume, cost per click and difficulty need a paid data source, which is not connected yet. Everything else here comes from your own Search Console and from Google.';

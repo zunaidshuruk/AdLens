@@ -90,10 +90,11 @@ dataProviderRouter.post('/test', async (req, res) => {
       try { checks.push({ name, ok: true, message: await fn() }); } catch (e) { checks.push({ name, ok: false, message: e instanceof ProviderError ? e.message : 'Could not read the reply.' }); }
     };
     const cfg = rec.config;
-    const has = (k: 'keywordMetrics' | 'competitorKeywords' | 'backlinks') => rec.kind === 'dataforseo' || Boolean(cfg?.[k]);
+    const has = (k: 'keywordMetrics' | 'competitorKeywords' | 'backlinks' | 'mapsSearch') => rec.kind === 'dataforseo' || Boolean(cfg?.[k]);
     await attempt('Keyword numbers', has('keywordMetrics'), async () => { const r = await provider.keywordMetrics(['coffee'], 'us'); if (!r.length) throw new ProviderError('The provider answered, but no numbers were found in the reply. Check the field names.'); const m = r[0]!; return `"${m.keyword}": ${m.volume ?? 'no'} searches a month${m.cpc != null ? `, about ${m.cpc} per click` : ''}.`; });
     await attempt('Competitor keywords', has('competitorKeywords'), async () => { const r = await provider.competitorKeywords('wikipedia.org', 'us'); if (!r.length) throw new ProviderError('The provider answered, but no keywords were found in the reply. Check the field names.'); return `${r.length} keywords found, for example "${r[0]!.keyword}".`; });
     await attempt('Backlinks', has('backlinks'), async () => { const r = await provider.backlinks('wikipedia.org'); if (!r) throw new ProviderError('The provider answered, but no backlink numbers were found in the reply. Check the field names.'); return `${r.referringDomains ?? 'unknown'} linking sites.`; });
+    await attempt('Map results', has('mapsSearch'), async () => { if (!provider.mapsSearch) throw new ProviderError('Not set up.'); const r = await provider.mapsSearch({ keyword: 'coffee shop', lat: 40.7484, lng: -73.9857, zoom: 14 }); if (!r.length) throw new ProviderError('The provider answered, but no places were found in the reply. Check the field names.'); return `${r.length} places found, for example "${r[0]!.name}".`; });
     const ok = checks.some((c) => c.ok);
     const next = { ...rec, lastTestedAt: new Date(deps.now()).toISOString(), lastTestOk: ok, lastError: ok ? null : (checks.find((c) => c.message !== 'Not set up.')?.message ?? 'Nothing worked.') };
     await store.put(next);
