@@ -30,11 +30,11 @@ test('Account email routes: sent through our sender, fall back when mail is off 
   const post = (path: string, body?: unknown, token?: string) => realFetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body ?? {}) });
   try {
     // mail not set up -> the page falls back to Firebase's own email
-    delete process.env.RESEND_API_KEY; delete process.env.MAIL_FROM;
+    delete process.env.RESEND_API_KEY; delete process.env.MAIL_FROM; for (const k of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'MAIL_PROVIDER']) delete process.env[k];
     assert.deepEqual(await (await post('/verification', {}, 'ann')).json(), { handled: false, reason: 'not_configured' });
     assert.deepEqual(await (await post('/password-reset', { email: 'ann@acme.com' })).json(), { handled: false });
     const t0 = await (await post('/test', {}, 'ann')).json() as { sent: boolean; message: string };
-    assert.equal(t0.sent, false); assert.match(t0.message, /RESEND_API_KEY is missing/); assert.match(t0.message, /MAIL_FROM is missing/);
+    assert.equal(t0.sent, false); assert.match(t0.message, /SMTP_HOST/); assert.match(t0.message, /RESEND_API_KEY/);
 
     process.env.RESEND_API_KEY = 're_test'; process.env.MAIL_FROM = 'AdLens <hello@example.com>';
     assert.equal((await post('/verification', {})).status, 401);

@@ -108,3 +108,11 @@ AdLens sends two kinds of email. **Account emails** (confirm your email, reset y
 
 Check the spam folder of the receiving inbox too, and for company mailboxes ask IT to allow your sending domain. Account emails are limited to 6 confirmation emails an hour per person and 5 reset requests an hour per address.
 
+### No domain of your own? Send through a mailbox (SMTP)
+
+If you cannot add DNS records, use any mailbox instead. Set these in the server settings and redeploy: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optionally `SMTP_PORT` (default 587; 465 is treated as secure) and `MAIL_FROM` (defaults to the mailbox itself; most providers refuse a different address). If Resend is also set, SMTP is used; add `MAIL_PROVIDER=resend` to prefer Resend.
+
+**Gmail or Google Workspace (easiest):** 1. Use a Gmail account made for AdLens (for example `adlens.alerts@gmail.com`), not your personal one. 2. Open myaccount.google.com, Security, turn on **2-Step Verification**. 3. Search "App passwords" in the same page, create one named AdLens and copy the 16 letters. 4. Set `SMTP_HOST=smtp.gmail.com`, `SMTP_USER` to the full Gmail address, `SMTP_PASS` to the app password. 5. Redeploy and press **Settings, Preferences, Email delivery check, Send me a test email**.
+
+Other providers: Brevo (`smtp-relay.brevo.com`, port 587, free 300 emails a day, verify a single sender address), Zoho Mail (`smtp.zoho.com`), Outlook (`smtp-mail.outlook.com`). Limits: a free Gmail account sends about 500 emails a day, Google Workspace about 2,000; emails show the mailbox as the sender; messages may land in spam more often than from a verified domain. Fine for confirmation emails, alerts and scheduled reports at small scale; a verified domain is better once you have many customers.
+

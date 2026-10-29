@@ -75,7 +75,7 @@ function Overview({ onOpenWorkspaces }: { onOpenWorkspaces?: () => void }) {
         <ul className="space-y-1.5">
           {flag(data.health.sharedStore === 'upstash', 'Shared cache is on (Upstash).', 'Shared cache is off: each server keeps its own memory. Fine for one server.')}
           {flag(data.health.errorAlertsConfigured, 'Error alerts are on.', 'Error alerts are off (set ERROR_WEBHOOK_URL).')}
-          {flag(data.health.emailConfigured, 'Email sending is set up.', 'Email sending is not set up (RESEND_API_KEY and MAIL_FROM).')}
+          {flag(data.health.emailConfigured, 'Email sending is set up.', 'Email sending is not set up (SMTP_HOST, SMTP_USER and SMTP_PASS, or RESEND_API_KEY and MAIL_FROM).')}
           {flag(data.health.summariesJobConfigured, 'The daily summaries job has its secret.', 'The daily summaries job has no CRON_SECRET yet.')}
         </ul>
       </div>
