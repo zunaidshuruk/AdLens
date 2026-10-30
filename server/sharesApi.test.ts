@@ -7,6 +7,9 @@ import { createInMemoryProjectDocsStore, setTestProjectDocsStore } from './lib/p
 import { refreshDueShares } from './lib/shareWiring.js';
 import { createInMemoryShareStore, getShareStore, setTestShareStore, snapshotRange } from './lib/shares.js';
 
+// Dates are relative to today so the test does not go stale as the calendar moves on.
+const daysAgo = (n: number): string => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
 test('Share links: make, open publicly, password, expiry, refresh, turn off, isolation', async () => {
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
@@ -36,7 +39,7 @@ test('Share links: make, open publicly, password, expiry, refresh, turn off, iso
   const pub = (path: string, body?: unknown) => fetch(`${baseUrl}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   try {
     assert.equal((await fetch(`${baseUrl}/api/shares`)).status, 401);
-    const ds = ((await (await call('/api/datasets', { method: 'POST', body: { name: 'Ads', csv: 'Day,Channel,Spend\n2026-10-01,A,10\n2026-10-02,B,20' } })).json()) as any).dataset;
+    const ds = ((await (await call('/api/datasets', { method: 'POST', body: { name: 'Ads', csv: `Day,Channel,Spend\n${daysAgo(3)},A,10\n${daysAgo(2)},B,20` } })).json()) as any).dataset;
     const dash = ((await (await call('/api/dashboards', { method: 'POST', body: { name: 'Board', description: 'Weekly', widgets: [
       { id: 'w1', title: 'Spend', layout: { x: 0, y: 0, w: 4, h: 3 }, kind: 'kpi', source: 'data', spec: { datasetId: ds.id, dimensions: [], metrics: ['c3'], filters: [], limit: 10, aggregate: 'sum' } },
       { id: 'w2', title: 'Note', layout: { x: 4, y: 0, w: 4, h: 3 }, kind: 'text', text: 'Hello team' },

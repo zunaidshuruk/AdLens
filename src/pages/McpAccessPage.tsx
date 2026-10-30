@@ -32,7 +32,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : 'never');
 
-export const McpAccessPage: React.FC = () => {
+export const McpAccessPage: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const [projects, setProjects] = useState<McpProjectOption[]>([]);
   const [keys, setKeys] = useState<McpKeyInfo[]>([]);
   const [apps, setApps] = useState<McpConnectedApp[]>([]);
@@ -80,7 +80,7 @@ export const McpAccessPage: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <header>
-        <h1 className="text-xl font-semibold text-fg flex items-center gap-2"><Plug className="w-5 h-5" /> Connect your own AI tools</h1>
+        {embedded ? <h2 className="text-lg font-semibold text-fg flex items-center gap-2"><Plug className="w-5 h-5" /> Connect outside AI tools</h2> : <h1 className="text-xl font-semibold text-fg flex items-center gap-2"><Plug className="w-5 h-5" /> Connect your own AI tools</h1>}
         <p className="text-sm text-fg-muted mt-1">Let Claude, Cursor, Codex or Gemini read your AdLens numbers. Access is read-only and limited to the projects you choose. Nothing can be changed or deleted this way.</p>
       </header>
 

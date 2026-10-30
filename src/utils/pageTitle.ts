@@ -12,7 +12,7 @@ const TITLES: [prefix: string, title: string][] = [
   ['/seo', 'SEO tools'],
   ['/connections', 'Connections'],
   ['/settings', 'Settings'],
-  ['/agents', 'AI Agents'],
+  ['/agents', 'AI agents and tools'],
 ];
 
 export function pageTitleFor(pathname: string, appName: string): string {

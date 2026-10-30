@@ -175,7 +175,7 @@ function AgentForm(props: {
   );
 }
 
-export const AgentsPage: React.FC = () => {
+export const AgentsPage: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const [agents, setAgents] = useState<PublicAgent[] | null>(null);
   const [limit, setLimit] = useState(3);
   const [options, setOptions] = useState<AgentOptions | null>(null);
@@ -220,7 +220,7 @@ export const AgentsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">AI Agents</h1>
+        {embedded ? <h2 className="text-lg font-bold tracking-tight text-fg">Your AI agents</h2> : <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">AI Agents</h1>}
         <p className="text-xs sm:text-sm text-fg-muted">Use your own AI (your Gemini or ChatGPT key, or your own service) to answer questions about your data. Your own key means these questions do not use the monthly AI allowance.</p>
       </div>
 

@@ -7,7 +7,6 @@ import {
   Compass,
   FileText,
   Gauge,
-  Plug,
   GitCompare,
   LifeBuoy,
   Globe,
@@ -60,9 +59,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/explore', label: 'Explore', icon: SlidersHorizontal },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/ai-analyst', label: 'AI Analyst', icon: Sparkles },
-  { to: '/agents', label: 'AI Agents', icon: Bot },
+  { to: '/agents', label: 'AI agents and tools', icon: Bot },
   { to: '/connections', label: 'Connections', icon: Link2 },
-  { to: '/mcp-access', label: 'Connect AI tools', icon: Plug },
   { to: '/help', label: 'Help and guide', icon: LifeBuoy },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

@@ -168,9 +168,9 @@ export const CommandPalette: React.FC = () => {
       },
       {
         id: 'nav:agents',
-        label: 'AI Agents',
+        label: 'AI agents and tools',
         group: 'Navigate',
-        keywords: ['agent', 'agents', 'openai', 'chatgpt', 'gemini', 'key', 'webhook', 'byok', 'own ai'],
+        keywords: ['ai tools', 'agent', 'agents', 'openai', 'chatgpt', 'gemini', 'key', 'webhook', 'byok', 'own ai'],
         hint: '/agents',
         run: () => navigate('/agents'),
       },
@@ -227,8 +227,8 @@ export const CommandPalette: React.FC = () => {
         label: 'Connect AI tools (MCP keys)',
         group: 'Navigate',
         keywords: ['mcp', 'claude', 'cursor', 'codex', 'gemini', 'key', 'api', 'connect', 'agent'],
-        hint: '/mcp-access',
-        run: () => navigate('/mcp-access'),
+        hint: '/agents?tab=tools',
+        run: () => navigate('/agents?tab=tools'),
       },
       {
         id: 'nav:snapshot',

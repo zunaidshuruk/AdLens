@@ -27,7 +27,7 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage').then((m) => ({ default: m.AdminLoginPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const AgentDeveloperPage = lazy(() => import('./pages/AgentDeveloperPage').then((m) => ({ default: m.AgentDeveloperPage })));
-const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({ default: m.AgentsPage })));
+const AiHubPage = lazy(() => import('./pages/AiHubPage').then((m) => ({ default: m.AiHubPage })));
 const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage').then((m) => ({ default: m.AIAnalystPage })));
 const AITrafficPage = lazy(() => import('./pages/AITrafficPage').then((m) => ({ default: m.AITrafficPage })));
 const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })));
@@ -47,7 +47,6 @@ const PageDetailPage = lazy(() => import('./pages/PageDetailPage').then((m) => (
 const PagesPage = lazy(() => import('./pages/PagesPage').then((m) => ({ default: m.PagesPage })));
 const SearchIntelligencePage = lazy(() => import('./pages/SearchIntelligencePage').then((m) => ({ default: m.SearchIntelligencePage })));
 const SnapshotPage = lazy(() => import('./pages/SnapshotPage').then((m) => ({ default: m.SnapshotPage })));
-const McpAccessPage = lazy(() => import('./pages/McpAccessPage').then((m) => ({ default: m.McpAccessPage })));
 const McpAuthorizePage = lazy(() => import('./pages/McpAuthorizePage').then((m) => ({ default: m.McpAuthorizePage })));
 const SearchConsolePage = lazy(() => import('./pages/SearchConsolePage').then((m) => ({ default: m.SearchConsolePage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -90,7 +89,7 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/mcp-access/authorize" element={<McpAuthorizePage />} />
                 <Route element={<Layout />}>
-                  <Route path="/mcp-access" element={<McpAccessPage />} />
+                  <Route path="/mcp-access" element={<Navigate to="/agents?tab=tools" replace />} />
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/ga4" element={<GA4Page />} />
                   <Route path="/ai-traffic" element={<AITrafficPage />} />
@@ -108,7 +107,7 @@ export default function App() {
                   <Route path="/leads" element={<LeadsPage />} />
                   <Route path="/dashboards/:id" element={<DashboardPage />} />
                   <Route path="/explore" element={<ExplorePage />} />
-                  <Route path="/agents" element={<AgentsPage />} />
+                  <Route path="/agents" element={<AiHubPage />} />
                   <Route path="/agents/developers" element={<AgentDeveloperPage />} />
                   <Route path="/ai-analyst" element={<AIAnalystPage />} />
                   <Route path="/connections" element={<ConnectionsPage />} />

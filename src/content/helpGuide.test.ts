@@ -28,7 +28,8 @@ test('links in guides go to real pages and real SEO tabs', () => {
     const u = new URL(t, 'http://x');
     assert.ok(u.pathname === '/' || routes.has(u.pathname), `no route for ${t}`);
     const tab = u.searchParams.get('tab');
-    if (tab) { assert.equal(u.pathname, '/seo'); assert.ok(seoTabs.has(tab), `no SEO tab "${tab}" for ${t}`); }
+    if (tab && u.pathname === '/agents') assert.equal(tab, 'tools', `no AI tab "${tab}" for ${t}`);
+    else if (tab) { assert.equal(u.pathname, '/seo'); assert.ok(seoTabs.has(tab), `no SEO tab "${tab}" for ${t}`); }
   }
 });
 
