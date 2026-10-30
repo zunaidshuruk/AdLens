@@ -222,6 +222,21 @@ leadsRouter.post('/import', async (req, res) => {
   } catch { fail(res, 500, 'LEADS_FAILED', 'Something went wrong.'); }
 });
 
+
+// Delete many at once: a list of ids (up to 1000) or every lead in the project. Only people who can edit may do this.
+leadsRouter.post('/bulk-delete', async (req, res) => {
+  try {
+    const s = await scope(req, res, true); if (!s) return;
+    const parsed = z.union([z.object({ ids: z.array(idOk).min(1).max(1000) }), z.object({ all: z.literal(true) })]).safeParse(req.body);
+    if (!parsed.success) return fail(res, 400, 'INVALID_REQUEST', 'Choose the leads to delete.');
+    const docs = getProjectDocsStore();
+    const ids = 'all' in parsed.data ? (await docs.list(s.ws, s.project, 'leads')).map((d) => d.id) : [...new Set(parsed.data.ids)];
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += 25) deleted += (await Promise.all(ids.slice(i, i + 25).map((id) => docs.delete(s.ws, s.project, 'leads', id)))).filter(Boolean).length;
+    res.json({ deleted });
+  } catch { fail(res, 500, 'LEADS_FAILED', 'Something went wrong.'); }
+});
+
 leadsRouter.put('/:id', async (req, res) => {
   try {
     const s = await scope(req, res, true); if (!s) return;

@@ -161,3 +161,43 @@ test('Leads: assign to a team member (with email), lead link for Google/Zapier, 
     assert.equal(((await (await call('GET', '')).json()) as { leads: unknown[]; limit: number }).leads.length, ((await (await call('GET', '')).json()) as { limit: number }).limit);
   } finally { server.close(); setLeadsTestDeps(null); }
 });
+
+test('Leads: delete several at once, or all', async () => {
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id'; process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  process.env.TOKEN_ENCRYPTION_KEY = 'test-encryption-key-sprint-36-32chars!!'; process.env.APP_BASE_URL = 'http://localhost:3000';
+  const fs = createInMemoryFirestoreStore(); setTestFirestoreStore(fs);
+  setTestProjectDocsStore(createInMemoryProjectDocsStore());
+  const { workspace } = await fs.bootstrapUserAndWorkspace({ uid: 'uid_alice', email: 'alice@acme.com', displayName: 'Alice' });
+  const p = await fs.createProject(workspace.id, { name: 'A', domain: 'a.com', timezone: 'UTC', currency: 'USD', createdBy: 'uid_alice' });
+  const p2 = await fs.createProject(workspace.id, { name: 'B', domain: 'b.com', timezone: 'UTC', currency: 'USD', createdBy: 'uid_alice' });
+  await fs.bootstrapUserAndWorkspace({ uid: 'uid_bob', email: 'bob@acme.com', displayName: 'Bob' });
+  await fs.updateWorkspace(workspace.id, { members: { ...(await fs.getWorkspace(workspace.id))!.members, uid_bob: 'viewer' } });
+  setTestTokenVerifier(async (t: string) => ({ uid: `uid_${t.replace('token-', '')}`, email: `${t.replace('token-', '')}@acme.com`, name: 'x', email_verified: true, firebase: { identities: { 'google.com': ['g'] }, sign_in_provider: 'google.com' } }) as never);
+  const server = app.listen(0);
+  const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const call = (method: string, path: string, body?: unknown, token = 'token-alice', proj = p) => fetch(`${baseUrl}/api/leads${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }), headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-AdLens-Project': `${proj.workspaceId}/${proj.id}` } });
+  const list = async (proj = p) => ((await (await call('GET', '', undefined, 'token-alice', proj)).json()) as { leads: { id: string }[] }).leads;
+  try {
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(((await (await call('POST', '', { name: `L${i}`, email: `l${i}@x.com` })).json()) as { lead: { id: string } }).lead.id);
+    await call('POST', '', { name: 'Other project' }, 'token-alice', p2);
+    assert.equal((await call('POST', '/bulk-delete', {})).status, 400);
+    assert.equal((await call('POST', '/bulk-delete', { ids: [] })).status, 400);
+    assert.equal((await call('POST', '/bulk-delete', { all: false })).status, 400);
+    assert.equal((await call('POST', '/bulk-delete', { ids: ['bad id!'] })).status, 400);
+    assert.equal((await call('POST', '/bulk-delete', { ids: [ids[0]] }, 'token-bob')).status, 403, 'viewers cannot delete');
+    assert.equal((await list()).length, 6);
+    // some at once; a repeated or unknown id is harmless
+    const some = (await (await call('POST', '/bulk-delete', { ids: [ids[0], ids[1], ids[1], 'nosuchid'] })).json()) as { deleted: number };
+    assert.equal(some.deleted, 2);
+    assert.deepEqual((await list()).map((l) => l.id).sort(), ids.slice(2).sort());
+    // another project's leads cannot be removed by id from this project
+    const otherId = (await list(p2))[0]!.id;
+    assert.equal(((await (await call('POST', '/bulk-delete', { ids: [otherId] })).json()) as { deleted: number }).deleted, 0);
+    assert.equal((await list(p2)).length, 1);
+    // all
+    assert.equal(((await (await call('POST', '/bulk-delete', { all: true })).json()) as { deleted: number }).deleted, 4);
+    assert.equal((await list()).length, 0);
+    assert.equal((await list(p2)).length, 1, 'only this project is emptied');
+  } finally { server.close(); }
+});

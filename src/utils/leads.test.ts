@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { LeadInfo } from '../api/client.js';
-import { dueFollowUps, leadsToCsv, parseCsv, pipelineSummary } from './leads.js';
+import { dueFollowUps, leadsToCsv, leadsToTsv, parseCsv, parsePasted, pipelineSummary } from './leads.js';
 
 const lead = (o: Partial<LeadInfo>): LeadInfo => ({ id: 'x', name: 'A', website: '', email: '', phone: '', status: 'new', value: 0, followUp: '', notes: '', audit: null, assigneeId: '', source: 'manual', createdAt: '', updatedAt: '', ...o });
 
@@ -35,4 +35,19 @@ test('leadsToCsv adds who each lead is assigned to', () => {
   assert.ok(lines[0]!.includes('Assigned to'));
   assert.ok(lines[1]!.includes('Alice'));
   assert.ok(!lines[2]!.includes('Alice'));
+});
+
+test('parsePasted reads spreadsheet (tab) and comma text', () => {
+  assert.deepEqual(parsePasted('Name\tEmail\tPhone\nAnn, Co\tann@x.com\t+880 1711\n'), [{ Name: 'Ann, Co', Email: 'ann@x.com', Phone: '+880 1711' }]);
+  assert.deepEqual(parsePasted('Name,Email\nBob,b@x.com'), [{ Name: 'Bob', Email: 'b@x.com' }]);
+  assert.deepEqual(parsePasted('Name\tEmail'), []);
+});
+
+test('leadsToTsv: one row per lead, no tabs or line breaks inside cells, formulas defused, phone numbers left alone', () => {
+  const tsv = leadsToTsv([lead({ name: 'A\tB', notes: 'line1\nline2', phone: '+880 1711-000000', website: '=cmd()', assigneeId: 'u1' })], new Map([['u1', 'Alice']]));
+  const rows = tsv.split('\n');
+  assert.equal(rows.length, 2);
+  const cells = rows[1]!.split('\t');
+  assert.equal(cells.length, rows[0]!.split('\t').length);
+  assert.deepEqual([cells[0], cells[3], cells[1], cells[7], cells[8]], ['A B', '+880 1711-000000', "'=cmd()", 'Alice', 'line1 line2']);
 });

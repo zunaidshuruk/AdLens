@@ -1,7 +1,7 @@
-import { Download, Trash2, Upload } from 'lucide-react';
+import { ClipboardPaste, Copy, Download, Trash2, Upload } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient, type LeadCaptureInfo, type LeadInfo, type LeadMember } from '../api/client';
-import { dueFollowUps, LEAD_STATUS_LABEL, leadsToCsv, parseCsv, pipelineSummary } from '../utils/leads';
+import { dueFollowUps, LEAD_STATUS_LABEL, leadsToCsv, leadsToTsv, parseCsv, parsePasted, pipelineSummary } from '../utils/leads';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 const field = 'rounded-lg border border-line bg-surface text-fg text-sm px-3 py-2 min-h-[40px]';
@@ -22,9 +22,12 @@ export const LeadsPage: React.FC = () => {
   const [members, setMembers] = useState<{ list: LeadMember[]; me: string }>({ list: [], me: '' });
   const [note, setNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
   const [form, setForm] = useState({ name: '', website: '', email: '', value: '', assigneeId: '' });
   const [open, setOpen] = useState<string | null>(null);
-  const load = useCallback(async () => { try { setData(await apiClient.leadsList()); setError(null); } catch (e) { setError(errMessage(e)); } }, []);
+  const load = useCallback(async () => { try { const r = await apiClient.leadsList(); setData(r); setSelected((cur) => { const ids = new Set(r.leads.map((l) => l.id)); const n = new Set([...cur].filter((id) => ids.has(id))); return n.size === cur.size ? cur : n; }); setError(null); } catch (e) { setError(errMessage(e)); } }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { apiClient.leadMembers().then((m) => setMembers({ list: m.members, me: m.me })).catch(() => undefined); }, []);
   const names = useMemo(() => new Map(members.list.map((m) => [m.uid, m.name])), [members]);
@@ -39,16 +42,36 @@ export const LeadsPage: React.FC = () => {
     const url = URL.createObjectURL(new Blob(['﻿' + leadsToCsv(data.leads, names)], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = 'leads.csv'; a.click(); URL.revokeObjectURL(url);
   };
-  const importFile = async (file: File) => {
+  const importFile = async (file: File) => { await importRows(parseCsv(await file.text()), 'file'); if (fileRef.current) fileRef.current.value = ''; };
+  const importRows = async (rows: Record<string, string>[], from: 'file' | 'paste') => {
     setError(null); setNote(null);
     try {
-      const rows = parseCsv(await file.text());
-      if (rows.length === 0) { setError('That file has no leads in it. The first line should be column names such as Name, Email and Phone.'); return; }
+      if (rows.length === 0) { setError(from === 'file' ? 'That file has no leads in it. The first line should be column names such as Name, Email and Phone.' : 'Nothing to import. Paste the rows with the column names (Name, Email, Phone...) on the first line.'); return; }
       if (rows.length > 500) { setError('That file has more than 500 rows. Split it into smaller files and import them one by one.'); return; }
       const r = await apiClient.leadImport(rows);
       setNote(`Added ${r.added} lead${r.added === 1 ? '' : 's'}.${r.duplicates ? ` Skipped ${r.duplicates} already in your list.` : ''}${r.unreadable ? ` ${r.unreadable} row${r.unreadable === 1 ? ' had' : 's had'} no name, email or phone.` : ''}${r.overLimit ? ` ${r.overLimit} did not fit in your plan's ${r.limit}-lead limit.` : ''}`);
+      if (from === 'paste') { setPasteText(''); setPasteOpen(false); }
       await load();
-    } catch (e) { setError(errMessage(e)); } finally { if (fileRef.current) fileRef.current.value = ''; }
+    } catch (e) { setError(errMessage(e)); }
+  };
+  const selectedLeads = data.leads.filter((l) => selected.has(l.id));
+  const allShownSelected = shown.length > 0 && shown.every((l) => selected.has(l.id));
+  const toggle = (id: string) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleAllShown = () => setSelected(allShownSelected ? new Set() : new Set(shown.map((l) => l.id)));
+  const copySelected = async () => {
+    setError(null); setNote(null);
+    try { await navigator.clipboard.writeText(leadsToTsv(selectedLeads, names)); setNote(`Copied ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'}. Paste into Google Sheets, Excel or an email.`); }
+    catch { setError('Your browser did not allow copying. Use Export CSV instead.'); }
+  };
+  const deleteSelected = () => {
+    const n = selectedLeads.length;
+    if (n === 0 || !window.confirm(`Delete ${n} selected lead${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    void act('bulk', async () => { const r = await apiClient.leadsBulkDelete({ ids: selectedLeads.map((l) => l.id) }); setSelected(new Set()); setNote(`Deleted ${r.deleted} lead${r.deleted === 1 ? '' : 's'}.`); });
+  };
+  const deleteAll = () => {
+    const n = data.leads.length;
+    if (n === 0 || !window.confirm(`Delete ALL ${n} lead${n === 1 ? '' : 's'} in this project? This cannot be undone. Tip: use Export CSV first if you want a copy.`)) return;
+    void act('bulk', async () => { const r = await apiClient.leadsBulkDelete({ all: true }); setSelected(new Set()); setNote(`Deleted ${r.deleted} lead${r.deleted === 1 ? '' : 's'}.`); });
   };
   const assignSelect = (value: string, onChange: (v: string) => void, id: string, label: string, disabled = false) => (
     <><label className="sr-only" htmlFor={id}>{label}</label>
@@ -86,12 +109,38 @@ export const LeadsPage: React.FC = () => {
         {data.canEdit && <><input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" aria-label="Choose a CSV file of leads" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); }} /><button type="button" className={secondary} onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" aria-hidden /> Import CSV</button></>}
         <button type="button" className={secondary} disabled={data.leads.length === 0} onClick={exportCsv}><Download className="h-4 w-4" aria-hidden /> Export CSV</button>
       </div>
+      {data.canEdit && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 text-xs text-fg"><input type="checkbox" checked={allShownSelected} disabled={shown.length === 0} onChange={toggleAllShown} aria-label="Select all leads shown" /> Select all shown ({shown.length})</label>
+            {selectedLeads.length > 0 && (
+              <>
+                <span role="status" className="text-xs font-medium text-fg">{selectedLeads.length} selected</span>
+                <button type="button" className={secondary} onClick={() => void copySelected()}><Copy className="h-4 w-4" aria-hidden /> Copy</button>
+                <button type="button" className={secondary} disabled={busy !== null} onClick={deleteSelected}><Trash2 className="h-4 w-4" aria-hidden /> Delete selected</button>
+                <button type="button" className="text-xs text-fg-muted underline" onClick={() => setSelected(new Set())}>Clear</button>
+              </>
+            )}
+            <span className="flex-1" />
+            <button type="button" className={secondary} onClick={() => setPasteOpen(!pasteOpen)} aria-expanded={pasteOpen}><ClipboardPaste className="h-4 w-4" aria-hidden /> Paste leads</button>
+            <button type="button" className={`${secondary} text-danger`} disabled={busy !== null || data.leads.length === 0} onClick={deleteAll}><Trash2 className="h-4 w-4" aria-hidden /> Delete all ({data.leads.length})</button>
+          </div>
+          {pasteOpen && (
+            <div className="rounded-xl border border-line bg-surface p-3 space-y-2">
+              <p className="text-xs text-fg-muted">Copy rows from Google Sheets or Excel (or comma-separated text) and paste them here. The first line must be column names such as Name, Email, Phone, Website, Notes. Repeats are skipped.</p>
+              <textarea className={`${field} block w-full min-h-[110px] font-mono text-xs`} value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder={'Name\tEmail\tPhone\nAcme Bakery\tann@acme.com\t+880 1711 000000'} aria-label="Pasted leads" />
+              <button type="button" className={primary} disabled={busy !== null || !pasteText.trim()} onClick={() => void importRows(parsePasted(pasteText), 'paste')}>Import pasted leads</button>
+            </div>
+          )}
+        </div>
+      )}
       {data.canEdit && <LeadLink members={members.list} />}
       {shown.length === 0 ? <p className="text-sm text-fg-muted">{data.leads.length === 0 ? 'No leads yet. Add your first one above.' : 'No leads match these filters.'}</p> : (
         <ul className="space-y-2">{shown.map((l) => (
           <li key={l.id} className="rounded-xl border border-line bg-surface p-3 space-y-2">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0"><p className="text-sm font-semibold text-fg">{l.name}{l.source !== 'manual' && <span className="ml-2 align-middle rounded-full bg-fill-2 text-fg-muted text-[10px] font-medium px-2 py-0.5">{l.source === 'capture' ? 'From lead link' : 'Imported'}</span>}</p><p className="text-xs text-fg-muted break-all">{[l.website, l.email, l.phone].filter(Boolean).join(' · ') || 'No contact details'}{l.value ? ` · ${money(l.value)}` : ''}</p></div>
+              {data.canEdit && <input type="checkbox" className="mt-1" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Select ${l.name}`} />}
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-fg">{l.name}{l.source !== 'manual' && <span className="ml-2 align-middle rounded-full bg-fill-2 text-fg-muted text-[10px] font-medium px-2 py-0.5">{l.source === 'capture' ? 'From lead link' : 'Imported'}</span>}</p><p className="text-xs text-fg-muted break-all">{[l.website, l.email, l.phone].filter(Boolean).join(' · ') || 'No contact details'}{l.value ? ` · ${money(l.value)}` : ''}</p></div>
               <div className="flex flex-wrap gap-1 items-center">
                 {assignSelect(l.assigneeId, (v) => void act(l.id, () => apiClient.leadUpdate(l.id, { assigneeId: v })), `as-${l.id}`, `Assigned to for ${l.name}`, !data.canEdit || busy !== null)}
                 <label className="sr-only" htmlFor={`st-${l.id}`}>Status of {l.name}</label>

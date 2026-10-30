@@ -23,7 +23,7 @@ export function leadsToCsv(leads: LeadInfo[], names?: Map<string, string>): stri
 }
 
 /** Reads CSV text (quotes, commas and line breaks inside quotes, Excel's byte-order mark) into rows keyed by the header names. */
-export function parseCsv(input: string): Record<string, string>[] {
+export function parseCsv(input: string, delimiter = ','): Record<string, string>[] {
   const text = input.replace(/^\uFEFF/, '');
   const table: string[][] = [];
   let row: string[] = []; let cur = ''; let quoted = false;
@@ -32,7 +32,7 @@ export function parseCsv(input: string): Record<string, string>[] {
     if (quoted) {
       if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else quoted = false; } else cur += c;
     } else if (c === '"') quoted = true;
-    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === delimiter) { row.push(cur); cur = ''; }
     else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; table.push(row); row = []; }
     else cur += c;
   }
@@ -41,4 +41,17 @@ export function parseCsv(input: string): Record<string, string>[] {
   if (rows.length < 2) return [];
   const head = rows[0]!.map((h) => h.trim());
   return rows.slice(1).map((r) => { const o: Record<string, string> = {}; head.forEach((h, i) => { if (h && r[i] !== undefined && r[i]!.trim() !== '') o[h] = r[i]!.trim(); }); return o; }).filter((o) => Object.keys(o).length > 0);
+}
+
+/** Reads pasted rows, whether copied from a spreadsheet (tab-separated) or comma-separated. */
+export function parsePasted(input: string): Record<string, string>[] {
+  const firstLine = input.replace(/^\uFEFF/, '').split(/\r\n|\n|\r/, 1)[0] ?? '';
+  return parseCsv(input, firstLine.includes('\t') ? '\t' : ',');
+}
+
+/** Leads as tab-separated text. Pasting it into Google Sheets or Excel puts each value in its own cell. */
+export function leadsToTsv(leads: LeadInfo[], names?: Map<string, string>): string {
+  const clean = (v: string | number) => { const s = String(v).replace(/[\t\r\n]+/g, ' ').trim(); return /^[=+\-@]/.test(s) && !/^[+-]?[\d\s().-]+$/.test(s) ? `'${s}` : s; };
+  const head = ['Name', 'Website', 'Email', 'Phone', 'Status', 'Value', 'Follow up', 'Assigned to', 'Notes'];
+  return [head, ...leads.map((l) => [l.name, l.website, l.email, l.phone, LEAD_STATUS_LABEL[l.status], l.value, l.followUp, names?.get(l.assigneeId) ?? '', l.notes])].map((r) => r.map(clean).join('\t')).join('\n');
 }

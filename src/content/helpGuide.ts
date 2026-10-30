@@ -378,7 +378,8 @@ export const GUIDES: Guide[] = [
 
   // ------------------------------------------------------------------- team
   { id: 'leads', group: 'team', title: 'Leads (for agencies)', summary: 'Keep a simple list of who you talk to, with a quick website check to open the conversation.', path: '/leads',
-    steps: [{ text: 'Open Leads and press "Add lead". Type the name, website, contact and deal value.' }, { text: 'Move the lead through new, contacted, meeting, proposal, won or lost, and set a follow-up date.' }, { text: 'Pick a person in the "Unassigned" box on a lead to give it to a team member. They get an email. Use "Assigned to" at the top to show only your leads or someone else\'s.' }, { text: 'Press the website check to get a score and the main problems to mention.' }],
+    steps: [{ text: 'Open Leads and press "Add lead". Type the name, website, contact and deal value.' }, { text: 'Move the lead through new, contacted, meeting, proposal, won or lost, and set a follow-up date.' }, { text: 'Pick a person in the "Unassigned" box on a lead to give it to a team member. They get an email. Use "Assigned to" at the top to show only your leads or someone else\'s.' }, { text: 'Press the website check to get a score and the main problems to mention.' },
+      { text: 'To handle many leads at once, tick the boxes next to them (or "Select all shown"). Then press "Copy" to paste them into Google Sheets or Excel, or "Delete selected". "Delete all" empties the whole list after you confirm.' }],
     tips: ['Only people in your workspace can be chosen. Invite people first under Settings, Workspace.'] },
   { id: 'lead-intake', group: 'team', title: 'Bring in leads automatically or from a file', summary: 'Send leads from Google Ads, Zapier or Make straight into the list, or upload a CSV file.', path: '/leads',
     steps: [
@@ -386,7 +387,8 @@ export const GUIDES: Guide[] = [
       { text: 'Google Ads: in your lead form, under Lead delivery, choose Webhook. Paste the web address and the key, then press Send test data. Test data is not saved as a lead.' },
       { text: 'Facebook and Instagram forms: use Zapier or Make. Start with Facebook Lead Ads, then add a step that sends a web request (POST) to the address, with fields name, email, phone and key.' },
       { text: 'Optional: choose "Give new leads to" so every new lead goes to one person and they get an email.' },
-      { text: 'Have a spreadsheet instead? Save it as CSV and press "Import CSV". Columns such as Name, Email, Phone, Website and Notes are recognised. Repeats are skipped.' },
+      { text: 'Or copy rows from Google Sheets or Excel (first line = column names) and press "Paste leads", paste them in and press "Import pasted leads".' },
+      { text: 'Have a spreadsheet file instead? Save it as CSV and press "Import CSV". Columns such as Name, Email, Phone, Website and Notes are recognised. Repeats are skipped.' },
     ],
     tips: ['Leads from a link or file are marked "From lead link" or "Imported".', 'Making a new key stops the old one working, so update the key in Google or Zapier too.'],
     limits: ['Facebook leads reach AdLens through Zapier or Make; a direct Facebook connection needs Meta approval and is not built yet.', 'You cannot send more leads than your plan keeps.'] },
