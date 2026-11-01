@@ -528,9 +528,11 @@ export interface LeadImportResult { added: number; duplicates: number; unreadabl
 export interface DomainMarketInfo { keywords: { keyword: string; position: number; volume: number | null; url: string | null }[]; backlinks: { referringDomains: number | null; backlinks: number | null; authority: number | null } | null; error: string | null }
 export interface CustomEndpointInfo { method: 'GET' | 'POST'; url: string; body?: string; itemsPath: string; fields: Record<string, string> }
 export interface CustomProviderConfig { name: string; auth: { type: 'none' | 'bearer' | 'header' | 'basic'; headerName?: string }; keywordMetrics?: CustomEndpointInfo; competitorKeywords?: CustomEndpointInfo; backlinks?: CustomEndpointInfo; mapsSearch?: CustomEndpointInfo }
-export interface DataProviderStatus { kind: 'dataforseo' | 'custom'; enabled: boolean; config: CustomProviderConfig | null; hasSecret: boolean; lastTestedAt: string | null; lastTestOk: boolean | null; lastError: string | null; updatedAt: string }
+export type KeyProviderKind = 'semrush' | 'ahrefs' | 'serpapi';
+export interface DataProviderStatus { kind: 'dataforseo' | 'custom' | KeyProviderKind; enabled: boolean; config: CustomProviderConfig | null; hasSecret: boolean; lastTestedAt: string | null; lastTestOk: boolean | null; lastError: string | null; updatedAt: string }
 export type DataProviderInput =
   | { kind: 'dataforseo'; enabled: boolean; credentials?: { login: string; password: string } }
+  | { kind: KeyProviderKind; enabled: boolean; credentials?: { secret: string } }
   | { kind: 'custom'; enabled: boolean; config: CustomProviderConfig; credentials?: { secret: string; username?: string } }
 export interface KeywordMetricInfo { keyword: string; volume: number | null; cpc: number | null; difficulty: number | null; competition: number | null }
 export interface LinkProspectInfo { id: string; domain: string; pageUrl: string; targetUrl: string; status: 'new' | 'contacted' | 'replied' | 'won' | 'lost'; contactEmail: string; notes: string; linkLive: boolean | null; checkedAt: string | null; createdBy: string; createdAt: string; updatedAt: string }

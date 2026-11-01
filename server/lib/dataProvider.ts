@@ -12,12 +12,17 @@ export interface DataProvider {
   id: string;
   name: string;
   connected: boolean;
+  /** What this provider can do. Left out means everything. A maps-only service sets keywords to false so keyword screens do not show empty columns. */
+  offers?: { keywords?: boolean; backlinks?: boolean; maps?: boolean };
   keywordMetrics(keywords: string[], country: string): Promise<KeywordMetrics[]>;
   competitorKeywords(domain: string, country: string): Promise<CompetitorKeyword[]>;
   backlinks(domain: string): Promise<BacklinkSummary | null>;
   /** Google Maps results for a search seen from one spot (Sprint 46). Optional: not every provider offers it. */
   mapsSearch?(q: { keyword: string; lat: number; lng: number; zoom: number }): Promise<MapsPlace[]>;
 }
+
+/** True when a provider is connected and can give keyword numbers. */
+export const offersKeywords = (p: DataProvider): boolean => p.connected && p.offers?.keywords !== false;
 
 export const NOT_CONNECTED_NOTE = 'Search volume, cost per click and difficulty need a paid data source, which is not connected yet. Everything else here comes from your own Search Console and from Google.';
 

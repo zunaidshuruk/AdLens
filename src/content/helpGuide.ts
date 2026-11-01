@@ -401,11 +401,11 @@ export const GUIDES: Guide[] = [
   { id: 'market-data', group: 'team', title: 'Market data provider (search volume, cost, Maps)', summary: 'Connect your own account at a data company to unlock search volume, cost per click, competitor keywords, backlinks and Maps results.', path: '/connections#provider',
     steps: [
       { text: 'Open Connections and find "Market data provider". Only owners and admins see the edit controls.' },
-      { text: 'Choose DataForSEO and enter your login and password, or choose "Custom API" to describe any other service.' },
+      { text: 'Choose Semrush, Ahrefs or SerpApi and paste your API key, or DataForSEO and enter your login and password, or choose "Another provider (custom)" to describe any other service. Semrush and Ahrefs give volume, cost, difficulty, competitor keywords and backlinks; SerpApi gives Google Maps results only.' },
       { text: 'Save, then press "Test connection". Each line says what worked and what did not.' },
       { text: 'Search volume and cost now appear in Keyword research and the PPC tool, and the Map rank tracker can scan.' },
     ],
-    tips: ['The provider bills you directly. AdLens caches answers for a day and caps usage per day so a mistake cannot run up a big bill.'] },
+    tips: ['Semrush and Ahrefs sell API access separately from the normal website plans (units or a Lite plan or higher), so check your API balance in their account first.', 'The provider bills you directly. AdLens caches answers for a day and caps usage per day so a mistake cannot run up a big bill.'] },
   { id: 'security', group: 'team', title: 'Keep your account safe', summary: 'Two-step verification, active sign-ins and deleting your data.', path: '/settings',
     steps: [{ text: 'Open Settings, then Security.' }, { text: 'Turn on two-step verification and follow the steps with your authenticator app.' }, { text: 'Review your recent activity and sign out everywhere if something looks wrong.' }, { text: 'To remove your data entirely, use "Delete account" in the Danger zone. This cannot be undone.' }] },
   { id: 'settings-look', group: 'team', title: 'Appearance, language and numbers', summary: 'Light or dark mode, number format and email preferences.', path: '/settings',

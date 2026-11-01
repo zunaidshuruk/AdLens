@@ -75,6 +75,7 @@ export type CustomConfig = z.infer<typeof customConfigSchema>;
 
 export const providerInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('dataforseo'), enabled: z.boolean().default(true), credentials: z.object({ login: z.string().trim().min(3).max(200), password: z.string().min(3).max(200) }).optional() }),
+  z.object({ kind: z.enum(['semrush', 'ahrefs', 'serpapi']), enabled: z.boolean().default(true), credentials: z.object({ secret: z.string().trim().min(8, 'Paste your API key.').max(300) }).optional() }),
   z.object({ kind: z.literal('custom'), enabled: z.boolean().default(true), config: customConfigSchema, credentials: z.object({ secret: z.string().max(500).default(''), username: z.string().max(200).optional() }).optional() }),
 ]);
 export type ProviderInput = z.infer<typeof providerInputSchema>;
@@ -98,7 +99,7 @@ interface Secrets { login?: string; password?: string; secret?: string; username
 export interface ProviderDeps { request: RequestFn; now: () => number }
 const defaultDeps = (): ProviderDeps => ({ request: (u, o) => guardedRequest(u, o), now: Date.now });
 
-async function callJson(deps: ProviderDeps, url: string, o: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: unknown }): Promise<unknown> {
+async function callText(deps: ProviderDeps, url: string, o: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: unknown }): Promise<string> {
   let u: URL;
   try { u = validateOutboundUrl(url); } catch (e) { throw new ProviderError(e instanceof Error ? e.message : 'The provider address is not valid.'); }
   let r;
@@ -109,7 +110,11 @@ async function callJson(deps: ProviderDeps, url: string, o: { method: 'GET' | 'P
   if (r.status === 402) throw new ProviderError('The provider says your account is out of credit.');
   if (r.status === 429) throw new ProviderError('The provider says you are sending too many requests. Try again later.');
   if (r.status >= 400) throw new ProviderError(`The provider answered with an error (${r.status}).`);
-  try { return JSON.parse(r.text); } catch { throw new ProviderError('The provider did not answer with data we can read.'); }
+  return r.text;
+}
+async function callJson(deps: ProviderDeps, url: string, o: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: unknown }): Promise<unknown> {
+  const text = await callText(deps, url, o);
+  try { return JSON.parse(text); } catch { throw new ProviderError('The provider did not answer with data we can read.'); }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +180,142 @@ export function dataForSeoProvider(secrets: Secrets, deps: ProviderDeps = defaul
 }
 
 // ---------------------------------------------------------------------------
+// Ready-made providers that only need one API key: Semrush, Ahrefs, SerpApi (built from each company's published API reference)
+// ---------------------------------------------------------------------------
+export type KeyProviderKind = 'semrush' | 'ahrefs' | 'serpapi';
+export const KEY_PROVIDERS: Record<KeyProviderKind, { name: string; offers: { keywords: boolean; backlinks: boolean; maps: boolean } }> = {
+  semrush: { name: 'Semrush', offers: { keywords: true, backlinks: true, maps: false } },
+  ahrefs: { name: 'Ahrefs', offers: { keywords: true, backlinks: true, maps: false } },
+  serpapi: { name: 'SerpApi', offers: { keywords: false, backlinks: false, maps: true } },
+};
+export const isKeyProvider = (k: string): k is KeyProviderKind => k === 'semrush' || k === 'ahrefs' || k === 'serpapi';
+const chunk = <T,>(a: T[], n: number): T[][] => { const out: T[][] = []; for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n)); return out; };
+
+/** Semrush answers with semicolon-separated text (a header row, then rows), or a line such as "ERROR 50 :: NOTHING FOUND". */
+export function parseSemrush(text: string): Record<string, string>[] {
+  const t = text.trim();
+  if (!t) return [];
+  if (/^ERROR/i.test(t)) {
+    if (/^ERROR\s*50\b/i.test(t)) return [];
+    if (/^ERROR\s*(120|130|131|132|133|134|135)\b/i.test(t)) throw new ProviderError('Semrush did not accept your API key, or your account has no API units left.');
+    throw new ProviderError('Semrush refused the request.');
+  }
+  const lines = t.split(/\r?\n/).filter((l) => l.trim());
+  const head = lines[0]!.split(';').map((h) => h.trim());
+  return lines.slice(1).map((l) => { const cells = l.split(';'); return Object.fromEntries(head.map((h, i) => [h, (cells[i] ?? '').trim()])); });
+}
+const semrushDb = (country: string): string => { const c = country.toLowerCase(); return c === 'gb' ? 'uk' : c; };
+
+/** A cell as a number, with an empty cell meaning unknown (not zero). */
+const cell = (v: string | undefined): number | null => (v === undefined || v.trim() === '' ? null : toNum(v));
+export function semrushProvider(secrets: Secrets, deps: ProviderDeps = defaultDeps()): DataProvider {
+  const key = secrets.secret;
+  if (!key) return notConnectedProvider;
+  const get = async (base: string, params: Record<string, string>): Promise<Record<string, string>[]> => {
+    const u = new URL(base);
+    u.searchParams.set('key', key);
+    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+    return parseSemrush(await callText(deps, u.toString(), { method: 'GET', headers: { Accept: 'text/plain' } }));
+  };
+  return {
+    id: 'semrush', name: 'Semrush', connected: true, offers: KEY_PROVIDERS.semrush.offers,
+    async keywordMetrics(keywords, country) {
+      const list = [...new Set(keywords.map((k) => k.toLowerCase().replace(/;/g, ' ').trim()).filter(Boolean))].slice(0, 300);
+      const out: KeywordMetrics[] = [];
+      for (const part of chunk(list, 100)) {
+        const rows = await get('https://api.semrush.com/', { type: 'phrase_these', phrase: part.join(';'), database: semrushDb(country), export_columns: 'Ph,Nq,Cp,Co,Kd' });
+        for (const r of rows) {
+          const keyword = (r['Keyword'] ?? '').toLowerCase(); if (!keyword) continue;
+          const co = cell(r['Competition']);
+          out.push({ keyword, volume: cell(r['Search Volume']), cpc: cell(r['CPC']), difficulty: cell(r['Keyword Difficulty Index']), competition: co === null ? null : Math.round(co * 100) });
+        }
+      }
+      return out;
+    },
+    async competitorKeywords(domain, country) {
+      const rows = await get('https://api.semrush.com/', { type: 'domain_organic', domain, database: semrushDb(country), display_limit: '100', export_columns: 'Ph,Po,Nq,Ur' });
+      return rows.map((r): CompetitorKeyword | null => { const keyword = r['Keyword']; const position = cell(r['Position']); return keyword && position !== null ? { keyword, position, volume: cell(r['Search Volume']), url: r['Url'] || null } : null; }).filter((x): x is CompetitorKeyword => x !== null);
+    },
+    async backlinks(domain) {
+      const rows = await get('https://api.semrush.com/analytics/v1/', { type: 'backlinks_overview', target: domain, target_type: 'root_domain', export_columns: 'ascore,total,domains_num' });
+      const r = rows[0]; if (!r) return null;
+      return { domain, referringDomains: cell(r['domains_num']), backlinks: cell(r['total']), authority: cell(r['ascore']) };
+    },
+  };
+}
+
+const ahrefsCountry = (c: string): string => { const x = c.toLowerCase(); return x === 'uk' ? 'gb' : x; };
+export function ahrefsProvider(secrets: Secrets, deps: ProviderDeps = defaultDeps()): DataProvider {
+  const key = secrets.secret;
+  if (!key) return notConnectedProvider;
+  const get = async (pathName: string, params: Record<string, string>): Promise<unknown> => {
+    const u = new URL(`https://api.ahrefs.com/v3/${pathName}`);
+    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+    const j = await callJson(deps, u.toString(), { method: 'GET', headers: { Authorization: `Bearer ${key}` } });
+    const err = toStr(getPath(j, 'error'));
+    if (err) throw new ProviderError(`Ahrefs: ${err.slice(0, 160)}`);
+    return j;
+  };
+  const today = () => new Date(deps.now()).toISOString().slice(0, 10);
+  return {
+    id: 'ahrefs', name: 'Ahrefs', connected: true, offers: KEY_PROVIDERS.ahrefs.offers,
+    async keywordMetrics(keywords, country) {
+      const list = [...new Set(keywords.map((k) => k.toLowerCase().replace(/,/g, ' ').trim()).filter(Boolean))].slice(0, 300);
+      const out: KeywordMetrics[] = [];
+      for (const part of chunk(list, 100)) {
+        const j = await get('keywords-explorer/overview', { select: 'keyword,volume,difficulty,cpc', country: ahrefsCountry(country), keywords: part.join(',') });
+        const rows = getPath(j, 'keywords');
+        if (!Array.isArray(rows)) continue;
+        for (const r of rows) {
+          const keyword = (toStr(getPath(r, 'keyword')) ?? '').toLowerCase(); if (!keyword) continue;
+          const cents = toNum(getPath(r, 'cpc'));
+          out.push({ keyword, volume: toNum(getPath(r, 'volume')), cpc: cents === null ? null : Math.round(cents) / 100, difficulty: toNum(getPath(r, 'difficulty')), competition: null });
+        }
+      }
+      return out;
+    },
+    async competitorKeywords(domain, country) {
+      const j = await get('site-explorer/organic-keywords', { select: 'keyword,best_position,best_position_url,volume', target: domain, date: today(), country: ahrefsCountry(country), limit: '100' });
+      const rows = getPath(j, 'keywords');
+      if (!Array.isArray(rows)) return [];
+      return rows.map((r): CompetitorKeyword | null => { const keyword = toStr(getPath(r, 'keyword')); const position = toNum(getPath(r, 'best_position')); return keyword && position !== null ? { keyword, position, volume: toNum(getPath(r, 'volume')), url: toStr(getPath(r, 'best_position_url')) } : null; }).filter((x): x is CompetitorKeyword => x !== null);
+    },
+    async backlinks(domain) {
+      const date = today();
+      const dr = await get('site-explorer/domain-rating', { target: domain, date });
+      const stats = await get('site-explorer/backlinks-stats', { target: domain, date, mode: 'domain' });
+      const authority = toNum(getPath(dr, 'domain_rating.domain_rating'));
+      const referringDomains = toNum(getPath(stats, 'metrics.live_refdomains')); const backlinks = toNum(getPath(stats, 'metrics.live'));
+      if (authority === null && referringDomains === null && backlinks === null) return null;
+      return { domain, referringDomains, backlinks, authority };
+    },
+  };
+}
+
+export function serpApiProvider(secrets: Secrets, deps: ProviderDeps = defaultDeps()): DataProvider {
+  const key = secrets.secret;
+  if (!key) return notConnectedProvider;
+  return {
+    id: 'serpapi', name: 'SerpApi', connected: true, offers: KEY_PROVIDERS.serpapi.offers,
+    async keywordMetrics() { return []; },
+    async competitorKeywords() { return []; },
+    async backlinks() { return null; },
+    async mapsSearch(q) {
+      const u = new URL('https://serpapi.com/search.json');
+      u.searchParams.set('engine', 'google_maps'); u.searchParams.set('type', 'search'); u.searchParams.set('q', q.keyword);
+      u.searchParams.set('ll', `@${q.lat.toFixed(6)},${q.lng.toFixed(6)},${q.zoom}z`); u.searchParams.set('api_key', key);
+      const j = await callJson(deps, u.toString(), { method: 'GET', headers: {} });
+      const rows = getPath(j, 'local_results');
+      if (!Array.isArray(rows)) { const err = toStr(getPath(j, 'error')); if (err && !/hasn't returned any results/i.test(err)) throw new ProviderError(`SerpApi: ${err.slice(0, 160)}`); return []; }
+      return rows.map((it, i): MapsPlace | null => {
+        const name = toStr(getPath(it, 'title')); if (!name) return null;
+        return { name, placeId: toStr(getPath(it, 'place_id')), rank: toNum(getPath(it, 'position')) ?? i + 1, rating: toNum(getPath(it, 'rating')), reviews: toNum(getPath(it, 'reviews')), category: toStr(getPath(it, 'type')), address: toStr(getPath(it, 'address')), website: toStr(getPath(it, 'website')) };
+      }).filter((x): x is MapsPlace => x !== null).slice(0, 30);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Custom adapter
 // ---------------------------------------------------------------------------
 function authHeaders(c: CustomConfig, s: Secrets): Record<string, string> {
@@ -231,7 +372,7 @@ export function customProvider(c: CustomConfig, secrets: Secrets, deps: Provider
 // ---------------------------------------------------------------------------
 export interface ProviderRecord {
   id: string; // the workspace id
-  kind: 'dataforseo' | 'custom'; enabled: boolean; config: CustomConfig | null; sealedSecret: string;
+  kind: 'dataforseo' | 'custom' | KeyProviderKind; enabled: boolean; config: CustomConfig | null; sealedSecret: string;
   createdBy: string; createdAt: string; updatedAt: string; lastTestedAt: string | null; lastTestOk: boolean | null; lastError: string | null;
 }
 export interface ProviderStore { get(wsId: string): Promise<ProviderRecord | null>; put(r: ProviderRecord): Promise<void>; delete(wsId: string): Promise<boolean> }
@@ -252,6 +393,9 @@ export const secretScope = (wsId: string) => `dp-${wsId}`;
 
 export function buildFromRecord(r: ProviderRecord, secrets: Secrets, deps?: ProviderDeps): DataProvider {
   if (r.kind === 'dataforseo') return dataForSeoProvider(secrets, deps);
+  if (r.kind === 'semrush') return semrushProvider(secrets, deps);
+  if (r.kind === 'ahrefs') return ahrefsProvider(secrets, deps);
+  if (r.kind === 'serpapi') return serpApiProvider(secrets, deps);
   return r.config ? customProvider(r.config, secrets, deps) : notConnectedProvider;
 }
 
@@ -269,7 +413,7 @@ const recall = <T>(key: string, now: number): T | undefined => { const h = cache
 export function withCache(inner: DataProvider, wsId: string, now: () => number = Date.now): DataProvider {
   const guard = async () => { const r = await checkRateLimit('provider-calls', wsId, MAX_CALLS_PER_DAY, 24 * 3_600_000); if (!r.allowed) throw new ProviderError(`Today's limit of ${MAX_CALLS_PER_DAY} lookups for this workspace is used up. It resets within a day.`); };
   return {
-    id: inner.id, name: inner.name, connected: inner.connected,
+    id: inner.id, name: inner.name, connected: inner.connected, ...(inner.offers ? { offers: inner.offers } : {}),
     async keywordMetrics(keywords, country) {
       const t = now(); const out: KeywordMetrics[] = []; const missing: string[] = [];
       for (const k of new Set(keywords.map((x) => x.toLowerCase()))) { const hit = recall<KeywordMetrics>(`${wsId}|km|${country}|${k}`, t); if (hit) out.push(hit); else missing.push(k); }

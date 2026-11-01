@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { getServerConfig } from '../config.js';
-import { buildFromRecord, getProviderStore, providerInputSchema, ProviderError, secretScope, validateCustomConfig, type ProviderDeps, type ProviderRecord } from '../lib/dataProviders.js';
+import { buildFromRecord, isKeyProvider, KEY_PROVIDERS, getProviderStore, providerInputSchema, ProviderError, secretScope, validateCustomConfig, type ProviderDeps, type ProviderRecord } from '../lib/dataProviders.js';
 import { getFirestoreStore } from '../lib/firestore.js';
 import { can } from '../lib/permissions.js';
 import { checkRateLimit } from '../lib/rateLimiter.js';
@@ -52,6 +52,7 @@ dataProviderRouter.put('/', async (req, res) => {
     else if (cur && cur.kind === input.kind) { try { secretJson = openAgentSecret(cur.sealedSecret, cur.createdBy, secretScope(s.ws), getAgentKeyring()); } catch { return fail(res, 422, 'SECRET_UNREADABLE', 'The saved sign-in details could not be read. Enter them again.'); } }
     else if (input.kind === 'custom' && input.config.auth.type === 'none') secretJson = '{}';
     else return fail(res, 400, 'CREDENTIALS_REQUIRED', 'Enter your sign-in details for the provider.');
+    if (isKeyProvider(input.kind) && !(JSON.parse(secretJson) as { secret?: string }).secret) return fail(res, 400, 'CREDENTIALS_REQUIRED', 'Paste your API key.');
     if (input.kind === 'dataforseo') { const c = JSON.parse(secretJson) as { login?: string; password?: string }; if (!c.login || !c.password) return fail(res, 400, 'CREDENTIALS_REQUIRED', 'Enter your DataForSEO login and password.'); }
     const now = new Date(deps.now()).toISOString();
     // Sealed to whoever saves it, so only this person's saved copy can be opened.
@@ -90,7 +91,11 @@ dataProviderRouter.post('/test', async (req, res) => {
       try { checks.push({ name, ok: true, message: await fn() }); } catch (e) { checks.push({ name, ok: false, message: e instanceof ProviderError ? e.message : 'Could not read the reply.' }); }
     };
     const cfg = rec.config;
-    const has = (k: 'keywordMetrics' | 'competitorKeywords' | 'backlinks' | 'mapsSearch') => rec.kind === 'dataforseo' || Boolean(cfg?.[k]);
+    const has = (k: 'keywordMetrics' | 'competitorKeywords' | 'backlinks' | 'mapsSearch') => {
+      if (rec.kind === 'dataforseo') return true;
+      if (isKeyProvider(rec.kind)) { const o = KEY_PROVIDERS[rec.kind].offers; return k === 'mapsSearch' ? o.maps : k === 'backlinks' ? o.backlinks : o.keywords; }
+      return Boolean(cfg?.[k]);
+    };
     await attempt('Keyword numbers', has('keywordMetrics'), async () => { const r = await provider.keywordMetrics(['coffee'], 'us'); if (!r.length) throw new ProviderError('The provider answered, but no numbers were found in the reply. Check the field names.'); const m = r[0]!; return `"${m.keyword}": ${m.volume ?? 'no'} searches a month${m.cpc != null ? `, about ${m.cpc} per click` : ''}.`; });
     await attempt('Competitor keywords', has('competitorKeywords'), async () => { const r = await provider.competitorKeywords('wikipedia.org', 'us'); if (!r.length) throw new ProviderError('The provider answered, but no keywords were found in the reply. Check the field names.'); return `${r.length} keywords found, for example "${r[0]!.keyword}".`; });
     await attempt('Backlinks', has('backlinks'), async () => { const r = await provider.backlinks('wikipedia.org'); if (!r) throw new ProviderError('The provider answered, but no backlink numbers were found in the reply. Check the field names.'); return `${r.referringDomains ?? 'unknown'} linking sites.`; });

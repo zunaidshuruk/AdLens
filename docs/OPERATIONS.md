@@ -127,3 +127,16 @@ To open it to everyone:
 2. Under **Publishing status** press **Publish app**, then confirm. The status becomes **In production**.
 3. Until Google verifies the app, new people see a "Google hasn't verified this app" screen. They can press **Advanced**, then **Go to (app name) (unsafe)** and continue. An unverified app can have up to 100 such people. To remove the warning and the limit, press **Prepare for verification** (needs a privacy policy and terms page on your own domain, a short demo video, and a written reason for each of the two read-only scopes: Analytics and Search Console). Review takes days to weeks.
 4. The Business Profile scope (`business.manage`) is a separate Google access request; see the Local SEO notes.
+
+## Market data providers (Semrush, Ahrefs, SerpApi, DataForSEO, custom)
+
+Connections, "Market data provider": pick the service and paste one API key (DataForSEO uses a login and password). Keys are sealed to the person who saves them and never shown again. What each one gives:
+
+| Service | Keyword volume, cost, difficulty | Keywords a site ranks for | Backlinks | Google Maps results |
+|---|---|---|---|---|
+| Semrush | yes (`phrase_these`, 100 per call) | yes (`domain_organic`, 100 rows) | yes (`backlinks_overview`) | no |
+| Ahrefs (API v3) | yes (`keywords-explorer/overview`) | yes (`site-explorer/organic-keywords`, 100 rows) | yes (`domain-rating` + `backlinks-stats`) | no |
+| DataForSEO | yes | yes | needs its Backlinks subscription | yes |
+| SerpApi | no | no | no | yes (`google_maps`) |
+
+The adapters were written from each company's published API reference and tested against made-up replies only; none has run against a real account. Semrush's backlinks reply format was not readable in its documentation at build time (it follows the same semicolon text as its other reports), so if the "Backlinks" line fails in Test connection while the other lines work, tell us the message. Moz and other services without a ready-made adapter can be added with "Another provider (custom)" when they answer in JSON.

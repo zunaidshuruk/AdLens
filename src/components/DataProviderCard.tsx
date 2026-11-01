@@ -12,13 +12,21 @@ const EXAMPLES: Record<'keywordMetrics' | 'competitorKeywords' | 'backlinks' | '
   backlinks: { method: 'GET', url: 'https://api.example.com/v1/backlinks?domain={{domain}}', itemsPath: 'data', fields: { referringDomains: 'referring_domains', backlinks: 'backlinks', authority: 'authority' } },
   mapsSearch: { method: 'GET', url: 'https://api.example.com/v1/maps?q={{keyword}}&lat={{lat}}&lng={{lng}}&zoom={{zoom}}', itemsPath: 'data.places', fields: { name: 'name', position: 'rank', rating: 'rating', reviews: 'reviews', category: 'category', address: 'address', website: 'website', placeId: 'id' } },
 };
+const KEY_INFO = {
+  semrush: { label: 'Semrush', does: 'Search volume, cost per click, keyword difficulty, the keywords a website ranks for, and backlink numbers.', how: 'In Semrush open Subscription info, then API units (or the API page), and copy your API key. Semrush sells API units separately from the normal plans, so check the units balance there.' },
+  ahrefs: { label: 'Ahrefs', does: 'Search volume, cost per click, keyword difficulty, the keywords a website ranks for, and backlink numbers (Domain Rating and links).', how: 'In Ahrefs open Account settings, then API keys, and create a key (owners and admins only). API v3 needs a Lite plan or higher and uses API units each month.' },
+  serpapi: { label: 'SerpApi', does: 'Google Maps results for the Local SEO map rank tracker. It does not give keyword volumes or backlinks.', how: 'In SerpApi open Dashboard, then Your account, and copy your API key. The free plan has a small monthly limit.' },
+} as const;
+type KeyKind = keyof typeof KEY_INFO;
+const isKeyKind = (k: string): k is KeyKind => k in KEY_INFO;
 const LABEL = { keywordMetrics: 'Keyword numbers (volume, cost, difficulty)', competitorKeywords: 'Keywords a website ranks for', backlinks: 'Backlink numbers', mapsSearch: 'Google Maps results (local rank tracker)' } as const;
 type Slot = keyof typeof EXAMPLES;
 
 /** Connections page: connect your own market-data provider for search volume, cost per click, difficulty, competitor keywords and backlinks. */
 export const DataProviderCard: React.FC = () => {
   const [state, setState] = useState<{ provider: DataProviderStatus | null; canEdit: boolean; vaultReady: boolean } | null>(null);
-  const [kind, setKind] = useState<'dataforseo' | 'custom'>('dataforseo');
+  const [kind, setKind] = useState<'dataforseo' | 'custom' | KeyKind>('semrush');
+  const [apiKey, setApiKey] = useState('');
   const [login, setLogin] = useState(''); const [password, setPassword] = useState('');
   const [name, setName] = useState(''); const [authType, setAuthType] = useState<'none' | 'bearer' | 'header' | 'basic'>('bearer');
   const [headerName, setHeaderName] = useState(''); const [secret, setSecret] = useState(''); const [username, setUsername] = useState('');
@@ -42,6 +50,7 @@ export const DataProviderCard: React.FC = () => {
   const locked = !state.canEdit || !state.vaultReady;
 
   const build = (enabled: boolean): DataProviderInput => {
+    if (isKeyKind(kind)) return { kind, enabled, ...(apiKey ? { credentials: { secret: apiKey } } : {}) };
     if (kind === 'dataforseo') return { kind, enabled, ...(login || password ? { credentials: { login, password } } : {}) };
     const cfg: Record<string, unknown> = { name, auth: { type: authType, ...(authType === 'header' ? { headerName } : {}) } };
     for (const slot of Object.keys(EXAMPLES) as Slot[]) {
@@ -54,7 +63,7 @@ export const DataProviderCard: React.FC = () => {
     setBusy(true); setError(null); setNote(null);
     try { const m = await fn(); if (m) setNote(m); await load(); } catch (e) { setError(errMessage(e)); } finally { setBusy(false); }
   };
-  const save = (enabled = true) => run(async () => { await apiClient.dataProviderSave(build(enabled)); setPassword(''); setSecret(''); setChecks(null); return enabled ? 'Saved. Press "Test connection" to check it works.' : 'Turned off. Your details are kept.'; });
+  const save = (enabled = true) => run(async () => { await apiClient.dataProviderSave(build(enabled)); setPassword(''); setSecret(''); setApiKey(''); setChecks(null); return enabled ? 'Saved. Press "Test connection" to check it works.' : 'Turned off. Your details are kept.'; });
   const test = () => run(async () => { const r = await apiClient.dataProviderTest(); setChecks(r.checks); return r.ok ? 'Connected. At least one lookup works.' : 'Nothing worked yet. See the messages below.'; });
   const p = state.provider;
 
@@ -64,11 +73,17 @@ export const DataProviderCard: React.FC = () => {
         <p className="text-xs text-fg-muted">Connect your own account with a data provider to see search volume, cost per click, keyword difficulty, the keywords other websites rank for, and backlink numbers. You pay the provider directly for what you use. We keep your sign-in details encrypted, never show them again, and remember each lookup for a day so repeats cost nothing. We stop at 300 lookups a day per workspace as a safety limit.</p></div>
       {!state.vaultReady && <p role="status" className="text-xs text-warning">Secure storage is not set up on this server yet, so a provider cannot be connected.</p>}
       {state.vaultReady && !state.canEdit && <p className="text-xs text-fg-muted">Only owners and admins can change this.</p>}
-      <p className="text-sm text-fg">{p ? <><span className={p.enabled ? 'text-success font-medium' : 'text-fg-muted font-medium'}>{p.enabled ? 'Connected' : 'Turned off'}</span>{p.kind === 'custom' && p.config ? `: ${p.config.name}` : ': DataForSEO'}{p.lastTestedAt ? <span className="text-xs text-fg-muted"> · tested {new Date(p.lastTestedAt).toLocaleDateString()} ({p.lastTestOk ? 'worked' : 'did not work'})</span> : <span className="text-xs text-fg-muted"> · not tested yet</span>}</> : <span className="text-fg-muted">Not connected.</span>}</p>
-      <div className="flex gap-2" role="radiogroup" aria-label="Provider">
-        {([['dataforseo', 'DataForSEO'], ['custom', 'Another provider (custom)']] as const).map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={kind === k} disabled={locked} onClick={() => setKind(k)} className={`rounded-full border px-4 py-1.5 text-sm ${kind === k ? 'border-accent bg-accent-soft text-accent-text font-medium' : 'border-line text-fg-muted hover:text-fg'}`}>{l}</button>)}
+      <p className="text-sm text-fg">{p ? <><span className={p.enabled ? 'text-success font-medium' : 'text-fg-muted font-medium'}>{p.enabled ? 'Connected' : 'Turned off'}</span>{p.kind === 'custom' && p.config ? `: ${p.config.name}` : isKeyKind(p.kind) ? `: ${KEY_INFO[p.kind].label}` : ': DataForSEO'}{p.lastTestedAt ? <span className="text-xs text-fg-muted"> · tested {new Date(p.lastTestedAt).toLocaleDateString()} ({p.lastTestOk ? 'worked' : 'did not work'})</span> : <span className="text-xs text-fg-muted"> · not tested yet</span>}</> : <span className="text-fg-muted">Not connected.</span>}</p>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Provider">
+        {([['semrush', 'Semrush'], ['ahrefs', 'Ahrefs'], ['dataforseo', 'DataForSEO'], ['serpapi', 'SerpApi'], ['custom', 'Another provider (custom)']] as const).map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={kind === k} disabled={locked} onClick={() => setKind(k)} className={`rounded-full border px-4 py-1.5 text-sm ${kind === k ? 'border-accent bg-accent-soft text-accent-text font-medium' : 'border-line text-fg-muted hover:text-fg'}`}>{l}</button>)}
       </div>
-      {kind === 'dataforseo' ? (
+      {isKeyKind(kind) ? (
+        <div className="space-y-2">
+          <p className="text-xs text-fg-muted"><span className="font-medium text-fg">{KEY_INFO[kind].label} gives you:</span> {KEY_INFO[kind].does}</p>
+          <p className="text-xs text-fg-muted">{KEY_INFO[kind].how} You pay {KEY_INFO[kind].label} directly for what you use.</p>
+          <label className="text-xs font-medium text-fg block max-w-md">API key<input type="password" className={`${field} block w-full mt-1`} disabled={locked} autoComplete="new-password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={p?.hasSecret && p.kind === kind ? 'Saved (leave empty to keep)' : 'Paste your API key'} /></label>
+        </div>
+      ) : kind === 'dataforseo' ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <p className="text-xs text-fg-muted sm:col-span-2">In your DataForSEO account, open the API access page and copy your API login and API password (they are not the same as your website password). Pay as you go, no monthly fee. Backlink lookups need DataForSEO's separate Backlinks subscription.</p>
           <label className="text-xs font-medium text-fg block">API login<input className={`${field} block w-full mt-1`} disabled={locked} autoComplete="off" value={login} onChange={(e) => setLogin(e.target.value)} placeholder={p?.hasSecret && p.kind === 'dataforseo' ? 'Saved (leave empty to keep)' : 'login'} /></label>
