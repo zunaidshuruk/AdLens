@@ -116,3 +116,14 @@ If you cannot add DNS records, use any mailbox instead. Set these in the server 
 
 Other providers: Brevo (`smtp-relay.brevo.com`, port 587, free 300 emails a day, verify a single sender address), Zoho Mail (`smtp.zoho.com`), Outlook (`smtp-mail.outlook.com`). Limits: a free Gmail account sends about 500 emails a day, Google Workspace about 2,000; emails show the mailbox as the sender; messages may land in spam more often than from a verified domain. Fine for confirmation emails, alerts and scheduled reports at small scale; a verified domain is better once you have many customers.
 
+
+## Letting anyone connect Google (no manual "test users")
+
+AdLens itself has no invite list: anyone can create an account with an email address. The manual adding comes from Google. While the Google sign-in app is in **Testing**, Google only lets people on its "Test users" list connect Analytics and Search Console (everyone else sees "Access blocked"), and the sign-in also expires every 7 days.
+
+To open it to everyone:
+
+1. Google Cloud console, **APIs and Services, OAuth consent screen** (now called **Google Auth Platform, Audience**).
+2. Under **Publishing status** press **Publish app**, then confirm. The status becomes **In production**.
+3. Until Google verifies the app, new people see a "Google hasn't verified this app" screen. They can press **Advanced**, then **Go to (app name) (unsafe)** and continue. An unverified app can have up to 100 such people. To remove the warning and the limit, press **Prepare for verification** (needs a privacy policy and terms page on your own domain, a short demo video, and a written reason for each of the two read-only scopes: Analytics and Search Console). Review takes days to weeks.
+4. The Business Profile scope (`business.manage`) is a separate Google access request; see the Local SEO notes.

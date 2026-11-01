@@ -11,7 +11,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { apiClient, setActiveProjectHeader } from '../api/client.js';
+import { apiClient, setActiveProjectHeader, setProjectsLoading } from '../api/client.js';
 import { DEMO_PROJECT } from '../config/app.js';
 import { db, firestoreDirectAvailable, markFirestoreDirectUnavailable } from '../lib/firebase.js';
 import {
@@ -399,12 +399,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveProjectId(null);
       setActiveProjectHeader(null);
       setWorkspaceLoading(false);
+      setProjectsLoading(false);
       settingsAppliedForUid.current = null;
       return;
     }
 
     let cancelled = false;
     setWorkspaceLoading(true);
+    setProjectsLoading(true);
 
     (async () => {
       try {
@@ -423,6 +425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // ignore if offline or unconfigured in tests
         }
       } finally {
+        setProjectsLoading(false);
         if (!cancelled) {
           setWorkspaceLoading(false);
         }

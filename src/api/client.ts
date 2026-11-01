@@ -67,6 +67,20 @@ export function setActiveProjectHeader(header: string | null): void {
   activeProjectHeader = header && header.trim() ? header.trim() : null;
 }
 
+// Requests that need a project wait until the app has finished loading the user's projects
+// (a page opened from an email link can ask before that is done and would get "Choose a project first").
+let projectsPending = false;
+let projectsWaiters: Array<() => void> = [];
+export function setProjectsLoading(loading: boolean): void {
+  projectsPending = loading;
+  if (!loading) { const w = projectsWaiters; projectsWaiters = []; w.forEach((f) => f()); }
+}
+const NO_PROJECT_NEEDED = /^\/api\/(me\b|auth\b|account-mail\b|public-config|health|mcp\b)/;
+function waitForProjects(path: string): Promise<void> {
+  if (!projectsPending || NO_PROJECT_NEEDED.test(path)) return Promise.resolve();
+  return new Promise((resolve) => { projectsWaiters.push(resolve); setTimeout(resolve, 10000); });
+}
+
 export function getActiveProjectHeader(): string | null {
   return activeProjectHeader;
 }
@@ -124,6 +138,7 @@ async function performFetch(
 ): Promise<Response> {
   const isPublicEndpoint = path === '/api/public-config' || path === '/api/health';
   const idToken = isPublicEndpoint ? null : await getCurrentIdToken(forceRefreshToken);
+  if (!isPublicEndpoint && !(init?.headers as Record<string, string> | undefined)?.['X-AdLens-Project']) await waitForProjects(path);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
