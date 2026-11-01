@@ -15,7 +15,7 @@ export interface SpeedReport {
   lab: SpeedMetric[];
   field: { available: boolean; scope: 'page' | 'site' | 'none'; overall: Rating | null; metrics: SpeedMetric[] };
   opportunities: { id: string; title: string; savingsMs: number; savingsKb: number }[];
-  seoFailed: { id: string; title: string; detail: string }[];
+  seoFailed: { id: string; title: string; detail: string; fix: string; learnUrl: string | null; items: { what: string; where: string }[] }[];
   facts: { pageWeightKb: number | null; requests: number | null; domElements: number | null; scriptTimeMs: number | null };
   javascript: { level: 'none' | 'some' | 'heavy'; notes: string[] };
 }
@@ -46,6 +46,35 @@ const CATEGORY: Record<string, Rating> = { FAST: 'good', AVERAGE: 'needs', SLOW:
 
 const score100 = (c: Json | undefined): number | null => (typeof c?.score === 'number' ? Math.round(c.score * 100) : null);
 const clean = (s: unknown, max: number): string => String(s ?? '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim().slice(0, max);
+
+/** Plain-words fixes for the SEO checks people hit most (Lighthouse audit id -> what to do). */
+const FIX: Record<string, string> = {
+  'image-alt': 'Give each picture a short description of what it shows: in the page editor open the picture and fill "Alt text" (in HTML: alt="..."). A picture that is only decoration can have an empty alt (alt="").',
+  'link-text': 'Replace vague link words such as "click here", "read more" or "learn more" with words that say where the link goes, for example "Read the pricing guide". Links that only hold a picture need alt text on that picture.',
+  'meta-description': 'Add a short summary of the page (about 120 to 160 characters) as the page\'s meta description in your site editor or SEO plugin.',
+  'document-title': 'Give the page a clear title (a <title> in the page head), about 50 to 60 characters.',
+  'is-crawlable': 'Remove the "noindex" setting or the robots.txt rule that blocks this page, if you want it in Google.',
+  'crawlable-anchors': 'Make links real links (<a href="...">) so search engines can follow them, not buttons or scripts.',
+  'canonical': 'Make sure the canonical address in the page head points to this page, or to the one preferred version of it.',
+  'hreflang': 'Fix the language and region codes in the hreflang tags so each one is valid and points to a working page.',
+  'robots-txt': 'Fix the errors in your robots.txt file so search engines can read it.',
+  'http-status-code': 'Make the page answer with a normal success status instead of an error.',
+};
+const fixFor = (id: string): string => FIX[id] ?? 'Open the "Learn more" link for the steps. Fix the items listed here first.';
+
+/** First https link in a Lighthouse description, which is its "Learn more" page. */
+const learnLink = (d: unknown): string | null => { const m = /\]\((https:\/\/[^)\s]+)\)/.exec(String(d ?? '')); return m ? m[1].slice(0, 300) : null; };
+
+/** Which links, pictures or elements failed (Lighthouse lists them under details.items). */
+function failedItems(a: Json): { what: string; where: string }[] {
+  const items: Json[] = Array.isArray(a.details?.items) ? a.details.items : [];
+  return items.slice(0, 8).map((it) => {
+    const node: Json = it.node ?? {};
+    const what = clean(node.snippet ?? it.source ?? it.url ?? it.href ?? it.text ?? '', 200);
+    const where = clean(node.nodeLabel ?? node.selector ?? it.selector ?? '', 120);
+    return { what, where };
+  }).filter((x) => x.what || x.where);
+}
 
 /** Rough count of elements in the HTML as first delivered (before any JavaScript). */
 export const countRawElements = (html: string): number => (html.match(/<[a-z][a-z0-9-]*[\s>/]/gi) ?? []).length;
@@ -84,7 +113,7 @@ export function parsePageSpeed(json: Json, strategy: Strategy, raw?: { elements:
   const seoFailed = seoRefs
     .map((r) => audits[r.id] as Json | undefined)
     .filter((a): a is Json => a !== undefined && a.scoreDisplayMode !== 'notApplicable' && a.scoreDisplayMode !== 'manual' && a.scoreDisplayMode !== 'informative' && typeof a.score === 'number' && a.score < 1)
-    .map((a) => ({ id: String(a.id), title: clean(a.title, 100), detail: clean(a.description, 200) }))
+    .map((a) => ({ id: String(a.id), title: clean(a.title, 100), detail: clean(a.description, 200), fix: fixFor(String(a.id)), learnUrl: learnLink(a.description), items: failedItems(a) }))
     .slice(0, 10);
 
   const num = (id: string, pick: (a: Json) => unknown = (a) => a.numericValue): number | null => { const v = audits[id] ? pick(audits[id]) : null; return typeof v === 'number' && Number.isFinite(v) ? v : null; };

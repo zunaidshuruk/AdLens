@@ -21,7 +21,7 @@ const psiJson = (over: Record<string, any> = {}) => ({
       'tiny-thing': { id: 'tiny-thing', title: 'Tiny', details: { type: 'opportunity', overallSavingsMs: 20 } },
       'document-title': { id: 'document-title', title: 'Document has a <title> element', description: 'The title gives screen reader users an overview.', score: 1, scoreDisplayMode: 'binary' },
       'meta-description': { id: 'meta-description', title: 'Document does not have a meta description', description: 'Meta descriptions may be included in search results.', score: 0, scoreDisplayMode: 'binary' },
-      'image-alt': { id: 'image-alt', title: 'Image elements do not have [alt] attributes', description: 'Informative elements should aim for short, descriptive alternate text.', score: 0, scoreDisplayMode: 'binary' },
+      'image-alt': { id: 'image-alt', title: 'Image elements do not have [alt] attributes', description: 'Informative elements should aim for short, descriptive alternate text. [Learn more about the `alt` attribute](https://dequeuniversity.com/rules/axe/4.10/image-alt).', score: 0, scoreDisplayMode: 'binary', details: { items: [{ node: { snippet: '<img src="/logo.png">', nodeLabel: 'logo.png', selector: 'header > img' } }] } },
       'robots-txt': { id: 'robots-txt', title: 'robots.txt is valid', score: null, scoreDisplayMode: 'notApplicable' },
       'structured-data': { id: 'structured-data', title: 'Structured data is valid', score: null, scoreDisplayMode: 'manual' },
     },
@@ -45,6 +45,10 @@ test('Sprint 38 — speed test: ratings, plain labels and what real visitors saw
   assert.equal(r.opportunities[1].title, 'Reduce unused JavaScript', 'links are stripped');
   assert.equal(r.opportunities[1].savingsKb, 200);
   assert.deepEqual(r.seoFailed.map((x) => x.id), ['meta-description', 'image-alt'], 'only real failures, not n/a or manual checks');
+  const alt = r.seoFailed.find((x) => x.id === 'image-alt')!;
+  assert.equal(alt.learnUrl, 'https://dequeuniversity.com/rules/axe/4.10/image-alt');
+  assert.match(alt.fix, /Alt text/);
+  assert.deepEqual(alt.items, [{ what: '<img src="/logo.png">', where: 'logo.png' }]);
   assert.deepEqual(r.facts, { pageWeightKb: 2048, requests: 64, domElements: 2400, scriptTimeMs: 1235 });
 
   // no visitor data: falls back to site-wide data, then to none

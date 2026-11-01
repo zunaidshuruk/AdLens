@@ -314,7 +314,20 @@ function SpeedTest() {
             </div>
             <h4 className="text-xs font-semibold text-fg pt-1">SEO checks on the finished page</h4>
             {r.seoFailed.length === 0 ? <p className="text-sm text-success">All of Google's SEO checks passed on the finished page.</p> : (
-              <ul className="space-y-2">{r.seoFailed.map((x) => <li key={x.id} className="rounded-xl border border-line bg-surface p-3"><p className="text-sm font-medium text-fg">{x.title}</p>{x.detail && <p className="text-xs text-fg-muted mt-0.5">{x.detail}</p>}</li>)}</ul>
+              <ul className="space-y-2">{r.seoFailed.map((x) => (
+                <li key={x.id} className="rounded-xl border border-line bg-surface p-3 space-y-2">
+                  <p className="text-sm font-medium text-fg">{x.title}</p>
+                  {x.detail && <p className="text-xs text-fg-muted">{x.detail}</p>}
+                  {x.fix && <p className="text-xs text-fg"><span className="font-semibold">How to fix: </span>{x.fix}</p>}
+                  {(x.items?.length ?? 0) > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-fg">Found on this page ({x.items.length === 8 ? 'first 8' : x.items.length}):</p>
+                      <ul className="space-y-1">{x.items.map((it, i) => <li key={i} className="rounded-lg bg-fill-1 border border-line p-2 text-[12px] text-fg break-all">{it.what && <code>{it.what}</code>}{it.where && <span className="block text-fg-muted mt-0.5">{it.where}</span>}</li>)}</ul>
+                    </div>
+                  )}
+                  {x.learnUrl && <a href={x.learnUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-accent-text underline">Learn more (opens Google's guide)</a>}
+                </li>
+              ))}</ul>
             )}
           </section>
           {r.opportunities.length > 0 && (

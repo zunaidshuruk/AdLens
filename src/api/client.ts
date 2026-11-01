@@ -467,7 +467,7 @@ export interface SpeedReport {
   lab: SpeedMetricInfo[];
   field: { available: boolean; scope: 'page' | 'site' | 'none'; overall: 'good' | 'needs' | 'poor' | null; metrics: SpeedMetricInfo[] };
   opportunities: { id: string; title: string; savingsMs: number; savingsKb: number }[];
-  seoFailed: { id: string; title: string; detail: string }[];
+  seoFailed: { id: string; title: string; detail: string; fix: string; learnUrl: string | null; items: { what: string; where: string }[] }[];
   facts: { pageWeightKb: number | null; requests: number | null; domElements: number | null; scriptTimeMs: number | null };
   javascript: { level: 'none' | 'some' | 'heavy'; notes: string[] };
 }
