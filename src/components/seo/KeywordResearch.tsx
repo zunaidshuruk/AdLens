@@ -1,5 +1,6 @@
 import { Download, Search, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiClient, type SeoKeywordIdea, type SeoKeywordOverview, type SeoTopicGap } from '../../api/client';
 
 const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
@@ -141,6 +142,13 @@ export function KeywordResearch() {
             <SaveToList keywords={shown.map((i) => i.keyword)} onDone={setSaved} />
           </div>
           {saved && <p role="status" className="text-xs text-success">{saved}</p>}
+          {!data.providerConnected && (
+            <div className="rounded-xl border border-accent-line bg-accent-soft p-3 text-xs text-fg space-y-1">
+              <p className="font-semibold">Want monthly searches and difficulty here?</p>
+              <p>Those two numbers come from a paid keyword data service that you connect with your own account (DataForSEO, pay as you go, no monthly fee). Once connected, two extra columns appear in this table, and they also fill in Domain overview and the PPC keyword tool.</p>
+              <Link to="/connections#provider" className="inline-block text-accent-text underline min-h-[32px] leading-8">Connect a keyword data service</Link>
+            </div>
+          )}
           {shown.length === 0 ? <p className="text-sm text-fg-muted">No ideas match. Try another filter or a broader word.</p> : view === 'groups' ? (
             <div className="space-y-2">{data.clusters.map((c) => {
               const members = c.keywords.filter((k) => shown.some((i) => i.keyword === k));
