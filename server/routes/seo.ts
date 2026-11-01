@@ -24,7 +24,7 @@ import { writeWith, writerInputSchema } from '../lib/seoWriter.js';
 import { onPageReport } from '../lib/seoOnPage.js';
 import { domainOverview } from '../lib/seoDomain.js';
 import { topicGap, visibleText } from '../lib/seoTopics.js';
-import { classifyIntent, keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
+import { classifyIntent, demandScore, keywordIdeas, googleSuggest, type SuggestFetcher } from '../lib/seoKeywords.js';
 import { findOpportunities, type QueryPageRow } from '../lib/seoOpportunities.js';
 import { analyzeHtml, pageIssues, scoreFor } from '../lib/seoPage.js';
 import { SsrfError } from '../lib/ssrfGuard.js';
@@ -205,10 +205,10 @@ seoRouter.post('/keywords', async (req, res) => {
     if (provider.connected) { try { for (const m of await provider.keywordMetrics(ideas.map((i) => i.keyword).slice(0, 300), 'us')) metrics.set(m.keyword, m); } catch (e) { providerError = e instanceof ProviderError ? e.message : 'The data provider could not be read.'; } }
     res.json({
       seed: parsed.data.seed,
-      ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null, metrics: metrics.get(i.keyword) ?? null })),
+      ideas: ideas.map((i) => ({ ...i, ranking: known.get(i.keyword) ?? null, metrics: metrics.get(i.keyword) ?? null, demand: demandScore(i.hits, i.bestRank, known.get(i.keyword)?.impressions ?? null) })),
       clusters: clusterKeywords(ideas.map((i) => i.keyword)),
       providerConnected: provider.connected, providerError,
-      note: provider.connected ? 'Ideas come from what people type into Google; volumes come from your connected data source.' : `Ideas come from what people type into Google. ${NOT_CONNECTED_NOTE}`,
+      note: provider.connected ? 'Ideas come from what people type into Google; volumes come from your connected data source.' : 'Ideas come from what people type into Google. The Demand column is an AdLens estimate (how often and how high Google suggests a phrase, plus your own Search Console views), not a real search volume. Connect a data service for real volumes.',
     });
   } catch { fail(res, 500, 'SEO_FAILED', 'Something went wrong.'); }
 });

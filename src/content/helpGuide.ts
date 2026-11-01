@@ -271,7 +271,7 @@ export const GUIDES: Guide[] = [
       { text: 'Press a phrase for its overview: what people want, your own views and clicks, and related questions.' },
       { text: 'Switch to the grouped view to see clusters, press "CSV" to download, or "Save to a list".' },
     ],
-    limits: ['Search volume, cost and true difficulty need a market-data provider (see "Market data").'] },
+    limits: ['The Demand column (Low, Medium, High) is an AdLens estimate from how often and how high Google suggests a phrase, plus your own Search Console views. It is not a search volume.', 'Real search volume, cost and difficulty need a market-data provider (see "Market data").'] },
   { id: 'topic-gap', group: 'seo', title: 'Topic gap', summary: 'Compare your page with competitor pages to see what words they cover that you do not.', path: '/seo?tab=gap',
     steps: [
       { text: 'Open "Topic gap". Type your page and up to 5 competitor pages.' }, { text: 'Press Compare.' },

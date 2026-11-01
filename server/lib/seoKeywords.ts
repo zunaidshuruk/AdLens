@@ -5,7 +5,25 @@
 import { guardedRequest } from './ssrfGuard.js';
 
 export type Intent = 'informational' | 'commercial' | 'transactional' | 'navigational';
-export interface KeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'prepositions' | 'comparisons' | 'alphabet' | 'seed'; intent: Intent; words: number }
+export interface KeywordIdea { keyword: string; group: 'questions' | 'modifiers' | 'prepositions' | 'comparisons' | 'alphabet' | 'seed'; intent: Intent; words: number;
+  /** How many of our probes Google's suggestions returned this phrase for (more = more people type it). */
+  hits: number;
+  /** Best place it held in a suggestion list, 0 = first. */
+  bestRank: number }
+
+export type DemandLevel = 'high' | 'medium' | 'low';
+/**
+ * AdLens "demand score" (0 to 100): an estimate of how much people look for a phrase, NOT a search volume.
+ * Built only from free signals: how high and how often Google suggests it, plus your own Search Console views (90 days) when known.
+ */
+export function demandScore(hits: number, bestRank: number, impressions: number | null): { score: number; level: DemandLevel } {
+  const rankPts = Math.max(0, 10 - Math.max(0, bestRank)) / 10 * 50;
+  const hitPts = Math.min(Math.max(hits, 0), 6) / 6 * 30;
+  const imp = impressions ?? 0;
+  const impPts = imp >= 1000 ? 20 : imp >= 100 ? 14 : imp >= 10 ? 8 : imp > 0 ? 4 : 0;
+  const score = Math.round(rankPts + hitPts + impPts);
+  return { score, level: score >= 60 ? 'high' : score >= 35 ? 'medium' : 'low' };
+}
 
 export const QUESTION_WORDS = ['how', 'what', 'why', 'when', 'where', 'which', 'can', 'is', 'do', 'are'];
 export const SUFFIXES = ['best', 'for', 'vs', 'near me', 'price', 'cost', 'free', 'online', 'tips', 'examples', 'alternatives', 'reviews'];
@@ -56,11 +74,14 @@ export async function keywordIdeas(seedRaw: string, fetcher: SuggestFetcher = go
   const worker = async () => {
     while (next < probes.length) {
       const p = probes[next++];
-      for (const raw of await fetcher(p.q, lang).catch(() => [])) {
-        const k = norm(raw);
+      const list = await fetcher(p.q, lang).catch(() => []);
+      for (let rank = 0; rank < list.length; rank++) {
+        const k = norm(list[rank]);
         if (!k || k.length > 120 || k === seed) continue;
         const group: KeywordIdea['group'] = /^(how|what|why|when|where|which|who|can|is|are|do|does|should)\b/.test(k) ? 'questions' : p.group === 'seed' ? 'seed' : p.group;
-        if (!found.has(k)) found.set(k, { keyword: k, group, intent: classifyIntent(k), words: k.split(' ').length });
+        const cur = found.get(k);
+        if (!cur) found.set(k, { keyword: k, group, intent: classifyIntent(k), words: k.split(' ').length, hits: 1, bestRank: rank });
+        else { cur.hits += 1; cur.bestRank = Math.min(cur.bestRank, rank); }
       }
     }
   };

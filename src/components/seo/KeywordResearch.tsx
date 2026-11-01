@@ -10,6 +10,8 @@ const secondary = 'inline-flex items-center justify-center gap-1.5 rounded-lg bo
 const n = (v: number) => v.toLocaleString();
 const INTENT: Record<SeoKeywordIdea['intent'], string> = { informational: 'Learning', commercial: 'Comparing', transactional: 'Ready to buy', navigational: 'Other' };
 const GROUP: Record<SeoKeywordIdea['group'], string> = { seed: 'Seed', questions: 'Questions', modifiers: 'With a word added', prepositions: 'Prepositions', comparisons: 'Comparisons', alphabet: 'A to Z' };
+const DEMAND = { high: 'High', medium: 'Medium', low: 'Low' } as const;
+const DEMAND_CLASS = { high: 'bg-success-soft text-success', medium: 'bg-warning-soft text-warning', low: 'bg-fill-2 text-fg-muted' } as const;
 const MATCH = [['all', 'All ideas'], ['questions', 'Questions'], ['long', '4+ words'], ['mine', 'You already show for'], ['new', 'New for you']] as const;
 
 function download(name: string, text: string) {
@@ -98,6 +100,8 @@ export function KeywordResearch() {
   const [intent, setIntent] = useState<'all' | SeoKeywordIdea['intent']>('all');
   const [match, setMatch] = useState<(typeof MATCH)[number][0]>('all');
   const [view, setView] = useState<'list' | 'groups'>('list');
+  const [byDemand, setByDemand] = useState(false);
+  const [minDemand, setMinDemand] = useState<'any' | 'medium' | 'high'>('any');
   const [open, setOpen] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const run = async (e: React.FormEvent) => {
@@ -106,8 +110,8 @@ export function KeywordResearch() {
     try { setData(await apiClient.seoKeywords(seed.trim(), lang, deep)); } catch (err) { setError(errMessage(err)); }
     setBusy(false);
   };
-  const shown = useMemo(() => (data?.ideas ?? []).filter((i) => (intent === 'all' || i.intent === intent) && (match === 'all' || (match === 'questions' && i.group === 'questions') || (match === 'long' && i.words >= 4) || (match === 'mine' && i.ranking !== null) || (match === 'new' && i.ranking === null))), [data, intent, match]);
-  const csv = () => download(`keywords-${seed.trim().replace(/\W+/g, '-').toLowerCase() || 'ideas'}.csv`, ['Keyword,Type,What people want,Words,Your views (90 days),Your position,Monthly searches,Difficulty,Cost per click', ...shown.map((i) => [i.keyword, GROUP[i.group], INTENT[i.intent], i.words, i.ranking?.impressions ?? null, i.ranking ? i.ranking.position.toFixed(1) : null, i.metrics?.volume ?? null, i.metrics?.difficulty ?? null, i.metrics?.cpc ?? null].map(csvCell).join(','))].join('\n'));
+  const shown = useMemo(() => (data?.ideas ?? []).filter((i) => (intent === 'all' || i.intent === intent) && (match === 'all' || (match === 'questions' && i.group === 'questions') || (match === 'long' && i.words >= 4) || (match === 'mine' && i.ranking !== null) || (match === 'new' && i.ranking === null)) && (minDemand === 'any' || (minDemand === 'medium' ? i.demand?.level !== 'low' : i.demand?.level === 'high'))).sort((a, b) => (byDemand ? (b.demand?.score ?? 0) - (a.demand?.score ?? 0) : 0)), [data, intent, match, minDemand, byDemand]);
+  const csv = () => download(`keywords-${seed.trim().replace(/\W+/g, '-').toLowerCase() || 'ideas'}.csv`, ['Keyword,Type,What people want,Words,Your views (90 days),Your position,Demand (AdLens estimate),Monthly searches,Difficulty,Cost per click', ...shown.map((i) => [i.keyword, GROUP[i.group], INTENT[i.intent], i.words, i.ranking?.impressions ?? null, i.ranking ? i.ranking.position.toFixed(1) : null, i.demand ? `${DEMAND[i.demand.level]} (${i.demand.score})` : null, i.metrics?.volume ?? null, i.metrics?.difficulty ?? null, i.metrics?.cpc ?? null].map(csvCell).join(','))].join('\n'));
   const chip = (active: boolean) => `text-xs rounded-full border px-3 py-1 ${active ? 'border-accent bg-accent-soft text-accent-text' : 'border-line text-fg-muted hover:text-fg'}`;
   return (
     <div className="space-y-4">
@@ -135,6 +139,10 @@ export function KeywordResearch() {
             {(['all', 'informational', 'commercial', 'transactional', 'navigational'] as const).map((k) => <button key={k} type="button" aria-pressed={intent === k} onClick={() => setIntent(k)} className={chip(intent === k)}>{k === 'all' ? 'Any intent' : INTENT[k]}</button>)}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {([['any', 'Any demand'], ['medium', 'Medium or high demand'], ['high', 'High demand only']] as const).map(([k, label]) => <button key={k} type="button" aria-pressed={minDemand === k} onClick={() => setMinDemand(k)} className={chip(minDemand === k)}>{label}</button>)}
+            <button type="button" aria-pressed={byDemand} onClick={() => setByDemand(!byDemand)} className={chip(byDemand)}>Highest demand first</button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             {MATCH.map(([k, label]) => <button key={k} type="button" aria-pressed={match === k} onClick={() => setMatch(k)} className={chip(match === k)}>{label}</button>)}
             <span className="flex-1" />
             <button type="button" aria-pressed={view === 'groups'} onClick={() => setView(view === 'list' ? 'groups' : 'list')} className={secondary}>{view === 'list' ? 'Group by topic' : 'Show as list'}</button>
@@ -158,11 +166,12 @@ export function KeywordResearch() {
           ) : (
             <div className="overflow-auto rounded-xl border border-line bg-surface">
               <table className="min-w-full text-xs">
-                <thead className="text-fg-muted"><tr><th className="p-2 text-left font-medium">Keyword</th><th className="p-2 text-left font-medium">Type</th><th className="p-2 text-left font-medium">What people want</th>{data.providerConnected && <><th className="p-2 text-right font-medium">Searches</th><th className="p-2 text-right font-medium">Difficulty</th></>}<th className="p-2 text-right font-medium">Your views (90 days)</th><th className="p-2 text-right font-medium">Your position</th></tr></thead>
+                <thead className="text-fg-muted"><tr><th className="p-2 text-left font-medium">Keyword</th><th className="p-2 text-left font-medium">Type</th><th className="p-2 text-left font-medium">What people want</th><th className="p-2 text-left font-medium" title="An AdLens estimate of how much people look for this, from how often and how high Google suggests it. Not a real search volume.">Demand (estimate)</th>{data.providerConnected && <><th className="p-2 text-right font-medium">Searches</th><th className="p-2 text-right font-medium">Difficulty</th></>}<th className="p-2 text-right font-medium">Your views (90 days)</th><th className="p-2 text-right font-medium">Your position</th></tr></thead>
                 <tbody className="divide-y divide-line">
                   {shown.map((i) => (
                     <tr key={i.keyword}>
                       <td className="p-2"><button type="button" onClick={() => setOpen(i.keyword)} className="text-fg text-left hover:text-accent-text hover:underline underline-offset-2">{i.keyword}</button></td><td className="p-2 text-fg-muted">{GROUP[i.group]}</td><td className="p-2 text-fg-muted">{INTENT[i.intent]}</td>
+                      <td className="p-2">{i.demand ? <span className={`text-[11px] rounded-full px-2 py-0.5 ${DEMAND_CLASS[i.demand.level]}`} title={`Estimate ${i.demand.score} out of 100`}>{DEMAND[i.demand.level]}</span> : '—'}</td>
                       {data.providerConnected && <><td className="p-2 text-right tabular-nums">{i.metrics?.volume != null ? n(i.metrics.volume) : '—'}</td><td className="p-2 text-right tabular-nums">{i.metrics?.difficulty != null ? `${i.metrics.difficulty}%` : '—'}</td></>}
                       <td className="p-2 text-right tabular-nums">{i.ranking ? n(i.ranking.impressions) : '—'}</td><td className="p-2 text-right tabular-nums">{i.ranking ? i.ranking.position.toFixed(1) : '—'}</td>
                     </tr>
