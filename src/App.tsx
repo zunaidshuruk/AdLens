@@ -89,7 +89,7 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/mcp-access/authorize" element={<McpAuthorizePage />} />
                 <Route element={<Layout />}>
-                  <Route path="/mcp-access" element={<Navigate to="/agents?tab=tools" replace />} />
+                  <Route path="/mcp-access" element={<Navigate to="/agents" replace />} />
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/ga4" element={<GA4Page />} />
                   <Route path="/ai-traffic" element={<AITrafficPage />} />

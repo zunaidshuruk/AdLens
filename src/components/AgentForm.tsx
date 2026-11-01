@@ -1,13 +1,12 @@
-import { Bot, CheckCircle2, Copy, Plus, Trash2, X, XCircle } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
-import { ErrorState } from '../components/ErrorState';
 import type { AgentFormValues, AgentOptions, AgentProviderKind, AgentSourceId, AgentTestResult, PublicAgent } from '../types/agents.js';
 import { agentReadiness, emptyForm, formFromAgent, formToPayload, PROVIDER_DEFAULTS, PROVIDER_LABEL, toggleInList, validateForm } from '../utils/agentForm.js';
 
-const SOURCE_LABEL: Record<AgentSourceId, string> = { ga4: 'Google Analytics', search_console: 'Search Console', meta: 'Meta Ads' };
-const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+export const SOURCE_LABEL: Record<AgentSourceId, string> = { ga4: 'Google Analytics', search_console: 'Search Console', meta: 'Meta Ads' };
+export const errMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 const input = 'block w-full rounded-lg border border-line bg-surface text-fg text-sm px-3 py-2 min-h-[40px] focus:outline-none focus:ring-2 focus:ring-focus';
 
 function ConsentText({ provider }: { provider: AgentProviderKind }) {
@@ -17,7 +16,7 @@ function ConsentText({ provider }: { provider: AgentProviderKind }) {
   );
 }
 
-function AgentForm(props: {
+export function AgentForm(props: {
   initial: AgentFormValues;
   existing: PublicAgent | null;
   options: AgentOptions | null;
@@ -174,138 +173,3 @@ function AgentForm(props: {
     </form>
   );
 }
-
-export const AgentsPage: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
-  const [agents, setAgents] = useState<PublicAgent[] | null>(null);
-  const [limit, setLimit] = useState(3);
-  const [options, setOptions] = useState<AgentOptions | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<PublicAgent | 'new' | null>(null);
-  const [secret, setSecret] = useState<{ agent: string; value: string } | null>(null);
-  const [tests, setTests] = useState<Record<string, AgentTestResult | 'running'>>({});
-  const [copied, setCopied] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setError(null);
-      const res = await apiClient.listAgents();
-      setAgents(res.agents);
-      setLimit(res.limit);
-    } catch (e) {
-      setError(errMessage(e));
-      setAgents([]);
-    }
-  }, []);
-  useEffect(() => { void load(); void apiClient.getAgentOptions().then(setOptions).catch(() => setOptions(null)); }, [load]);
-
-  const test = async (a: PublicAgent) => {
-    setTests((t) => ({ ...t, [a.id]: 'running' }));
-    try {
-      const r = await apiClient.testAgent(a.id);
-      setTests((t) => ({ ...t, [a.id]: r }));
-    } catch (e) {
-      setTests((t) => ({ ...t, [a.id]: { ok: false, message: errMessage(e) } }));
-    }
-  };
-
-  const remove = async (a: PublicAgent) => {
-    if (!window.confirm(`Delete "${a.name}"? Its saved key is erased.`)) return;
-    try { await apiClient.deleteAgent(a.id); await load(); } catch (e) { setError(errMessage(e)); }
-  };
-
-  const copy = async (text: string) => {
-    try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* the secret stays visible to copy by hand */ }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        {embedded ? <h2 className="text-lg font-bold tracking-tight text-fg">Your AI agents</h2> : <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">AI Agents</h1>}
-        <p className="text-xs sm:text-sm text-fg-muted">Use your own AI (your Gemini or ChatGPT key, or your own service) to answer questions about your data. Your own key means these questions do not use the monthly AI allowance.</p>
-      </div>
-
-      {error && <ErrorState title="AI agents" message={error} onRetry={() => void load()} />}
-
-      {secret && (
-        <div role="status" className="rounded-xl border border-accent-line bg-accent-soft p-4 space-y-2">
-          <p className="text-sm font-semibold text-fg">Your webhook signing secret</p>
-          <p className="text-xs text-fg-muted">Copy it now and keep it safe. For security it will not be shown again (you can create a new one later).</p>
-          <code className="block break-all rounded-lg bg-surface border border-line p-2 text-xs text-fg">{secret.value}</code>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => void copy(secret.value)} className="inline-flex items-center gap-1.5 rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2"><Copy className="w-3.5 h-3.5" /> {copied ? 'Copied' : 'Copy'}</button>
-            <button type="button" onClick={() => setSecret(null)} className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2">I saved it</button>
-            <Link to="/agents/developers" className="inline-flex items-center text-xs text-accent-text underline px-2">How to use it</Link>
-          </div>
-        </div>
-      )}
-
-      {editing ? (
-        <AgentForm
-          initial={editing === 'new' ? emptyForm() : formFromAgent(editing)}
-          existing={editing === 'new' ? null : editing}
-          options={options}
-          onCancel={() => setEditing(null)}
-          onSaved={(agent, webhookSecret) => {
-            setEditing(null);
-            if (webhookSecret) setSecret({ agent: agent.id, value: webhookSecret });
-            void load();
-          }}
-        />
-      ) : (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-fg-muted">{agents ? `${agents.length} of ${limit} agents` : ''}</p>
-          <div className="flex gap-2">
-            <Link to="/agents/developers" className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] inline-flex items-center text-fg hover:bg-fill-2">Developer guide</Link>
-            <button type="button" disabled={!agents || agents.length >= limit} onClick={() => setEditing('new')} className="inline-flex items-center gap-1.5 rounded-lg bg-accent text-on-accent text-xs font-medium px-3 py-2 min-h-[36px] disabled:opacity-50"><Plus className="w-3.5 h-3.5" /> New agent</button>
-          </div>
-        </div>
-      )}
-
-      {agents === null ? <p className="text-sm text-fg-muted">Loading…</p> : agents.length === 0 && !editing ? (
-        <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center space-y-2">
-          <Bot className="w-6 h-6 mx-auto text-fg-muted" />
-          <p className="text-sm font-semibold text-fg">No agents yet</p>
-          <p className="text-xs text-fg-muted">Add one to chat with your data using your own AI account.</p>
-        </div>
-      ) : (
-        <ul className="space-y-3">
-          {agents.map((a) => {
-            const ready = agentReadiness(a);
-            const t = tests[a.id];
-            return (
-              <li key={a.id} className="rounded-xl border border-line bg-surface p-4 space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-fg">{a.name}</h3>
-                    <p className="text-xs text-fg-muted">{PROVIDER_LABEL[a.provider].split(' (')[0]}{a.model ? ` · ${a.model}` : ''} · {a.allowedSources.map((s) => SOURCE_LABEL[s]).join(', ')}{a.hasApiKey ? ` · key ${a.apiKeyHint}` : ''}{a.hasWebhookSecret ? ' · signing secret saved' : ''}</p>
-                  </div>
-                  <span className={`text-[11px] rounded-full px-2 py-0.5 ${ready.ready ? 'bg-accent-soft text-accent-text' : 'bg-warning-soft text-warning'}`}>{ready.ready ? 'Ready' : ready.reason}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => void test(a)} disabled={t === 'running'} className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2 disabled:opacity-50">{t === 'running' ? 'Testing…' : 'Test connection'}</button>
-                  <button type="button" onClick={() => setEditing(a)} className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2">Edit</button>
-                  {a.provider === 'webhook' && (
-                    <button type="button" onClick={async () => {
-                      if (!window.confirm('Create a new signing secret? The old one stops working immediately.')) return;
-                      try {
-                        const res = await apiClient.updateAgent(a.id, { agent: formToPayload(formFromAgent(a)), rotateWebhookSecret: true });
-                        if (res.webhookSecret) setSecret({ agent: a.id, value: res.webhookSecret });
-                        await load();
-                      } catch (e) { setError(errMessage(e)); }
-                    }} className="rounded-lg border border-line text-xs px-3 py-2 min-h-[36px] text-fg hover:bg-fill-2">New signing secret</button>
-                  )}
-                  <button type="button" aria-label={`Delete ${a.name}`} onClick={() => void remove(a)} className="ml-auto p-2 text-fg-muted hover:text-danger"><Trash2 className="w-4 h-4" /></button>
-                </div>
-                {t && t !== 'running' && (
-                  <p role="status" className={`flex items-start gap-1.5 text-xs ${t.ok ? 'text-accent-text' : 'text-danger'}`}>
-                    {t.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}<span>{t.message}</span>
-                  </p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-};

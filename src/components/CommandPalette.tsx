@@ -227,8 +227,8 @@ export const CommandPalette: React.FC = () => {
         label: 'Connect AI tools (MCP keys)',
         group: 'Navigate',
         keywords: ['mcp', 'claude', 'cursor', 'codex', 'gemini', 'key', 'api', 'connect', 'agent'],
-        hint: '/agents?tab=tools',
-        run: () => navigate('/agents?tab=tools'),
+        hint: '/agents',
+        run: () => navigate('/agents'),
       },
       {
         id: 'nav:snapshot',
