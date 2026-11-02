@@ -79,8 +79,31 @@
     }
   }
 
+  /* Nothing may push the page wider than the screen: pictures shrink, code scrolls inside its own box, long words wrap. */
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+  }
+  pre {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  main {
+    overflow-wrap: anywhere;
+  }
+
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
 }
 
+/* Outside any layer on purpose, so it wins over Tailwind's text-xs and text-sm on form fields. */
+/* Phones zoom the whole page when you tap a text box smaller than 16px, so keep them at 16px on small screens. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

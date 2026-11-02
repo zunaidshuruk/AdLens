@@ -119,7 +119,8 @@ export const DateRangePicker: React.FC = () => {
         }`}
       >
         <GitCompareArrows className="w-3.5 h-3.5 shrink-0" />
-        <span>Compare to previous period</span>
+        <span className="sm:hidden">Compare</span>
+        <span className="hidden sm:inline">Compare to previous period</span>
         <span
           className={`w-2 h-2 rounded-full ${
             compareEnabled ? 'bg-accent' : 'bg-fill-3'

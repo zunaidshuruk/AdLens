@@ -24,8 +24,8 @@ export const CookieNotice: React.FC = () => {
     setHidden(true);
   };
   return (
-    <div role="region" aria-label="Cookie notice" className="fixed inset-x-0 bottom-0 z-40 p-3 sm:p-4 pointer-events-none">
-      <div className="pointer-events-auto mx-auto max-w-2xl rounded-xl border border-line bg-raised shadow-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+    <div role="region" aria-label="Cookie notice" className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 p-2 sm:p-4 pointer-events-none">
+      <div className="pointer-events-auto mx-auto max-w-2xl rounded-xl border border-line bg-raised shadow-lg p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <p className="text-xs sm:text-sm text-fg">
           AdLens uses only essential cookies to keep you signed in and to connect your accounts safely. There are no advertising or tracking cookies.{' '}
           <Link to="/privacy#cookies" className="text-accent-text underline">Learn more</Link>

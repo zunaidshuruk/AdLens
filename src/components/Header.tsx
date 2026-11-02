@@ -78,7 +78,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-xs border-b border-line px-4 sm:px-6 py-3 space-y-2">
+    <header className="md:sticky md:top-0 z-30 bg-surface/95 backdrop-blur-xs border-b border-line px-4 sm:px-6 py-2 md:py-3 space-y-1.5 md:space-y-2">
       {isOffline && (
         <div
           role="status"
@@ -131,10 +131,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
               <span className="hidden md:inline font-semibold text-fg">
                 {projectName}
               </span>
-              <span aria-hidden="true" className="text-line-strong">
+              <span aria-hidden="true" className="text-line-strong hidden min-[400px]:inline">
                 ·
               </span>
-              <span className="font-mono text-fg-muted">
+              <span className="font-mono text-fg-muted hidden min-[400px]:inline max-w-[11rem] sm:max-w-none truncate">
                 {projectDomain}
               </span>
             </div>
