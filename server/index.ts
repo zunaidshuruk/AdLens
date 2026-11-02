@@ -38,6 +38,34 @@ async function startServer(): Promise<void> {
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    const optimizer = (vite.environments?.client as {
+      depsOptimizer?: {
+        init: () => Promise<void>;
+        scanProcessing?: Promise<void>;
+        metadata?: {
+          browserHash?: string;
+          discovered?: Record<string, { browserHash?: string }>;
+          optimized?: Record<string, { browserHash?: string }>;
+          chunks?: Record<string, { browserHash?: string }>;
+        };
+      };
+    } | undefined)?.depsOptimizer;
+    if (optimizer) {
+      await optimizer.init();
+      const meta = optimizer.metadata;
+      const unifiedHash =
+        Object.values(meta?.discovered ?? {})[0]?.browserHash ||
+        meta?.browserHash;
+      if (meta && unifiedHash) {
+        meta.browserHash = unifiedHash;
+        for (const d of Object.values(meta.discovered ?? {})) d.browserHash = unifiedHash;
+        for (const d of Object.values(meta.optimized ?? {})) d.browserHash = unifiedHash;
+        for (const c of Object.values(meta.chunks ?? {})) c.browserHash = unifiedHash;
+      }
+      if (optimizer.scanProcessing) {
+        await optimizer.scanProcessing;
+      }
+    }
     app.use(vite.middlewares);
   }
 
