@@ -100,9 +100,21 @@ export function refreshAdminSettings(force = false): Promise<void> {
   if (!force && Date.now() - loadedAt < REFRESH_MS) return Promise.resolve();
   if (inflight) return inflight;
   inflight = (async () => {
-    try { adopt(normalise(await store().load())); }
-    catch { loadedAt = Date.now() - REFRESH_MS + 5_000; /* try again in 5 seconds */ }
-    finally { inflight = null; }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const loaded = await Promise.race([
+        store().load(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('timeout')), 3_000);
+        }),
+      ]);
+      adopt(normalise(loaded));
+    } catch {
+      loadedAt = Date.now() - REFRESH_MS + 5_000; /* try again in 5 seconds */
+    } finally {
+      clearTimeout(timer);
+      inflight = null;
+    }
   })();
   return inflight;
 }

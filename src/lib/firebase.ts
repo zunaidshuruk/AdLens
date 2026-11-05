@@ -70,10 +70,18 @@ export async function initFirebase(): Promise<Auth | null> {
   initPromise = (async () => {
     let data: PublicConfigResponse;
     try {
-      const response = await fetch('/api/public-config', {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      let response: Response;
+      try {
+        response = await fetch('/api/public-config', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const message = `Failed to load Firebase config from /api/public-config (HTTP ${response.status}).`;

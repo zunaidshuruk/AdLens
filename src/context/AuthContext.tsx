@@ -173,28 +173,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
 
-      getRedirectResult(auth).catch((err) => {
-        const code = extractFirebaseErrorCode(err);
-        if (code === 'auth/account-exists-with-different-credential') {
-          const gCred = GoogleAuthProvider.credentialFromError(err);
-          const mCred = OAuthProvider.credentialFromError(err);
-          const cred = gCred || mCred;
-          const customEmail = (err as { customData?: { email?: string } })?.customData?.email;
-          if (cred) {
-            setPendingLinkCredential(cred);
-            setPendingLinkEmail(customEmail ?? null);
-            setPendingLinkProviderLabel(gCred ? 'Google' : 'Microsoft');
-          }
+      let redirectPending = false;
+      try {
+        redirectPending = sessionStorage.getItem('adlens_sso_redirect') === '1';
+        if (redirectPending) {
+          sessionStorage.removeItem('adlens_sso_redirect');
         }
-      });
+      } catch {
+        // ignore storage errors
+      }
 
-      const unsub = onAuthStateChanged(auth, (nextUser) => {
-        setUser(nextUser);
-        setLoading(false);
-        forceUserRefresh();
-      });
+      if (redirectPending) {
+        getRedirectResult(auth)
+          .then((res) => {
+            if (res?.user) {
+              setUser(res.user);
+              setLoading(false);
+              forceUserRefresh();
+            }
+          })
+          .catch((err) => {
+            const code = extractFirebaseErrorCode(err);
+            if (code === 'auth/account-exists-with-different-credential') {
+              const gCred = GoogleAuthProvider.credentialFromError(err);
+              const mCred = OAuthProvider.credentialFromError(err);
+              const cred = gCred || mCred;
+              const customEmail = (err as { customData?: { email?: string } })?.customData?.email;
+              if (cred) {
+                setPendingLinkCredential(cred);
+                setPendingLinkEmail(customEmail ?? null);
+                setPendingLinkProviderLabel(gCred ? 'Google' : 'Microsoft');
+              }
+            }
+            setLoading(false);
+          });
+      }
 
-      return unsub;
+      let settled = false;
+      const safetyTimer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          setUser((prev) => prev ?? auth.currentUser);
+          setLoading(false);
+          forceUserRefresh();
+        }
+      }, 4000);
+
+      const unsub = onAuthStateChanged(
+        auth,
+        (nextUser) => {
+          settled = true;
+          clearTimeout(safetyTimer);
+          setUser(nextUser);
+          setLoading(false);
+          forceUserRefresh();
+        },
+        () => {
+          settled = true;
+          clearTimeout(safetyTimer);
+          setLoading(false);
+          forceUserRefresh();
+        }
+      );
+
+      return () => {
+        clearTimeout(safetyTimer);
+        unsub();
+      };
     },
     [forceUserRefresh]
   );
@@ -226,18 +271,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let cancelled = false;
 
     void (async () => {
-      const auth = await initFirebase();
-      if (cancelled) return;
-      setEnabledProviders([...configuredAuthProviders]);
+      try {
+        const auth = await initFirebase();
+        if (cancelled) return;
+        setEnabledProviders([...configuredAuthProviders]);
 
-      if (!auth) {
-        setFirebaseReady(false);
-        setInitError(lastInitError);
-        setLoading(false);
-        return;
+        if (!auth) {
+          setFirebaseReady(false);
+          setInitError(lastInitError);
+          setLoading(false);
+          return;
+        }
+
+        unsubRef.current = attachAuthInstance(auth);
+      } catch {
+        if (!cancelled) {
+          setFirebaseReady(false);
+          setLoading(false);
+        }
       }
-
-      unsubRef.current = attachAuthInstance(auth);
     })();
 
     return () => {
@@ -294,7 +346,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // The account exists now. If the email cannot be sent, do not fail the sign-up: the verify page offers "resend" and shows the reason.
         await sendVerificationWithFallback(cred.user).catch(() => undefined);
         await cred.user.reload().catch(() => {});
-        setUser(auth.currentUser);
+        setUser(auth.currentUser ?? cred.user);
+        setLoading(false);
         forceUserRefresh();
       } catch (err) {
         throw new Error(mapFirebaseErrorMessage(err));
@@ -309,7 +362,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
         await maybeLinkPendingCredential(cred.user);
-        setUser(auth.currentUser);
+        setUser(auth.currentUser ?? cred.user);
+        setLoading(false);
         forceUserRefresh();
       } catch (err) {
         if (isMfaRequiredError(err)) throw toMfaChallenge(auth, err);
@@ -325,12 +379,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const cred = await signInWithPopup(auth, provider);
         await maybeLinkPendingCredential(cred.user);
-        setUser(auth.currentUser);
+        setUser(auth.currentUser ?? cred.user);
+        setLoading(false);
         forceUserRefresh();
       } catch (err) {
         if (isMfaRequiredError(err)) throw toMfaChallenge(auth, err);
         const code = extractFirebaseErrorCode(err);
         if (code === 'auth/popup-blocked') {
+          try {
+            sessionStorage.setItem('adlens_sso_redirect', '1');
+          } catch {
+            // ignore storage errors
+          }
           await signInWithRedirect(auth, provider);
           return;
         }
@@ -375,10 +435,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!/^(saml|oidc)\.[a-z0-9][a-z0-9._-]{0,59}$/.test(providerId)) throw new Error('This single sign-on connection is not valid.');
       const provider = providerId.startsWith('saml.') ? new SAMLAuthProvider(providerId) : new OAuthProvider(providerId);
       try {
-        await signInWithPopup(auth, provider);
+        const cred = await signInWithPopup(auth, provider);
         // Join the company workspace (if the administrator allowed it). Never blocks signing in.
         await apiClient.ssoJoin().catch(() => undefined);
-        setUser(auth.currentUser);
+        setUser(auth.currentUser ?? cred.user);
+        setLoading(false);
         forceUserRefresh();
       } catch (err) {
         if (isMfaRequiredError(err)) throw toMfaChallenge(auth, err);
