@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { CookieNotice } from './components/CookieNotice';
 import { Layout } from './components/Layout';
@@ -13,41 +13,47 @@ import { APP_NAME, APP_TAGLINE } from './config/app';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { AdminLoginPage } from './pages/AdminLoginPage';
-import { AdminPage } from './pages/AdminPage';
-import { AgentDeveloperPage } from './pages/AgentDeveloperPage';
-import { AIAnalystPage } from './pages/AIAnalystPage';
-import { AiHubPage } from './pages/AiHubPage';
-import { AITrafficPage } from './pages/AITrafficPage';
-import { AlertsPage } from './pages/AlertsPage';
 import { AuthActionPage } from './pages/AuthActionPage';
-import { ConnectionsPage } from './pages/ConnectionsPage';
-import { CrossChannelPage } from './pages/CrossChannelPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { DashboardsPage } from './pages/DashboardsPage';
-import { DataDeletionPage } from './pages/DataDeletionPage';
-import { ExplorePage } from './pages/ExplorePage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { GA4Page } from './pages/GA4Page';
-import { HelpPage } from './pages/HelpPage';
 import { LandingPage } from './pages/LandingPage';
-import { LeadsPage } from './pages/LeadsPage';
 import { LegalPage } from './pages/LegalPage';
-import { McpAuthorizePage } from './pages/McpAuthorizePage';
-import { MetaAdsPage } from './pages/MetaAdsPage';
-import { OverviewPage } from './pages/OverviewPage';
-import { PageDetailPage } from './pages/PageDetailPage';
-import { PagesPage } from './pages/PagesPage';
-import { SearchConsolePage } from './pages/SearchConsolePage';
-import { SearchIntelligencePage } from './pages/SearchIntelligencePage';
-import { SeoPage } from './pages/SeoPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { SharedPage } from './pages/SharedPage';
-import { SignInBlockedPage } from './pages/SignInBlockedPage';
+import { DataDeletionPage } from './pages/DataDeletionPage';
 import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
-import { SnapshotPage } from './pages/SnapshotPage';
+import { SignInBlockedPage } from './pages/SignInBlockedPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
+
+// Each screen is loaded when first opened, so the first page a visitor sees downloads far less code (Sprint 18).
+const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage').then((m) => ({ default: m.AdminLoginPage })));
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+const AgentDeveloperPage = lazy(() => import('./pages/AgentDeveloperPage').then((m) => ({ default: m.AgentDeveloperPage })));
+const AiHubPage = lazy(() => import('./pages/AiHubPage').then((m) => ({ default: m.AiHubPage })));
+const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage').then((m) => ({ default: m.AIAnalystPage })));
+const AITrafficPage = lazy(() => import('./pages/AITrafficPage').then((m) => ({ default: m.AITrafficPage })));
+const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })));
+const CrossChannelPage = lazy(() => import('./pages/CrossChannelPage').then((m) => ({ default: m.CrossChannelPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const SharedPage = lazy(() => import('./pages/SharedPage').then((m) => ({ default: m.SharedPage })));
+const LeadsPage = lazy(() => import('./pages/LeadsPage').then((m) => ({ default: m.LeadsPage })));
+const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })));
+const SeoPage = lazy(() => import('./pages/SeoPage').then((m) => ({ default: m.SeoPage })));
+const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
+const DashboardsPage = lazy(() => import('./pages/DashboardsPage').then((m) => ({ default: m.DashboardsPage })));
+const ExplorePage = lazy(() => import('./pages/ExplorePage').then((m) => ({ default: m.ExplorePage })));
+const GA4Page = lazy(() => import('./pages/GA4Page').then((m) => ({ default: m.GA4Page })));
+const MetaAdsPage = lazy(() => import('./pages/MetaAdsPage').then((m) => ({ default: m.MetaAdsPage })));
+const OverviewPage = lazy(() => import('./pages/OverviewPage').then((m) => ({ default: m.OverviewPage })));
+const PageDetailPage = lazy(() => import('./pages/PageDetailPage').then((m) => ({ default: m.PageDetailPage })));
+const PagesPage = lazy(() => import('./pages/PagesPage').then((m) => ({ default: m.PagesPage })));
+const SearchIntelligencePage = lazy(() => import('./pages/SearchIntelligencePage').then((m) => ({ default: m.SearchIntelligencePage })));
+const SnapshotPage = lazy(() => import('./pages/SnapshotPage').then((m) => ({ default: m.SnapshotPage })));
+const McpAuthorizePage = lazy(() => import('./pages/McpAuthorizePage').then((m) => ({ default: m.McpAuthorizePage })));
+const SearchConsolePage = lazy(() => import('./pages/SearchConsolePage').then((m) => ({ default: m.SearchConsolePage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+
+const PageFallback = () => (
+  <div role="status" aria-live="polite" className="p-8 text-sm text-fg-muted">Loading…</div>
+);
 
 export default function App() {
   useEffect(() => {
@@ -60,6 +66,7 @@ export default function App() {
         <ThemeProvider>
           <BrowserRouter>
             <CookieNotice />
+            <Suspense fallback={<PageFallback />}>
             <Routes>
               {/* Public authentication & legal routes */}
               <Route path="/sign-in" element={<SignInPage />} />
@@ -110,6 +117,7 @@ export default function App() {
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </ThemeProvider>
       </AppProvider>
