@@ -51,23 +51,16 @@ export default defineConfig(() => {
             const safeName = (chunkInfo.name || 'chunk').replace(/error/gi, 'status');
             return `assets/${safeName}-[hash].js`;
           },
-          manualChunks(id) {
-            if (id.includes('node_modules/recharts')) {
-              return 'vendor-charts';
-            }
-            if (id.includes('node_modules/firebase')) {
-              return 'vendor-firebase';
-            }
-            if (
-              id.includes('node_modules/react') ||
-              id.includes('node_modules/react-dom') ||
-              id.includes('node_modules/react-router-dom')
-            ) {
-              return 'vendor-react';
-            }
-            if (id.includes('node_modules/lucide-react')) {
-              return 'vendor-icons';
-            }
+          // Vite 8 uses Rolldown: groups are matched by priority (higher first).
+          // React core is pinned first so it is never parked inside the charts chunk,
+          // which would force every first load to download all of the charts library.
+          codeSplitting: {
+            groups: [
+              { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|react-is|use-sync-external-store)[\\/]/, priority: 40 },
+              { name: 'vendor-icons', test: /node_modules[\\/]lucide-react[\\/]/, priority: 30 },
+              { name: 'vendor-firebase', test: /node_modules[\\/](@firebase|firebase)[\\/]/, priority: 30 },
+              { name: 'vendor-charts', test: /node_modules[\\/](recharts|d3-[a-z-]+|victory-vendor|@reduxjs|react-redux|redux|immer|reselect|es-toolkit|decimal\.js-light)[\\/]/, priority: 20 },
+            ],
           },
         },
       },

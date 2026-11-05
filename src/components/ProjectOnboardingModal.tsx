@@ -50,6 +50,7 @@ export const ProjectOnboardingModal: React.FC = () => {
     projects,
     activeWorkspace,
     workspaceLoading,
+    projectsResolved,
     isDemoMode,
     setIsDemoMode,
     createProject,
@@ -57,7 +58,8 @@ export const ProjectOnboardingModal: React.FC = () => {
     closeNewProjectModal,
   } = useApp();
 
-  const isOnboarding = !workspaceLoading && projects.length === 0 && !isDemoMode;
+  // Only ask for a first project once we KNOW there is none. While loading, or if loading failed, never ask.
+  const isOnboarding = projectsResolved && !workspaceLoading && projects.length === 0 && !isDemoMode;
   const isOpen = isOnboarding || isNewProjectModalOpen;
 
   const browserTz = useMemo(() => getBrowserTimezone(), []);

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { useAppContext } from '../context/AppContext';
 import { APP_NAME } from '../config/app';
 import { pageTitleFor } from '../utils/pageTitle.js';
 import { Header } from './Header';
@@ -14,6 +15,7 @@ import { TwoStepRuleBanner } from './TwoStepRuleBanner';
 export const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { pathname } = useLocation();
+  const { meError, projects, reloadMe } = useAppContext();
 
   useEffect(() => {
     document.title = pageTitleFor(pathname, APP_NAME);
@@ -27,6 +29,12 @@ export const Layout: React.FC = () => {
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
 
         <main className="flex-1 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:px-6 lg:px-8 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 max-w-[1600px] w-full mx-auto">
+          {meError && projects.length === 0 && (
+            <div role="alert" className="mb-4 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm text-fg flex flex-wrap items-center justify-between gap-2">
+              <span>We could not load your projects (the connection may be slow). Your projects are safe.</span>
+              <button type="button" onClick={reloadMe} className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-fg hover:bg-fill-2 min-h-[36px]">Try again</button>
+            </div>
+          )}
           <TwoStepRuleBanner />
           <InstallBanner />
           <Outlet />

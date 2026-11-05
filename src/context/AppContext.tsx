@@ -31,6 +31,7 @@ import type {
   CurrencyCode,
   DatePreset,
   NumberFormatLocale,
+  MeResponse,
   ProjectConfig,
   ThemeMode,
   UserProfile,
@@ -77,6 +78,11 @@ interface AppContextValue {
   projects: ProjectConfig[];
   activeProject: ProjectConfig | null;
   workspaceLoading: boolean;
+  /** True once we know for certain which projects this person has (so an empty list really means none). */
+  projectsResolved: boolean;
+  /** True when loading the account failed (offline, slow server). Never treated as "no projects". */
+  meError: boolean;
+  reloadMe: () => void;
   isDemoMode: boolean;
   setIsDemoMode: (demo: boolean) => void;
   selectProject: (projectId: string) => void;
@@ -132,6 +138,43 @@ interface AppContextValue {
   isNewProjectModalOpen: boolean;
   openNewProjectModal: () => void;
   closeNewProjectModal: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Last known account, kept on this device so the app opens straight away on the next visit.
+// It is replaced by the server's answer a moment later, and removed on sign-out.
+// ---------------------------------------------------------------------------
+const ME_CACHE_PREFIX = 'adlens_me_v1_';
+function readMeCache(uid: string): MeResponse | null {
+  try {
+    const raw = localStorage.getItem(`${ME_CACHE_PREFIX}${uid}`);
+    if (!raw) return null;
+    const me = JSON.parse(raw) as MeResponse;
+    return me && me.user?.uid === uid && Array.isArray(me.workspaces) && Array.isArray(me.projects) && me.workspaces.length > 0 ? me : null;
+  } catch {
+    return null;
+  }
+}
+function writeMeCache(uid: string, me: MeResponse): void {
+  try {
+    localStorage.setItem(`${ME_CACHE_PREFIX}${uid}`, JSON.stringify(me));
+  } catch {
+    // private window or full storage: the app just loads the usual way
+  }
+}
+function clearMeCache(): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(ME_CACHE_PREFIX)) localStorage.removeItem(k);
+    }
+  } catch {
+    // ignore
+  }
+}
+/** A short summary of what matters for the screen: which workspaces and projects exist and how they are named. */
+function meFingerprint(me: MeResponse): string {
+  return JSON.stringify([me.workspaces.map((w) => [w.id, w.role, w.plan, w.name]), me.projects.map((p) => [p.id, p.name, p.domain, p.updatedAt])]);
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -206,6 +249,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [projects, setProjects] = useState<ProjectConfig[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState<boolean>(false);
+  const [projectsResolved, setProjectsResolved] = useState<boolean>(false);
+  const [meError, setMeError] = useState<boolean>(false);
+  const [reloadTick, setReloadTick] = useState<number>(0);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState<boolean>(false);
   const settingsAppliedForUid = useRef<string | null>(null);
@@ -389,7 +435,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user, emailVerified, workspaceLoading, userProfile?.uid]);
 
-  // After sign-in, call /api/me/bootstrap, then /api/me
+  // After sign-in: show the last known account instantly (if this device has it), ask the server (fast read), then run the
+  // idempotent bootstrap in the background (accepts invites, fills in missing pieces) and re-apply only if it changed anything.
   useEffect(() => {
     if (authLoading) return;
     if (!user || !emailVerified) {
@@ -400,34 +447,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveProjectHeader(null);
       setWorkspaceLoading(false);
       setProjectsLoading(false);
+      setProjectsResolved(false);
+      setMeError(false);
+      clearMeCache();
       settingsAppliedForUid.current = null;
       return;
     }
 
     let cancelled = false;
-    setWorkspaceLoading(true);
+    setMeError(false);
     setProjectsLoading(true);
 
+    const cached = readMeCache(user.uid);
+    if (cached) {
+      applyMeResponse(user.uid, cached);
+      setProjectsResolved(true);
+      setWorkspaceLoading(false);
+    } else {
+      setWorkspaceLoading(true);
+    }
+
+    const done = (me: MeResponse) => {
+      if (cancelled) return;
+      applyMeResponse(user.uid, me);
+      writeMeCache(user.uid, me);
+      setProjectsResolved(true);
+      setMeError(false);
+    };
+
     (async () => {
+      let me: MeResponse | null = null;
       try {
-        await apiClient.bootstrapMe(user.displayName || undefined);
-        const me = await apiClient.getMe();
-        if (!cancelled) {
-          applyMeResponse(user.uid, me);
-        }
+        me = await apiClient.getMe();
       } catch {
         try {
-          const me = await apiClient.getMe();
-          if (!cancelled) {
-            applyMeResponse(user.uid, me);
-          }
+          me = await apiClient.bootstrapMe(user.displayName || undefined);
         } catch {
-          // ignore if offline or unconfigured in tests
+          me = null;
         }
-      } finally {
-        setProjectsLoading(false);
-        if (!cancelled) {
-          setWorkspaceLoading(false);
+      }
+      if (me) done(me);
+      else if (!cancelled && !cached) setMeError(true);
+      setProjectsLoading(false);
+      if (!cancelled) setWorkspaceLoading(false);
+
+      // Background: the bootstrap is safe to repeat. Only re-apply when it found something new.
+      if (me) {
+        try {
+          const b = await apiClient.bootstrapMe(user.displayName || undefined);
+          if (!cancelled && meFingerprint(b) !== meFingerprint(me)) done(b);
+        } catch {
+          // the account already loaded; nothing to do
         }
       }
     })();
@@ -435,7 +505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       cancelled = true;
     };
-  }, [user, emailVerified, authLoading, applyMeResponse]);
+  }, [user, emailVerified, authLoading, applyMeResponse, reloadTick]);
 
   const activeWorkspace = useMemo<WorkspaceSummary | null>(() => {
     if (workspaces.length === 0) return null;
@@ -492,6 +562,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const me = await apiClient.getMe();
       applyMeResponse(user.uid, me);
+      writeMeCache(user.uid, me);
     } catch {
       // ignore
     }
@@ -913,6 +984,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     projects,
     activeProject,
     workspaceLoading,
+    projectsResolved,
+    meError,
+    reloadMe: () => setReloadTick((t) => t + 1),
     isDemoMode,
     setIsDemoMode,
     selectProject,
